@@ -1,6 +1,5 @@
-import { useEffect } from 'react';
-import { App as AntdApp } from 'antd';
-import { useGameFlow } from '@/contexts';
+﻿import { useEffect } from 'react';
+import { useFeedback, useGameFlow } from '@/contexts';
 import { useGameInit, useGameState, useGameTts } from '@/hooks';
 import { SCENE_CONFIGS, buildSceneImageUrl, getSceneImageUrl, getSceneNameById } from '@/config/scenes';
 import { initGame, processGameInput } from '@/services/gameApi';
@@ -25,7 +24,7 @@ export interface UseGameSessionFlowResult {
 }
 
 export function useGameSessionFlow(): UseGameSessionFlowResult {
-  const { message } = AntdApp.useApp();
+  const feedback = useFeedback();
   const { state: flowState, setActiveSession } = useGameFlow();
   const gameState = useGameState();
   const { saveGameProgress, setCharacterImage } = useGameInit(gameState);
@@ -143,7 +142,7 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
     actions.setOptions(responseData.player_options);
 
     if (responseData.is_game_finished) {
-      message.info('游戏结束');
+      feedback.info('游戏结束');
     }
   };
 
@@ -152,7 +151,7 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
       characterId || flowState.runtimeSession.currentCharacterId || flowState.characterDraft?.characterId;
 
     if (!nextCharacterId) {
-      message.error('游戏会话已过期，请返回重新开始游戏');
+      feedback.error('游戏会话已过期，请返回重新开始游戏');
       return false;
     }
 
@@ -161,7 +160,7 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
       const nextThreadId = initResponse.thread_id;
 
       if (!nextThreadId) {
-        message.error('游戏会话已过期且无法恢复，请返回重新开始游戏');
+        feedback.error('游戏会话已过期且无法恢复，请返回重新开始游戏');
         return false;
       }
 
@@ -171,11 +170,11 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
         characterId: nextCharacterId,
         initialGameData: null,
       });
-      message.success('游戏会话已恢复，请重新选择选项');
+      feedback.success('游戏会话已恢复，请重新选择选项');
       return true;
     } catch (error: unknown) {
       logger.error('[game] failed to recover session', error);
-      message.error('游戏会话已过期且无法恢复，请返回重新开始游戏');
+      feedback.error('游戏会话已过期且无法恢复，请返回重新开始游戏');
       return false;
     }
   };
@@ -205,7 +204,7 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
           characterId: currentCharacterId,
           initialGameData: null,
         });
-        message.info('游戏会话已恢复');
+        feedback.info('游戏会话已恢复');
       }
 
       applyGameResponse(response);
@@ -220,12 +219,12 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
         errorMessage.includes('not found') ||
         errorMessage.includes('无法恢复')
       ) {
-        message.warning('游戏会话已过期，正在尝试恢复...');
+        feedback.warning('游戏会话已过期，正在尝试恢复...');
         await recoverExpiredSession();
       } else if (errorMessage.includes('timeout') || errorMessage.includes('超时')) {
-        message.error('处理选项超时，AI 生成可能需要更长时间，请稍后重试');
+        feedback.error('处理选项超时，AI 生成可能需要更长时间，请稍后重试');
       } else {
-        message.error(errorMessage);
+        feedback.error(errorMessage);
       }
 
       actions.rollbackPendingUserMessage();
@@ -253,3 +252,4 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
     selectOption,
   };
 }
+

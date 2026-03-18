@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { App as AntdApp } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '@/config/routes';
-import { useGameFlow } from '@/contexts';
+import { useFeedback, useGameFlow } from '@/contexts';
 import { getCharacterImages, removeCharacterBackground } from '@/services/characterApi';
 import { checkServerHealth } from '@/services/healthApi';
 import { getPresetVoices, getVoicePreviewAudio, setVoiceConfig } from '@/services/ttsApi';
@@ -62,7 +61,7 @@ const hasDeletedPortraitImages = (imageUrls: string[]) =>
 
 export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
   const navigate = useNavigate();
-  const { message } = AntdApp.useApp();
+  const feedback = useFeedback();
   const { state, setCharacterDraft, setCreatedCharacterId, updateCharacterDraft } = useGameFlow();
 
   const [loading, setLoading] = useState(false);
@@ -87,7 +86,7 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
       const createdCharacterId = state.createdCharacterId || characterData?.characterId;
 
       if (!characterData) {
-        message.warning('未找到角色数据，请先创建角色');
+        feedback.warning('未找到角色数据，请先创建角色');
         window.setTimeout(() => navigate(ROUTES.CHARACTER_SETTING), 1500);
         return;
       }
@@ -95,7 +94,7 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
       if (!isValidStoredId(createdCharacterId)) {
         setCharacterDraft(null);
         setCreatedCharacterId(null);
-        message.error('角色数据无效，请重新创建角色');
+        feedback.error('角色数据无效，请重新创建角色');
         return;
       }
 
@@ -152,11 +151,11 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
       setCharacters(characterOptions);
     } catch (error: unknown) {
       logger.error('Failed to load characters:', error);
-      message.error('加载角色失败，请稍后重试');
+      feedback.error('加载角色失败，请稍后重试');
     } finally {
       setLoading(false);
     }
-  }, [message, navigate, setCharacterDraft, setCreatedCharacterId, state, updateCharacterDraft]);
+  }, [feedback, navigate, setCharacterDraft, setCreatedCharacterId, state, updateCharacterDraft]);
 
   useEffect(() => {
     void loadCharacters();
@@ -173,16 +172,16 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
         if (cancelled) return;
         setPresetVoices(voices);
         if (voices.length === 0) {
-          message.warning('未获取到音色列表，请检查后端服务');
+          feedback.warning('未获取到音色列表，请检查后端服务');
         }
       })
       .catch((error: unknown) => {
         if (cancelled) return;
         const err = error as { response?: { status?: number } };
         if (err.response?.status === 503) {
-          message.warning('TTS 服务暂不可用，但您仍可选择音色');
+          feedback.warning('TTS 服务暂不可用，但您仍可选择音色');
         } else {
-          message.error('获取音色列表失败，请检查后端服务');
+          feedback.error('获取音色列表失败，请检查后端服务');
         }
         setPresetVoices([]);
       })
@@ -195,7 +194,7 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
     return () => {
       cancelled = true;
     };
-  }, [message, step]);
+  }, [feedback, step]);
 
   const selectImage = (characterId: string, imageIndex: number) => {
     const character = characters.find((item) => item.id === characterId);
@@ -206,7 +205,7 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
 
     const selectedImageUrl = character.imageUrls?.[imageIndex];
     if (!selectedImageUrl && !character.imageUrl) {
-      message.warning('图片数据异常，请刷新页面重试');
+      feedback.warning('图片数据异常，请刷新页面重试');
       return;
     }
 
@@ -242,7 +241,7 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
     try {
       const result = await getVoicePreviewAudio(voice.id, voice.preview_text || undefined);
       if (!result?.audio_url) {
-        message.warning('试听功能暂不可用，但您仍可选择此音色');
+        feedback.warning('试听功能暂不可用，但您仍可选择此音色');
         return;
       }
 
@@ -250,14 +249,14 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
       audio.onended = () => setPreviewingVoiceId(null);
       audio.onerror = () => {
         setPreviewingVoiceId(null);
-        message.warning('试听音频播放失败');
+        feedback.warning('试听音频播放失败');
       };
 
       try {
         await audio.play();
       } catch {
         setPreviewingVoiceId(null);
-        message.warning('试听音频播放失败');
+        feedback.warning('试听音频播放失败');
       }
     } catch (error: unknown) {
       const err = error as {
@@ -267,9 +266,9 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
       const errorMsg = err.response?.data?.message || err.message || '试听失败';
 
       if (err.response?.status === 503) {
-        message.warning(`${errorMsg}。您仍可选择此音色，游戏中使用时请确保 TTS 服务已启用。`);
+        feedback.warning(`${errorMsg}。您仍可选择此音色，游戏中使用时请确保 TTS 服务已启用。`);
       } else {
-        message.warning(`试听失败：${errorMsg}`);
+        feedback.warning(`试听失败：${errorMsg}`);
       }
     } finally {
       setPreviewingVoiceId(null);
@@ -282,7 +281,7 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
     const characterData = state.characterDraft;
 
     if (!character || !characterId || !characterData) {
-      message.error('角色数据异常');
+      feedback.error('角色数据异常');
       return;
     }
 
@@ -295,7 +294,7 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
     try {
       const isHealthy = await checkServerHealth();
       if (!isHealthy) {
-        message.error('无法连接到服务器，请检查后端服务是否运行');
+        feedback.error('无法连接到服务器，请检查后端服务是否运行');
         return;
       }
 
@@ -361,13 +360,13 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
         navigate(ROUTES.FIRST_MEETING);
       } catch (error: unknown) {
         logger.error('Failed to confirm character selection:', error);
-        message.warning('选择图片失败，将使用原图继续');
+        feedback.warning('选择图片失败，将使用原图继续');
         await delay(500);
         navigate(ROUTES.FIRST_MEETING);
       }
     } catch (error: unknown) {
       logger.error('Failed to submit character selection:', error);
-      message.error('选择角色失败，请稍后重试');
+      feedback.error('选择角色失败，请稍后重试');
     } finally {
       setLoading(false);
     }

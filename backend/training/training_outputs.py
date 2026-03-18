@@ -94,6 +94,46 @@ def _serialize_decision_context(
     return None
 
 
+def _serialize_branch_transition(
+    branch_transition: "TrainingBranchTransitionOutput | Dict[str, Any] | None",
+) -> Dict[str, Any] | None:
+    """统一导出单个分支跳转上下文。"""
+    if branch_transition is None:
+        return None
+    if isinstance(branch_transition, TrainingBranchTransitionOutput):
+        return branch_transition.to_dict()
+    if isinstance(branch_transition, dict):
+        normalized = TrainingBranchTransitionOutput.from_payload(branch_transition)
+        return normalized.to_dict() if normalized is not None else None
+    return None
+
+
+def _serialize_branch_transition_summary(
+    summary: "TrainingBranchTransitionSummaryOutput | Dict[str, Any] | None",
+) -> Dict[str, Any] | None:
+    """统一导出分支跳转聚合摘要。"""
+    if summary is None:
+        return None
+    if isinstance(summary, TrainingBranchTransitionSummaryOutput):
+        return summary.to_dict()
+    if isinstance(summary, dict):
+        normalized = TrainingBranchTransitionSummaryOutput.from_payload(summary)
+        return normalized.to_dict() if normalized is not None else None
+    return None
+
+
+def _serialize_branch_transition_summary_list(
+    summaries: List["TrainingBranchTransitionSummaryOutput | Dict[str, Any]"] | None,
+) -> List[Dict[str, Any]]:
+    """批量导出分支跳转聚合摘要列表。"""
+    serialized_items: List[Dict[str, Any]] = []
+    for item in summaries or []:
+        serialized = _serialize_branch_transition_summary(item)
+        if serialized is not None:
+            serialized_items.append(serialized)
+    return serialized_items
+
+
 def _serialize_runtime_flags(
     runtime_flags: "TrainingRuntimeFlagsOutput | Dict[str, Any] | None",
 ) -> Dict[str, Any] | None:
@@ -895,6 +935,122 @@ class TrainingDecisionCandidateOutput:
 
 
 @dataclass(slots=True)
+class TrainingBranchTransitionOutput:
+    """训练分支跳转上下文。"""
+
+    source_scenario_id: str
+    target_scenario_id: str
+    transition_type: str = "branch"
+    reason: str = ""
+    triggered_flags: List[str] = field(default_factory=list)
+    matched_rule: Dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_payload(cls, payload: Dict[str, Any] | None) -> "TrainingBranchTransitionOutput | None":
+        """把原始分支跳转字典转换成稳定 DTO。"""
+        if not isinstance(payload, dict):
+            return None
+
+        source_scenario_id = str(payload.get("source_scenario_id") or "").strip()
+        target_scenario_id = str(payload.get("target_scenario_id") or "").strip()
+        transition_type = str(payload.get("transition_type") or "branch").strip()
+        if not source_scenario_id or not target_scenario_id or not transition_type:
+            return None
+
+        return cls(
+            source_scenario_id=source_scenario_id,
+            target_scenario_id=target_scenario_id,
+            transition_type=transition_type,
+            reason=str(payload.get("reason") or ""),
+            triggered_flags=[
+                str(item)
+                for item in payload.get("triggered_flags", []) or []
+                if str(item or "").strip()
+            ],
+            matched_rule=_copy_dict(payload.get("matched_rule")),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """导出稳定分支跳转字典。"""
+        payload = {
+            "source_scenario_id": self.source_scenario_id,
+            "target_scenario_id": self.target_scenario_id,
+            "transition_type": self.transition_type,
+            "triggered_flags": list(self.triggered_flags),
+        }
+        if self.reason:
+            payload["reason"] = self.reason
+        if self.matched_rule:
+            payload["matched_rule"] = _copy_dict(self.matched_rule)
+        return payload
+
+
+@dataclass(slots=True)
+class TrainingBranchTransitionSummaryOutput:
+    """训练分支跳转聚合摘要。"""
+
+    source_scenario_id: str
+    target_scenario_id: str
+    transition_type: str = "branch"
+    reason: str = ""
+    count: int = 0
+    round_nos: List[int] = field(default_factory=list)
+    triggered_flags: List[str] = field(default_factory=list)
+
+    @classmethod
+    def from_payload(cls, payload: Dict[str, Any] | None) -> "TrainingBranchTransitionSummaryOutput | None":
+        """把原始分支聚合字典转换成稳定 DTO。"""
+        if not isinstance(payload, dict):
+            return None
+
+        source_scenario_id = str(payload.get("source_scenario_id") or "").strip()
+        target_scenario_id = str(payload.get("target_scenario_id") or "").strip()
+        transition_type = str(payload.get("transition_type") or "branch").strip()
+        if not source_scenario_id or not target_scenario_id or not transition_type:
+            return None
+
+        round_nos: List[int] = []
+        for item in payload.get("round_nos", []) or []:
+            try:
+                round_no = int(item)
+            except (TypeError, ValueError):
+                continue
+            if round_no not in round_nos:
+                round_nos.append(round_no)
+
+        triggered_flags: List[str] = []
+        for item in payload.get("triggered_flags", []) or []:
+            text = str(item or "").strip()
+            if not text or text in triggered_flags:
+                continue
+            triggered_flags.append(text)
+
+        return cls(
+            source_scenario_id=source_scenario_id,
+            target_scenario_id=target_scenario_id,
+            transition_type=transition_type,
+            reason=str(payload.get("reason") or ""),
+            count=_to_non_negative_int(payload.get("count")),
+            round_nos=round_nos,
+            triggered_flags=triggered_flags,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """导出稳定分支聚合摘要字典。"""
+        payload = {
+            "source_scenario_id": self.source_scenario_id,
+            "target_scenario_id": self.target_scenario_id,
+            "transition_type": self.transition_type,
+            "count": _to_non_negative_int(self.count),
+            "round_nos": [int(item) for item in self.round_nos],
+            "triggered_flags": list(self.triggered_flags),
+        }
+        if self.reason:
+            payload["reason"] = self.reason
+        return payload
+
+
+@dataclass(slots=True)
 class TrainingRoundDecisionContextOutput:
     """训练回合提交时的推荐与选择上下文。"""
 
@@ -905,6 +1061,8 @@ class TrainingRoundDecisionContextOutput:
     candidate_pool: List[TrainingDecisionCandidateOutput] = field(default_factory=list)
     selected_recommendation: Optional[TrainingScenarioRecommendationOutput] = None
     recommended_recommendation: Optional[TrainingScenarioRecommendationOutput] = None
+    selected_branch_transition: Optional[TrainingBranchTransitionOutput] = None
+    recommended_branch_transition: Optional[TrainingBranchTransitionOutput] = None
 
     @classmethod
     def from_payload(cls, payload: Dict[str, Any] | None) -> "TrainingRoundDecisionContextOutput | None":
@@ -933,6 +1091,10 @@ class TrainingRoundDecisionContextOutput:
             candidate_pool=candidate_items,
             selected_recommendation=TrainingScenarioRecommendationOutput.from_payload(payload.get("selected_recommendation")),
             recommended_recommendation=TrainingScenarioRecommendationOutput.from_payload(payload.get("recommended_recommendation")),
+            selected_branch_transition=TrainingBranchTransitionOutput.from_payload(payload.get("selected_branch_transition")),
+            recommended_branch_transition=TrainingBranchTransitionOutput.from_payload(
+                payload.get("recommended_branch_transition")
+            ),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -949,6 +1111,10 @@ class TrainingRoundDecisionContextOutput:
             payload["selected_recommendation"] = self.selected_recommendation.to_dict()
         if self.recommended_recommendation is not None:
             payload["recommended_recommendation"] = self.recommended_recommendation.to_dict()
+        if self.selected_branch_transition is not None:
+            payload["selected_branch_transition"] = self.selected_branch_transition.to_dict()
+        if self.recommended_branch_transition is not None:
+            payload["recommended_branch_transition"] = self.recommended_branch_transition.to_dict()
         return payload
 
 
@@ -1238,10 +1404,14 @@ class TrainingDiagnosticsSummaryOutput:
     editor_locked_rounds: List[int] = field(default_factory=list)
     high_risk_path_round_count: int = 0
     high_risk_path_rounds: List[int] = field(default_factory=list)
+    branch_transition_count: int = 0
+    branch_transition_rounds: List[int] = field(default_factory=list)
+    branch_transitions: List["TrainingBranchTransitionSummaryOutput | Dict[str, Any]"] = field(default_factory=list)
     last_primary_skill_code: Optional[str] = None
     last_primary_risk_flag: Optional[str] = None
     last_event_type: Optional[str] = None
     last_phase_tags: List[str] = field(default_factory=list)
+    last_branch_transition: Optional["TrainingBranchTransitionOutput | Dict[str, Any]"] = None
 
     @classmethod
     def from_payload(cls, payload: Dict[str, Any] | None) -> "TrainingDiagnosticsSummaryOutput | None":
@@ -1297,6 +1467,9 @@ class TrainingDiagnosticsSummaryOutput:
             editor_locked_rounds=_normalize_round_list(payload.get("editor_locked_rounds")),
             high_risk_path_round_count=_to_non_negative_int(payload.get("high_risk_path_round_count")),
             high_risk_path_rounds=_normalize_round_list(payload.get("high_risk_path_rounds")),
+            branch_transition_count=_to_non_negative_int(payload.get("branch_transition_count")),
+            branch_transition_rounds=_normalize_round_list(payload.get("branch_transition_rounds")),
+            branch_transitions=_serialize_branch_transition_summary_list(payload.get("branch_transitions")),
             last_primary_skill_code=(
                 str(payload.get("last_primary_skill_code"))
                 if payload.get("last_primary_skill_code") is not None
@@ -1309,6 +1482,7 @@ class TrainingDiagnosticsSummaryOutput:
             ),
             last_event_type=str(payload.get("last_event_type")) if payload.get("last_event_type") is not None else None,
             last_phase_tags=_normalize_text_list(payload.get("last_phase_tags")),
+            last_branch_transition=_serialize_branch_transition(payload.get("last_branch_transition")),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -1341,6 +1515,9 @@ class TrainingDiagnosticsSummaryOutput:
             "editor_locked_rounds": [int(item) for item in self.editor_locked_rounds],
             "high_risk_path_round_count": _to_non_negative_int(self.high_risk_path_round_count),
             "high_risk_path_rounds": [int(item) for item in self.high_risk_path_rounds],
+            "branch_transition_count": _to_non_negative_int(self.branch_transition_count),
+            "branch_transition_rounds": [int(item) for item in self.branch_transition_rounds],
+            "branch_transitions": _serialize_branch_transition_summary_list(self.branch_transitions),
             "last_phase_tags": [str(item) for item in self.last_phase_tags if str(item or "").strip()],
         }
         if self.last_primary_skill_code is not None:
@@ -1349,6 +1526,8 @@ class TrainingDiagnosticsSummaryOutput:
             payload["last_primary_risk_flag"] = self.last_primary_risk_flag
         if self.last_event_type is not None:
             payload["last_event_type"] = self.last_event_type
+        if self.last_branch_transition is not None:
+            payload["last_branch_transition"] = _serialize_branch_transition(self.last_branch_transition)
         return payload
 
 
@@ -1661,6 +1840,9 @@ class TrainingReportSummaryOutput:
     source_exposed_round_count: int = 0
     editor_locked_round_count: int = 0
     high_risk_path_round_count: int = 0
+    branch_transition_count: int = 0
+    branch_transition_rounds: List[int] = field(default_factory=list)
+    branch_transitions: List["TrainingBranchTransitionSummaryOutput | Dict[str, Any]"] = field(default_factory=list)
     risk_flag_counts: List["TrainingDiagnosticsCountItemOutput | Dict[str, Any]"] = field(default_factory=list)
     completed_scenario_ids: List[str] = field(default_factory=list)
     review_suggestions: List[str] = field(default_factory=list)
@@ -1686,6 +1868,9 @@ class TrainingReportSummaryOutput:
             source_exposed_round_count=_to_non_negative_int(payload.get("source_exposed_round_count")),
             editor_locked_round_count=_to_non_negative_int(payload.get("editor_locked_round_count")),
             high_risk_path_round_count=_to_non_negative_int(payload.get("high_risk_path_round_count")),
+            branch_transition_count=_to_non_negative_int(payload.get("branch_transition_count")),
+            branch_transition_rounds=[max(int(item), 0) for item in payload.get("branch_transition_rounds", []) if item is not None],
+            branch_transitions=_serialize_branch_transition_summary_list(payload.get("branch_transitions")),
             risk_flag_counts=_serialize_diagnostics_count_item_list(payload.get("risk_flag_counts")),
             completed_scenario_ids=[str(item) for item in payload.get("completed_scenario_ids", []) if str(item or "").strip()],
             review_suggestions=[str(item) for item in payload.get("review_suggestions", []) if str(item or "").strip()],
@@ -1708,6 +1893,9 @@ class TrainingReportSummaryOutput:
             "source_exposed_round_count": self.source_exposed_round_count,
             "editor_locked_round_count": self.editor_locked_round_count,
             "high_risk_path_round_count": self.high_risk_path_round_count,
+            "branch_transition_count": self.branch_transition_count,
+            "branch_transition_rounds": [int(item) for item in self.branch_transition_rounds],
+            "branch_transitions": _serialize_branch_transition_summary_list(self.branch_transitions),
             "risk_flag_counts": _serialize_diagnostics_count_item_list(self.risk_flag_counts),
             "completed_scenario_ids": list(self.completed_scenario_ids),
             "review_suggestions": list(self.review_suggestions),

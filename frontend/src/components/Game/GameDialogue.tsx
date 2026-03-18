@@ -1,4 +1,3 @@
-import { Button } from 'antd';
 import type { PlayerOption } from '@/types/game';
 
 export interface GameDialogueProps {
@@ -25,14 +24,15 @@ export default function GameDialogue({
       {currentOptions.length > 0 && (
         <div className="game-options-container">
           {currentOptions.map((option, index) => (
-            <Button
+            <button
               key={option.id}
+              type="button"
               className="game-option-button"
               onClick={() => onOptionSelect(index)}
               disabled={loading}
             >
               {option.text}
-            </Button>
+            </button>
           ))}
         </div>
       )}

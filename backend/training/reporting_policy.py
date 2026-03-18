@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Sequence
 from training.constants import DEFAULT_S_STATE, SKILL_CODES, SKILL_WEIGHTS, TRAINING_RUNTIME_CONFIG
 from training.training_outputs import (
     TrainingAuditEventOutput,
+    TrainingBranchTransitionOutput,
+    TrainingBranchTransitionSummaryOutput,
     TrainingDiagnosticsCountItemOutput,
     TrainingDiagnosticsSummaryOutput,
     TrainingKtObservationOutput,
@@ -71,6 +73,7 @@ class TrainingReportingPolicy:
         primary_skill_counter: Counter[str] = Counter()
         weak_skill_counter: Counter[str] = Counter()
         phase_tag_counter: Counter[str] = Counter()
+        branch_transition_rounds: set[int] = set()
         mismatch_rounds: set[int] = set()
         high_risk_round_nos: set[int] = set()
         phase_transition_rounds: set[int] = set()
@@ -78,10 +81,12 @@ class TrainingReportingPolicy:
         source_exposed_rounds: set[int] = set()
         editor_locked_rounds: set[int] = set()
         high_risk_path_rounds: set[int] = set()
+        branch_transition_records: List[tuple[int, TrainingBranchTransitionOutput]] = []
         last_primary_skill_code: str | None = None
         last_primary_risk_flag: str | None = None
         last_event_type: str | None = None
         last_phase_tags: List[str] = []
+        last_branch_transition: TrainingBranchTransitionOutput | None = None
 
         for item in recommendation_logs:
             if item.selection_source:
@@ -93,6 +98,13 @@ class TrainingReportingPolicy:
                 and item.recommended_scenario_id != item.selected_scenario_id
             ):
                 mismatch_rounds.add(int(item.round_no))
+
+            branch_transition = self._extract_selected_branch_transition_from_recommendation_log(item)
+            if branch_transition is not None and item.round_no is not None:
+                round_no = int(item.round_no)
+                branch_transition_rounds.add(round_no)
+                branch_transition_records.append((round_no, branch_transition))
+                last_branch_transition = branch_transition
 
         for item in audit_events:
             if not item.event_type:
@@ -138,6 +150,8 @@ class TrainingReportingPolicy:
                 if skill_code_text:
                     weak_skill_counter[skill_code_text] += 1
 
+        branch_transition_summaries = self._build_branch_transition_summaries(branch_transition_records)
+
         return TrainingDiagnosticsSummaryOutput(
             total_recommendation_logs=len(recommendation_logs),
             total_audit_events=len(audit_events),
@@ -162,10 +176,14 @@ class TrainingReportingPolicy:
             editor_locked_rounds=sorted(editor_locked_rounds),
             high_risk_path_round_count=len(high_risk_path_rounds),
             high_risk_path_rounds=sorted(high_risk_path_rounds),
+            branch_transition_count=len(branch_transition_rounds),
+            branch_transition_rounds=sorted(branch_transition_rounds),
+            branch_transitions=branch_transition_summaries,
             last_primary_skill_code=last_primary_skill_code,
             last_primary_risk_flag=last_primary_risk_flag,
             last_event_type=last_event_type,
             last_phase_tags=last_phase_tags,
+            last_branch_transition=last_branch_transition,
         )
 
     def build_report_artifacts(
@@ -305,6 +323,8 @@ class TrainingReportingPolicy:
         source_exposed_rounds: set[int] = set()
         editor_locked_rounds: set[int] = set()
         high_risk_path_rounds: set[int] = set()
+        branch_transition_rounds: set[int] = set()
+        branch_transition_records: List[tuple[int, TrainingBranchTransitionOutput]] = []
 
         for snapshot in round_snapshots or []:
             if not isinstance(snapshot, dict):
@@ -330,6 +350,11 @@ class TrainingReportingPolicy:
             if bool(runtime_flags.get("high_risk_path", False)):
                 high_risk_path_rounds.add(round_no)
 
+            branch_transition = TrainingBranchTransitionOutput.from_payload(snapshot.get("branch_transition"))
+            if branch_transition is not None:
+                branch_transition_rounds.add(round_no)
+                branch_transition_records.append((round_no, branch_transition))
+
         strongest_metric = max(
             ability_radar,
             key=lambda item: (item.delta, -list(self.skill_codes).index(item.code)),
@@ -348,6 +373,7 @@ class TrainingReportingPolicy:
         weighted_score_initial = round(self._weighted_k_score(initial_k_state), 4)
         weighted_score_final = round(self._weighted_k_score(final_k_state), 4)
         weighted_score_delta = round(weighted_score_final - weighted_score_initial, 4)
+        branch_transition_summaries = self._build_branch_transition_summaries(branch_transition_records)
         return TrainingReportSummaryOutput(
             weighted_score_initial=weighted_score_initial,
             weighted_score_final=weighted_score_final,
@@ -363,6 +389,9 @@ class TrainingReportingPolicy:
             source_exposed_round_count=len(source_exposed_rounds),
             editor_locked_round_count=len(editor_locked_rounds),
             high_risk_path_round_count=len(high_risk_path_rounds),
+            branch_transition_count=len(branch_transition_rounds),
+            branch_transition_rounds=sorted(branch_transition_rounds),
+            branch_transitions=branch_transition_summaries,
             risk_flag_counts=self._build_count_items(risk_flag_counter),
             completed_scenario_ids=completed_scenario_ids,
             review_suggestions=self._build_review_suggestions(
@@ -370,6 +399,8 @@ class TrainingReportingPolicy:
                 weakest_metric=weakest_metric,
                 dominant_risk_flag=dominant_risk_flag,
                 high_risk_round_nos=sorted(high_risk_round_nos),
+                branch_transition_summaries=branch_transition_summaries,
+                branch_transition_round_nos=sorted(branch_transition_rounds),
             ),
         )
 
@@ -379,6 +410,8 @@ class TrainingReportingPolicy:
         weakest_metric: TrainingReportMetricOutput | None,
         dominant_risk_flag: str | None,
         high_risk_round_nos: List[int],
+        branch_transition_summaries: List[TrainingBranchTransitionSummaryOutput],
+        branch_transition_round_nos: List[int],
     ) -> List[str]:
         """生成训练报告中的复盘建议。"""
         suggestions: List[str] = []
@@ -399,12 +432,94 @@ class TrainingReportingPolicy:
                 f"共有 {len(high_risk_round_nos)} 轮触发高风险，建议优先回放第 {round_labels} 轮的决策过程。"
             )
 
+        if branch_transition_round_nos:
+            round_labels = "、".join(
+                str(item) for item in branch_transition_round_nos[: self.high_risk_round_preview_limit]
+            )
+            branch_preview = self._build_branch_transition_preview(branch_transition_summaries)
+            suggestions.append(
+                f"本次共有 {len(branch_transition_round_nos)} 轮发生分支跳转，建议优先回放第 {round_labels} 轮的 {branch_preview}。"
+            )
+
         if weighted_score_delta >= self.strong_improvement_threshold:
             suggestions.append("综合能力已有明显提升，可以继续进入更高难度或更高压的训练场景。")
         elif weighted_score_delta <= self.limited_improvement_threshold:
             suggestions.append("本次综合提升有限，建议下一轮先聚焦单一短板能力，减少同时处理过多目标。")
 
         return suggestions[: self.max_review_suggestions]
+
+    def _build_branch_transition_summaries(
+        self,
+        branch_transition_records: List[tuple[int, TrainingBranchTransitionOutput]],
+    ) -> List[TrainingBranchTransitionSummaryOutput]:
+        """把回合级分支跳转记录聚合成稳定摘要，供报告与诊断共用。"""
+        summary_map: Dict[tuple[str, str, str, str], Dict[str, Any]] = {}
+
+        for round_no, branch_transition in branch_transition_records:
+            key = (
+                branch_transition.source_scenario_id,
+                branch_transition.target_scenario_id,
+                branch_transition.transition_type,
+                branch_transition.reason,
+            )
+            summary = summary_map.setdefault(
+                key,
+                {
+                    "source_scenario_id": branch_transition.source_scenario_id,
+                    "target_scenario_id": branch_transition.target_scenario_id,
+                    "transition_type": branch_transition.transition_type,
+                    "reason": branch_transition.reason,
+                    "count": 0,
+                    "round_nos": [],
+                    "triggered_flags": [],
+                },
+            )
+            summary["count"] = int(summary["count"]) + 1
+            if int(round_no) not in summary["round_nos"]:
+                summary["round_nos"].append(int(round_no))
+            for flag_name in branch_transition.triggered_flags:
+                if flag_name not in summary["triggered_flags"]:
+                    summary["triggered_flags"].append(flag_name)
+
+        outputs: List[TrainingBranchTransitionSummaryOutput] = []
+        for item in sorted(
+            summary_map.values(),
+            key=lambda summary: (
+                -int(summary["count"]),
+                summary["round_nos"][0] if summary["round_nos"] else 0,
+                str(summary["target_scenario_id"]),
+            ),
+        ):
+            output = TrainingBranchTransitionSummaryOutput.from_payload(item)
+            if output is not None:
+                outputs.append(output)
+        return outputs
+
+    def _extract_selected_branch_transition_from_recommendation_log(
+        self,
+        recommendation_log: TrainingRecommendationLogOutput,
+    ) -> TrainingBranchTransitionOutput | None:
+        """从推荐日志里的决策上下文提取已选分支跳转。"""
+        decision_context = getattr(recommendation_log, "decision_context", None)
+        if decision_context is None:
+            return None
+        branch_transition = getattr(decision_context, "selected_branch_transition", None)
+        if isinstance(branch_transition, TrainingBranchTransitionOutput):
+            return branch_transition
+        return TrainingBranchTransitionOutput.from_payload(branch_transition)
+
+    def _build_branch_transition_preview(
+        self,
+        branch_transition_summaries: List[TrainingBranchTransitionSummaryOutput],
+    ) -> str:
+        """生成复盘建议中的分支预览文本。"""
+        if not branch_transition_summaries:
+            return "关键分支路径"
+
+        primary_transition = branch_transition_summaries[0]
+        if primary_transition.reason:
+            return primary_transition.reason
+        return f"{primary_transition.source_scenario_id} -> {primary_transition.target_scenario_id}"
 
     def _build_count_items(
         self,

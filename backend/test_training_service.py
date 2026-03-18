@@ -77,6 +77,20 @@ class _PublicPanicEvaluator:
         }
 
 
+class _PanicRecoveryEvaluator:
+    """恐慌恢复评估器桩：用于验证补救分支会清除恐慌状态。"""
+
+    def evaluate_round(self, **kwargs):
+        return {
+            "llm_model": DEFAULT_EVAL_MODEL,
+            "confidence": 0.86,
+            "risk_flags": [],
+            "skill_delta": {"K4": 0.02, "K8": 0.03},
+            "s_delta": {"public_panic": -0.5, "editor_trust": 0.1},
+            "evidence": ["通过澄清与行动指引修复了群众稳定度。"],
+        }
+
+
 class _RecentSourceRiskEvaluator:
     """最近风险评估器桩：验证推荐链路会读取历史风险而不只看静态 K/S。"""
 
@@ -120,6 +134,30 @@ class _ChangedScenarioRepository:
             }
             for item in scenario_payload_sequence
         ]
+
+    def freeze_related_catalog(self, scenario_sequence):
+        """保持与正式仓储一致的接口，便于训练服务统一冻结场景目录。"""
+        return self.freeze_sequence(scenario_sequence)
+
+    def get_scenario(self, scenario_id):
+        """模拟新版仓储读取单场景定义。"""
+        return {
+            "id": str(scenario_id),
+            "title": str(scenario_id),
+            "briefing": "这是变更后的最新场景正文",
+            "mission": "这是变更后的任务目标",
+            "target_skills": ["K8"],
+            "risk_tags": ["changed"],
+            "options": [],
+            "next_rules": [],
+        }
+
+
+class _FailOnScenarioReadRepository:
+    """用于验证老会话分支解析不会回退读取实时仓储。"""
+
+    def get_scenario(self, scenario_id):
+        raise AssertionError(f"unexpected repository fallback: {scenario_id}")
 
 
 class _SpyReportingPolicy:
@@ -1208,6 +1246,153 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertTrue(result["runtime_state"]["runtime_flags"]["panic_triggered"])
         self.assertEqual(result["consequence_events"][0]["event_type"], "public_panic_triggered")
         self.assertEqual(result["consequence_events"][0]["related_flag"], "panic_triggered")
+
+    def test_get_next_scenario_should_enter_failure_branch_after_public_panic(self):
+        """触发公众恐慌后，下一场景应切换到失败分支。"""
+        service = TrainingService(db_manager=_FakeDbManager(), evaluator=_PublicPanicEvaluator())
+        init_result = service.init_training(user_id="u22-branch-next")
+        session_id = init_result["session_id"]
+
+        service.submit_round(
+            session_id=session_id,
+            scenario_id="S1",
+            user_input="hello",
+        )
+        next_result = service.get_next_scenario(session_id)
+
+        self.assertEqual(next_result["scenario"]["id"], "S2B")
+        self.assertEqual(next_result["scenario"]["branch_transition"]["source_scenario_id"], "S1")
+        self.assertEqual(next_result["scenario"]["branch_transition"]["target_scenario_id"], "S2B")
+
+    def test_branch_submission_should_reject_mainline_scenario_in_guided_mode(self):
+        """失败分支锁定后，guided 模式不应再接受主线原场景提交。"""
+        service = TrainingService(db_manager=_FakeDbManager(), evaluator=_PublicPanicEvaluator())
+        init_result = service.init_training(user_id="u23-branch-validate")
+        session_id = init_result["session_id"]
+
+        service.submit_round(
+            session_id=session_id,
+            scenario_id="S1",
+            user_input="hello",
+        )
+
+        with self.assertRaises(ValueError) as cm:
+            service.submit_round(
+                session_id=session_id,
+                scenario_id="S2",
+                user_input="hello-again",
+            )
+
+        self.assertIn("expected=S2B", str(cm.exception))
+
+    def test_branch_recovery_should_use_session_frozen_catalog_without_repository_fallback(self):
+        """补救分支提交后，应只依赖会话冻结目录推进分支，不再回退实时仓储。"""
+        service = TrainingService(db_manager=_FakeDbManager(), evaluator=_PublicPanicEvaluator())
+        init_result = service.init_training(user_id="u24-branch-recovery")
+        session_id = init_result["session_id"]
+        session_meta = service.db_manager.sessions[session_id].session_meta
+        catalog_ids = [item["id"] for item in session_meta["scenario_payload_catalog"]]
+
+        self.assertIn("S2B", catalog_ids)
+        self.assertIn("S3R", catalog_ids)
+
+        service.submit_round(
+            session_id=session_id,
+            scenario_id="S1",
+            user_input="hello",
+        )
+        fail_repository = _FailOnScenarioReadRepository()
+        service.scenario_repository = fail_repository
+        service.flow_policy.branch_resolver.scenario_repository = fail_repository
+
+        branch_result = service.get_next_scenario(session_id)
+        self.assertEqual(branch_result["scenario"]["id"], "S2B")
+
+        service.evaluator = _PanicRecoveryEvaluator()
+
+        result = service.submit_round(
+            session_id=session_id,
+            scenario_id="S2B",
+            user_input="repair",
+            selected_option="B",
+        )
+
+        self.assertEqual(result["decision_context"]["selection_source"], "branch_transition")
+        self.assertEqual(
+            result["decision_context"]["selected_branch_transition"]["source_scenario_id"],
+            "S1",
+        )
+        self.assertEqual(
+            result["decision_context"]["selected_branch_transition"]["target_scenario_id"],
+            "S2B",
+        )
+
+        round_row = service.db_manager.get_training_rounds(session_id)[1]
+        self.assertEqual(
+            round_row.user_action["decision_context"]["selected_branch_transition"]["target_scenario_id"],
+            "S2B",
+        )
+
+        observations = service.db_manager.get_kt_observations(session_id)
+        self.assertEqual(observations[1].scenario_id, "S2B")
+        self.assertTrue(observations[1].scenario_title)
+
+        next_result = service.get_next_scenario(session_id)
+        self.assertFalse(next_result["runtime_state"]["runtime_flags"]["panic_triggered"])
+        self.assertEqual(next_result["scenario"]["id"], "S3R")
+        self.assertEqual(next_result["scenario"]["branch_transition"]["source_scenario_id"], "S2B")
+
+    def test_report_and_diagnostics_should_aggregate_branch_transitions(self):
+        """报告与诊断应显式聚合分支发生次数、轮次与路径摘要。"""
+        service = TrainingService(db_manager=_FakeDbManager(), evaluator=_PublicPanicEvaluator())
+        init_result = service.init_training(user_id="u25-branch-summary")
+        session_id = init_result["session_id"]
+
+        service.submit_round(
+            session_id=session_id,
+            scenario_id="S1",
+            user_input="hello",
+        )
+        service.evaluator = _PanicRecoveryEvaluator()
+        service.submit_round(
+            session_id=session_id,
+            scenario_id="S2B",
+            user_input="repair",
+            selected_option="B",
+        )
+        service.evaluator = _FakeEvaluator()
+        service.submit_round(
+            session_id=session_id,
+            scenario_id="S3R",
+            user_input="follow-up",
+            selected_option="B",
+        )
+
+        diagnostics = service.get_diagnostics(session_id)
+        report = service.get_report(session_id)
+
+        self.assertEqual(diagnostics["summary"]["branch_transition_count"], 2)
+        self.assertEqual(diagnostics["summary"]["branch_transition_rounds"], [2, 3])
+        self.assertEqual(
+            diagnostics["summary"]["last_branch_transition"]["target_scenario_id"],
+            "S3R",
+        )
+        self.assertEqual(
+            diagnostics["summary"]["branch_transitions"][0]["target_scenario_id"],
+            "S2B",
+        )
+        selection_source_counts = {
+            item["code"]: item["count"] for item in diagnostics["summary"]["selection_source_counts"]
+        }
+        self.assertEqual(selection_source_counts["branch_transition"], 2)
+
+        self.assertEqual(report["summary"]["branch_transition_count"], 2)
+        self.assertEqual(report["summary"]["branch_transition_rounds"], [2, 3])
+        self.assertEqual(len(report["summary"]["branch_transitions"]), 2)
+        self.assertEqual(report["summary"]["branch_transitions"][1]["target_scenario_id"], "S3R")
+        self.assertTrue(
+            any("分支跳转" in suggestion for suggestion in report["summary"]["review_suggestions"])
+        )
 
     def test_high_risk_round_should_mark_kt_observation(self):
         """高风险回合的 KT 观测应显式标记风险，避免后续只能反解析评估原文。"""

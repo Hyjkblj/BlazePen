@@ -21,6 +21,7 @@ class TrainingRoundFlowPolicyTestCase(unittest.TestCase):
             {"id": "S4", "title": "武汉会战后方动员沟通"},
         ]
         self.payload_sequence = self.repository.freeze_sequence(self.session_sequence)
+        self.payload_catalog = self.repository.freeze_related_catalog(self.session_sequence)
         self.weak_k_state = {
             "K1": 0.9,
             "K2": 0.9,
@@ -274,6 +275,62 @@ class TrainingRoundFlowPolicyTestCase(unittest.TestCase):
             )
 
         self.assertIn("expected=S4", str(cm.exception))
+
+    def test_branch_should_override_recommendation_result(self):
+        """运行时分支命中后，应优先返回分支场景而不是推荐结果。"""
+        bundle = self.policy.build_next_scenario_bundle(
+            training_mode="self-paced",
+            current_round_no=1,
+            session_sequence=self.session_sequence,
+            scenario_payload_sequence=self.payload_sequence,
+            completed_scenario_ids=["S1"],
+            scenario_payload_catalog=self.payload_catalog,
+            k_state=self.weak_k_state,
+            s_state=self.default_s_state,
+            runtime_flags={"panic_triggered": True},
+            current_scenario_id="S1",
+        )
+
+        self.assertEqual(bundle.scenario["id"], "S2B")
+        self.assertIsNone(bundle.scenario_candidates)
+        self.assertEqual(bundle.scenario["branch_transition"]["source_scenario_id"], "S1")
+
+    def test_branch_validation_should_reject_mainline_submission_when_branch_locked(self):
+        """命中分支后，提交流转校验应拒绝主线原场景。"""
+        with self.assertRaises(ValueError) as cm:
+            self.policy.validate_submission(
+                training_mode="guided",
+                current_round_no=1,
+                submitted_scenario_id="S3",
+                session_sequence=self.session_sequence,
+                scenario_payload_sequence=self.payload_sequence,
+                completed_scenario_ids=["S1"],
+                scenario_payload_catalog=self.payload_catalog,
+                k_state=self.weak_k_state,
+                s_state=self.default_s_state,
+                runtime_flags={"panic_triggered": True},
+                current_scenario_id="S1",
+            )
+
+        self.assertIn("expected=S2B", str(cm.exception))
+
+    def test_branch_recovery_should_resolve_before_default_return(self):
+        """补救条件满足时，应先进入恢复节点而不是默认回主线。"""
+        bundle = self.policy.build_next_scenario_bundle(
+            training_mode="guided",
+            current_round_no=2,
+            session_sequence=self.session_sequence,
+            scenario_payload_sequence=self.payload_sequence,
+            completed_scenario_ids=["S1", "S2B"],
+            scenario_payload_catalog=self.payload_catalog,
+            k_state=self.weak_k_state,
+            s_state=self.default_s_state,
+            runtime_flags={"panic_triggered": False},
+            current_scenario_id="S2B",
+        )
+
+        self.assertEqual(bundle.scenario["id"], "S3R")
+        self.assertEqual(bundle.scenario["branch_transition"]["source_scenario_id"], "S2B")
 
     def test_is_terminal_state_should_consider_ending_status_and_round_count(self):
         """完成态判断应统一兼容结局已落库、会话已完成和轮次数达标三种情况。"""

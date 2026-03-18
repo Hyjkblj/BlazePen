@@ -1,31 +1,33 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Modal, App as AntdApp } from 'antd';
-import {
-  FileTextOutlined,
-  LogoutOutlined,
-  PlayCircleOutlined,
-  SettingOutlined,
-} from '@ant-design/icons';
 import backgroundImage from '@/assets/images/firstbackground.jpg';
+import ModalDialog from '@/components/ModalDialog';
+import {
+  DocumentIcon,
+  LogoutIcon,
+  PlayIcon,
+  SettingsIcon,
+} from '@/components/icons';
 import LoadingScreen from '@/components/loading';
 import { ROUTES } from '@/config/routes';
-import { useGameFlow } from '@/contexts';
+import { useFeedback, useGameFlow } from '@/contexts';
 import { checkServerHealth } from '@/services/healthApi';
 import * as gameStorage from '@/storage/gameStorage';
 import './FirstStep.css';
 
 function FirstStep() {
   const navigate = useNavigate();
-  const { message } = AntdApp.useApp();
+  const feedback = useFeedback();
   const { setRestoreSession } = useGameFlow();
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('正在连接服务器...');
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  const [showExitDialog, setShowExitDialog] = useState(false);
 
   const handleContinueGame = async () => {
     const saveData = gameStorage.getMainGameSave();
     if (!saveData?.threadId) {
-      message.warning('没有找到存档，请先开始新的故事。');
+      feedback.warning('没有找到存档，请先开始新的故事。');
       return;
     }
 
@@ -35,7 +37,7 @@ function FirstStep() {
     try {
       const isHealthy = await checkServerHealth();
       if (!isHealthy) {
-        message.error('无法连接到服务器，请检查后端服务是否运行。');
+        feedback.error('无法连接到服务器，请检查后端服务是否正在运行。');
         return;
       }
 
@@ -44,45 +46,10 @@ function FirstStep() {
       await new Promise((resolve) => setTimeout(resolve, 500));
       navigate(ROUTES.GAME);
     } catch {
-      message.error('连接服务器失败，请稍后重试。');
+      feedback.error('连接服务器失败，请稍后重试。');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleNewStory = () => {
-    navigate(ROUTES.CHARACTER_SETTING);
-  };
-
-  const handleSettings = () => {
-    Modal.info({
-      title: '游戏设置',
-      content: (
-        <div>
-          <p>设置功能开发中...</p>
-          <p>未来将包含：</p>
-          <ul>
-            <li>音量调节</li>
-            <li>画面设置</li>
-            <li>快捷键设置</li>
-            <li>语言选择</li>
-          </ul>
-        </div>
-      ),
-      okText: '确定',
-      width: 400,
-    });
-  };
-
-  const handleExit = () => {
-    Modal.confirm({
-      title: '确认退出',
-      content: '确定要退出游戏吗？',
-      okText: '退出',
-      cancelText: '取消',
-      okType: 'danger',
-      onOk: () => navigate(ROUTES.HOME),
-    });
   };
 
   if (loading) {
@@ -91,32 +58,12 @@ function FirstStep() {
 
   return (
     <div
+      className="first-step-page"
       style={{
-        position: 'relative',
-        width: '100%',
-        minHeight: '100vh',
         backgroundImage: `url(${backgroundImage})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        padding: '40px 60px',
       }}
     >
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.1)',
-          zIndex: 1,
-        }}
-      />
+      <div className="first-step-overlay" />
 
       <div className="sakura-container">
         {Array.from({ length: 20 }).map((_, index) => (
@@ -140,142 +87,116 @@ function FirstStep() {
         ))}
       </div>
 
-      <div
-        style={{
-          position: 'relative',
-          zIndex: 2,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '24px',
-          minWidth: '280px',
-        }}
-      >
-        <Button
-          type="primary"
-          size="large"
-          icon={<FileTextOutlined />}
+      <div className="first-step-actions">
+        <button
+          type="button"
+          className="first-step-button first-step-button-primary"
           onClick={handleContinueGame}
-          className="continue-game-button"
-          style={{
-            fontSize: '20px',
-            height: '60px',
-            padding: '0 40px',
-            background: 'linear-gradient(135deg, #ffd700 0%, #ffb347 100%)',
-            border: '2px solid #ff8c00',
-            borderRadius: '8px',
-            fontWeight: 'bold',
-            letterSpacing: '1px',
-            boxShadow:
-              '0 4px 15px rgba(255, 215, 0, 0.4), inset 0 2px 5px rgba(255, 255, 255, 0.3)',
-            transition: 'all 0.3s ease',
-            color: '#fff',
-          }}
         >
-          继续游戏
-        </Button>
+          <span className="first-step-button-icon" aria-hidden="true">
+            <DocumentIcon />
+          </span>
+          <span>继续游戏</span>
+        </button>
 
-        <Button
-          type="primary"
-          size="large"
-          icon={<PlayCircleOutlined />}
-          onClick={handleNewStory}
-          className="new-story-button"
-          style={{
-            fontSize: '20px',
-            height: '60px',
-            padding: '0 40px',
-            background: 'linear-gradient(135deg, #ffd700 0%, #ffb347 100%)',
-            border: '2px solid #ff8c00',
-            borderRadius: '8px',
-            fontWeight: 'bold',
-            letterSpacing: '1px',
-            boxShadow:
-              '0 4px 15px rgba(255, 215, 0, 0.4), inset 0 2px 5px rgba(255, 255, 255, 0.3)',
-            transition: 'all 0.3s ease',
-            color: '#fff',
-          }}
+        <button
+          type="button"
+          className="first-step-button first-step-button-primary"
+          onClick={() => navigate(ROUTES.CHARACTER_SETTING)}
         >
-          新的故事
-        </Button>
+          <span className="first-step-button-icon" aria-hidden="true">
+            <PlayIcon />
+          </span>
+          <span>新的故事</span>
+        </button>
       </div>
 
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '40px',
-          left: '60px',
-          zIndex: 2,
-          display: 'flex',
-          gap: '16px',
-        }}
+      <div className="first-step-footer-actions">
+        <button
+          type="button"
+          className="first-step-button first-step-button-secondary"
+          onClick={() => setShowSettingsDialog(true)}
+        >
+          <span className="first-step-button-icon" aria-hidden="true">
+            <SettingsIcon />
+          </span>
+          <span>设置</span>
+        </button>
+
+        <button
+          type="button"
+          className="first-step-button first-step-button-danger"
+          onClick={() => setShowExitDialog(true)}
+        >
+          <span className="first-step-button-icon" aria-hidden="true">
+            <LogoutIcon />
+          </span>
+          <span>退出</span>
+        </button>
+      </div>
+
+      <ModalDialog
+        open={showSettingsDialog}
+        title="游戏设置"
+        onClose={() => setShowSettingsDialog(false)}
+        width={420}
+        className="first-step-dialog"
+        footer={
+          <div className="first-step-dialog-actions">
+            <button
+              type="button"
+              className="first-step-dialog-button first-step-dialog-button-primary"
+              onClick={() => setShowSettingsDialog(false)}
+            >
+              确定
+            </button>
+          </div>
+        }
       >
-        <Button
-          type="default"
-          size="large"
-          icon={<SettingOutlined />}
-          onClick={handleSettings}
-          style={{
-            fontSize: '16px',
-            height: '50px',
-            padding: '0 24px',
-            background: 'rgba(255, 255, 255, 0.9)',
-            border: '2px solid rgba(255, 140, 0, 0.5)',
-            borderRadius: '8px',
-            fontWeight: 'bold',
-            letterSpacing: '1px',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
-            transition: 'all 0.3s ease',
-            backdropFilter: 'blur(10px)',
-          }}
-          onMouseEnter={(event) => {
-            event.currentTarget.style.transform = 'scale(1.05)';
-            event.currentTarget.style.background = 'rgba(255, 255, 255, 1)';
-            event.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
-          }}
-          onMouseLeave={(event) => {
-            event.currentTarget.style.transform = 'scale(1)';
-            event.currentTarget.style.background = 'rgba(255, 255, 255, 0.9)';
-            event.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.2)';
-          }}
-        >
-          设置
-        </Button>
+        <div className="first-step-dialog-content">
+          <p>设置功能开发中...</p>
+          <p>未来将包含：</p>
+          <ul>
+            <li>音量调节</li>
+            <li>画面设置</li>
+            <li>快捷键设置</li>
+            <li>语言选择</li>
+          </ul>
+        </div>
+      </ModalDialog>
 
-        <Button
-          type="default"
-          size="large"
-          icon={<LogoutOutlined />}
-          onClick={handleExit}
-          style={{
-            fontSize: '16px',
-            height: '50px',
-            padding: '0 24px',
-            background: 'rgba(255, 255, 255, 0.9)',
-            border: '2px solid rgba(255, 77, 79, 0.5)',
-            borderRadius: '8px',
-            fontWeight: 'bold',
-            letterSpacing: '1px',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
-            transition: 'all 0.3s ease',
-            backdropFilter: 'blur(10px)',
-            color: '#ff4d4f',
-          }}
-          onMouseEnter={(event) => {
-            event.currentTarget.style.transform = 'scale(1.05)';
-            event.currentTarget.style.background = 'rgba(255, 77, 79, 0.1)';
-            event.currentTarget.style.borderColor = '#ff4d4f';
-            event.currentTarget.style.boxShadow = '0 4px 12px rgba(255, 77, 79, 0.3)';
-          }}
-          onMouseLeave={(event) => {
-            event.currentTarget.style.transform = 'scale(1)';
-            event.currentTarget.style.background = 'rgba(255, 255, 255, 0.9)';
-            event.currentTarget.style.borderColor = 'rgba(255, 77, 79, 0.5)';
-            event.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.2)';
-          }}
-        >
-          退出
-        </Button>
-      </div>
+      <ModalDialog
+        open={showExitDialog}
+        title="确认退出"
+        onClose={() => setShowExitDialog(false)}
+        width={420}
+        className="first-step-dialog"
+        footer={
+          <div className="first-step-dialog-actions">
+            <button
+              type="button"
+              className="first-step-dialog-button"
+              onClick={() => setShowExitDialog(false)}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              className="first-step-dialog-button first-step-dialog-button-danger"
+              onClick={() => {
+                setShowExitDialog(false);
+                navigate(ROUTES.HOME);
+              }}
+            >
+              退出
+            </button>
+          </div>
+        }
+      >
+        <div className="first-step-dialog-content">
+          <p>确定要退出游戏吗？</p>
+        </div>
+      </ModalDialog>
     </div>
   );
 }

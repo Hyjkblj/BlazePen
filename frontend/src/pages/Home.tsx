@@ -1,20 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Typography, Button, App as AntdApp } from 'antd';
-import { PlayCircleOutlined } from '@ant-design/icons';
 import backgroundImage from '@/assets/images/home-background.jpg';
 import LoadingScreen from '@/components/loading';
 import { checkServerHealth } from '@/services/healthApi';
 import { ROUTES } from '@/config/routes';
 
-const { Title } = Typography;
-
 function Home() {
   const navigate = useNavigate();
-  const { message } = AntdApp.useApp();
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleBegin = async () => {
+    setErrorMessage(null);
     setLoading(true);
 
     try {
@@ -22,10 +19,10 @@ function Home() {
       if (isHealthy) {
         navigate(ROUTES.FIRST_STEP);
       } else {
-        message.error('无法连接到服务器，请检查后端服务是否运行。');
+        setErrorMessage('无法连接到服务器，请检查后端服务是否运行。');
       }
     } catch {
-      message.error('连接服务器失败，请稍后重试。');
+      setErrorMessage('连接服务器失败，请稍后重试。');
     } finally {
       setLoading(false);
     }
@@ -74,8 +71,7 @@ function Home() {
         }}
       >
         <div style={{ marginBottom: '60px' }}>
-          <Title
-            level={1}
+          <h1
             style={{
               fontSize: '64px',
               fontWeight: 'bold',
@@ -88,9 +84,8 @@ function Home() {
             }}
           >
             NO ENDING
-          </Title>
-          <Title
-            level={1}
+          </h1>
+          <h1
             style={{
               fontSize: '80px',
               fontWeight: 'bold',
@@ -103,15 +98,17 @@ function Home() {
             }}
           >
             Story
-          </Title>
+          </h1>
         </div>
 
-        <Button
-          type="primary"
-          size="large"
-          icon={<PlayCircleOutlined />}
+        <button
+          type="button"
           onClick={handleBegin}
           style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '12px',
             fontSize: '24px',
             height: '60px',
             padding: '0 40px',
@@ -119,6 +116,8 @@ function Home() {
             border: '3px solid #ff6b00',
             borderRadius: '8px',
             fontWeight: 'bold',
+            color: '#fff',
+            cursor: 'pointer',
             textTransform: 'uppercase',
             letterSpacing: '2px',
             boxShadow: '0 4px 15px rgba(255, 140, 0, 0.4), inset 0 2px 5px rgba(255, 255, 255, 0.3)',
@@ -133,8 +132,35 @@ function Home() {
             e.currentTarget.style.boxShadow = '0 4px 15px rgba(255, 140, 0, 0.4), inset 0 2px 5px rgba(255, 255, 255, 0.3)';
           }}
         >
+          <span aria-hidden="true" style={{ display: 'inline-flex', width: '26px', height: '26px' }}>
+            <svg viewBox="0 0 24 24" fill="currentColor" width="26" height="26">
+              <path d="M12 2a10 10 0 1 0 10 10A10.01 10.01 0 0 0 12 2Zm-1.5 14.5v-9l7 4.5Z" />
+            </svg>
+          </span>
           BEGIN
-        </Button>
+        </button>
+
+        {errorMessage && (
+          <div
+            role="alert"
+            style={{
+              marginTop: '20px',
+              display: 'inline-block',
+              maxWidth: '520px',
+              padding: '12px 16px',
+              background: 'rgba(92, 0, 17, 0.82)',
+              border: '1px solid rgba(255, 163, 158, 0.75)',
+              borderRadius: '10px',
+              color: '#fff2f0',
+              fontSize: '15px',
+              lineHeight: '1.5',
+              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.18)',
+              backdropFilter: 'blur(10px)',
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
       </div>
     </div>
   );

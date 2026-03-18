@@ -75,6 +75,15 @@
   cursor: pointer;
 }
 
+.character-option-card:focus-visible {
+  outline: 3px solid rgba(210, 105, 30, 0.45);
+  outline-offset: 4px;
+}
+
+.character-option-card[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
 .character-option-card:hover {
   transform: translateY(-5px);
   box-shadow: 0 8px 24px rgba(139, 69, 19, 0.3);
@@ -104,16 +113,19 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
 .character-image-placeholder {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   background: #000;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
+  position: absolute;
 }
 
 .character-image-placeholder::before {
@@ -138,30 +150,29 @@
 .character-choice-button {
   width: 100%;
   height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 18px;
   font-weight: bold;
-  background: #d2691e !important;
-  border: 2px solid #654321 !important;
-  border-radius: 8px !important;
-  color: #fff !important;
+  background: #d2691e;
+  border: 2px solid #654321;
+  border-radius: 8px;
+  color: #fff;
   transition: all 0.3s ease;
   text-transform: uppercase;
+  pointer-events: none;
 }
 
-.character-choice-button:hover {
-  background: #8b4513 !important;
-  border-color: #654321 !important;
+.character-option-card:hover .character-choice-button {
+  background: #8b4513;
+  border-color: #654321;
   transform: scale(1.05);
   box-shadow: 0 4px 12px rgba(139, 69, 19, 0.4);
 }
 
-.character-choice-button:active {
-  transform: scale(0.98);
-}
-
-.character-choice-button:disabled {
+.character-option-card[aria-disabled='true'] .character-choice-button {
   opacity: 0.6;
-  cursor: not-allowed;
 }
 
 /* ========== 音色选择界面（与设计图一致：左人物右音色，底部确认） ========== */
@@ -205,6 +216,7 @@
   width: 100%;
   max-width: 260px;
   aspect-ratio: 9 / 16;
+  position: relative;
   background: #fff;
   border: 2px solid #8b4513;
   border-radius: 12px;
@@ -219,9 +231,12 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
 .voice-character-placeholder {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   background: #000;
@@ -323,6 +338,7 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
+  appearance: none;
   padding: 0;
   border: none;
   background: none;
@@ -330,6 +346,7 @@
   text-align: left;
   cursor: pointer;
   width: 100%;
+  font: inherit;
 }
 
 .voice-selection-card:hover {
@@ -350,7 +367,31 @@
 
 .voice-preview-btn {
   align-self: flex-start;
+  appearance: none;
+  min-width: 72px;
+  padding: 6px 12px;
   font-size: 12px;
+  font-family: inherit;
+  color: #654321;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(101, 67, 33, 0.45);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.voice-preview-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(101, 67, 33, 0.7);
+}
+
+.voice-preview-btn.is-loading {
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.voice-preview-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .voice-selection-card .voice-selection-card-name {
@@ -378,36 +419,55 @@
 }
 
 .voice-back-button {
+  appearance: none;
   min-width: 100px;
   height: 44px;
+  padding: 0 18px;
   font-size: 16px;
-  background: #ffe4b5 !important;
-  border: 2px solid #8b4513 !important;
-  border-radius: 8px !important;
-  color: #654321 !important;
+  font-family: inherit;
+  background: #ffe4b5;
+  border: 2px solid #8b4513;
+  border-radius: 8px;
+  color: #654321;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .voice-back-button:hover {
-  background: #ffd700 !important;
-  border-color: #654321 !important;
+  background: #ffd700;
+  border-color: #654321;
 }
 
 .voice-confirm-button {
+  appearance: none;
   min-width: 120px;
   height: 44px;
+  padding: 0 22px;
   font-size: 16px;
   font-weight: bold;
-  background: #d2691e !important;
-  border: 2px solid #654321 !important;
-  border-radius: 8px !important;
-  color: #fff !important;
+  font-family: inherit;
+  background: #d2691e;
+  border: 2px solid #654321;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .voice-confirm-button:hover {
-  background: #8b4513 !important;
-  border-color: #654321 !important;
+  background: #8b4513;
+  border-color: #654321;
 }
 
 .voice-confirm-button:disabled {
   opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.voice-selection-card-main:focus-visible,
+.voice-preview-btn:focus-visible,
+.voice-back-button:focus-visible,
+.voice-confirm-button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.78);
+  outline-offset: 2px;
 }

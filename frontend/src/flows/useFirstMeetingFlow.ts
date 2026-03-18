@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { WheelEvent } from 'react';
-import { App as AntdApp } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '@/config/routes';
-import { useGameFlow } from '@/contexts';
+import { useFeedback, useGameFlow } from '@/contexts';
 import { getScenes, initializeStory } from '@/services/characterApi';
 import { initGame } from '@/services/gameApi';
 import { checkServerHealth } from '@/services/healthApi';
@@ -53,7 +52,7 @@ const normalizeScene = (scene: SceneApiItem | undefined, index: number): SceneOp
 
 export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
   const navigate = useNavigate();
-  const { message } = AntdApp.useApp();
+  const feedback = useFeedback();
   const { state, setActiveSession, updateCharacterDraft } = useGameFlow();
 
   const [loading, setLoading] = useState(false);
@@ -72,7 +71,7 @@ export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
       try {
         const isHealthy = await checkServerHealth();
         if (!isHealthy) {
-          message.error('Backend is unavailable.');
+          feedback.error('Backend is unavailable.');
           setSceneOptions([]);
           return;
         }
@@ -81,7 +80,7 @@ export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
         const scenes = Array.isArray(response.scenes) ? response.scenes : [];
 
         if (scenes.length === 0) {
-          message.warning('No scenes available.');
+          feedback.warning('No scenes available.');
           setSceneOptions([]);
           return;
         }
@@ -89,7 +88,7 @@ export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
         setSceneOptions(scenes.map((scene, index) => normalizeScene(scene, index)));
       } catch (error: unknown) {
         const err = error as { response?: { data?: { message?: string } }; message?: string };
-        message.error(err.response?.data?.message || err.message || 'Failed to load scenes.');
+        feedback.error(err.response?.data?.message || err.message || 'Failed to load scenes.');
         setSceneOptions([
           {
             id: 'school',
@@ -103,7 +102,7 @@ export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
     };
 
     void loadScenes();
-  }, [message]);
+  }, [feedback]);
 
   useEffect(() => {
     return () => {
@@ -149,19 +148,19 @@ export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
     const characterData = state.characterDraft;
 
     if (!selectedScene) {
-      message.error('No scene selected.');
+      feedback.error('No scene selected.');
       return;
     }
 
     try {
       const isHealthy = await checkServerHealth();
       if (!isHealthy) {
-        message.error('Backend is unavailable.');
+        feedback.error('Backend is unavailable.');
         return;
       }
 
       if (!characterData?.characterId) {
-        message.error('Character is missing, please create one first.');
+        feedback.error('Character is missing, please create one first.');
         navigate(ROUTES.CHARACTER_SETTING);
         return;
       }
@@ -220,7 +219,7 @@ export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
         errorMessage = err.response.data.message;
       }
 
-      message.error(errorMessage);
+      feedback.error(errorMessage);
       setLoading(false);
     }
   };

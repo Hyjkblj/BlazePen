@@ -153,6 +153,29 @@ class TrainingDecisionCandidateResponse(BaseModel):
     is_recommended: bool = False
 
 
+class TrainingBranchTransitionResponse(BaseModel):
+    """训练分支跳转响应。"""
+
+    source_scenario_id: str
+    target_scenario_id: str
+    transition_type: str = "branch"
+    reason: str = ""
+    triggered_flags: List[str] = Field(default_factory=list)
+    matched_rule: Dict[str, Any] = Field(default_factory=dict)
+
+
+class TrainingBranchTransitionSummaryResponse(BaseModel):
+    """训练分支跳转聚合摘要响应。"""
+
+    source_scenario_id: str
+    target_scenario_id: str
+    transition_type: str = "branch"
+    reason: str = ""
+    count: int = 0
+    round_nos: List[int] = Field(default_factory=list)
+    triggered_flags: List[str] = Field(default_factory=list)
+
+
 class TrainingRoundDecisionContextResponse(BaseModel):
     """训练回合提交时的推荐与选择上下文"""
     mode: str
@@ -162,6 +185,8 @@ class TrainingRoundDecisionContextResponse(BaseModel):
     candidate_pool: List[TrainingDecisionCandidateResponse] = Field(default_factory=list)
     selected_recommendation: Optional[TrainingScenarioRecommendationResponse] = None
     recommended_recommendation: Optional[TrainingScenarioRecommendationResponse] = None
+    selected_branch_transition: Optional[TrainingBranchTransitionResponse] = None
+    recommended_branch_transition: Optional[TrainingBranchTransitionResponse] = None
 
 
 class TrainingMetricObservationResponse(BaseModel):
@@ -244,10 +269,14 @@ class TrainingDiagnosticsSummaryResponse(BaseModel):
     editor_locked_rounds: List[int] = Field(default_factory=list)
     high_risk_path_round_count: int = 0
     high_risk_path_rounds: List[int] = Field(default_factory=list)
+    branch_transition_count: int = 0
+    branch_transition_rounds: List[int] = Field(default_factory=list)
+    branch_transitions: List[TrainingBranchTransitionSummaryResponse] = Field(default_factory=list)
     last_primary_skill_code: Optional[str] = None
     last_primary_risk_flag: Optional[str] = None
     last_event_type: Optional[str] = None
     last_phase_tags: List[str] = Field(default_factory=list)
+    last_branch_transition: Optional[TrainingBranchTransitionResponse] = None
 
 
 class TrainingScenarioResponse(BaseModel):
@@ -469,6 +498,9 @@ class TrainingReportSummaryResponse(BaseModel):
     source_exposed_round_count: int = 0
     editor_locked_round_count: int = 0
     high_risk_path_round_count: int = 0
+    branch_transition_count: int = 0
+    branch_transition_rounds: List[int] = Field(default_factory=list)
+    branch_transitions: List[TrainingBranchTransitionSummaryResponse] = Field(default_factory=list)
     risk_flag_counts: List[TrainingDiagnosticsCountItemResponse] = Field(default_factory=list)
     completed_scenario_ids: List[str] = Field(default_factory=list)
     review_suggestions: List[str] = Field(default_factory=list)

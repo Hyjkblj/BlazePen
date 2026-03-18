@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useRef } from 'react';
-import { App as AntdApp } from 'antd';
-import { useGameFlow } from '@/contexts';
+﻿import { useCallback, useEffect, useRef } from 'react';
+import { useFeedback, useGameFlow } from '@/contexts';
 import { getCharacterImages, initializeStory } from '@/services/characterApi';
 import { initGame } from '@/services/gameApi';
 import * as gameStorage from '@/storage/gameStorage';
@@ -31,7 +30,7 @@ interface StoryData {
 }
 
 export function useGameInit(state: GameStateBag): UseGameInitResult {
-  const { message } = AntdApp.useApp();
+  const feedback = useFeedback();
   const {
     state: flowState,
     clearInitialGameData,
@@ -124,17 +123,17 @@ export function useGameInit(state: GameStateBag): UseGameInitResult {
         if (save?.messages?.length) {
           actions.replaceMessages(save.messages);
           restoreSavedSnapshot(save.snapshot, save.characterId);
-          message.success('Save loaded.');
+          feedback.success('Save loaded.');
           return true;
         }
       } catch (error: unknown) {
         logger.error('failed to load save:', error);
-        message.error('Failed to load save.');
+        feedback.error('Failed to load save.');
       }
 
       return false;
     },
-    [actions, message, restoreSavedSnapshot]
+    [actions, feedback, restoreSavedSnapshot]
   );
 
   const saveGameProgress = useCallback(
@@ -310,7 +309,7 @@ export function useGameInit(state: GameStateBag): UseGameInitResult {
         const newThreadId = initRes.thread_id;
 
         if (!newThreadId) {
-          message.error('Missing thread id, cannot initialize game.');
+          feedback.error('Missing thread id, cannot initialize game.');
           return;
         }
 
@@ -336,7 +335,7 @@ export function useGameInit(state: GameStateBag): UseGameInitResult {
         actions.replaceMessages(initialMessages);
       } catch (error: unknown) {
         logger.error('failed to initialize game', error);
-        message.error('Failed to initialize game.');
+        feedback.error('Failed to initialize game.');
       }
     }
   }, [
@@ -345,7 +344,7 @@ export function useGameInit(state: GameStateBag): UseGameInitResult {
     clearRestoreSession,
     flowState,
     loadGameSave,
-    message,
+    feedback,
     setActiveSession,
     setCharacterImage,
     setCurrentCharacterId,
@@ -361,3 +360,4 @@ export function useGameInit(state: GameStateBag): UseGameInitResult {
 
   return { loadGameSave, saveGameProgress, setCharacterImage };
 }
+

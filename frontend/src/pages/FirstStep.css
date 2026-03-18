@@ -1,68 +1,273 @@
-/* 樱花容器 */
+.first-step-page {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 60px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  overflow: hidden;
+}
+
+.first-step-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.1);
+  z-index: 1;
+}
+
+.first-step-actions {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 280px;
+}
+
+.first-step-footer-actions {
+  position: absolute;
+  left: 60px;
+  bottom: 40px;
+  z-index: 2;
+  display: flex;
+  gap: 16px;
+}
+
+.first-step-button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 50px;
+  padding: 0 24px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease,
+    border-color 0.3s ease, color 0.3s ease;
+}
+
+.first-step-button:hover {
+  transform: scale(1.05);
+}
+
+.first-step-button:active {
+  transform: scale(0.98);
+}
+
+.first-step-button:focus-visible {
+  outline: 3px solid rgba(255, 215, 0, 0.45);
+  outline-offset: 4px;
+}
+
+.first-step-button-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05em;
+}
+
+.first-step-button-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.first-step-button-primary {
+  height: 60px;
+  padding: 0 40px;
+  font-size: 20px;
+  color: #fff;
+  background: linear-gradient(135deg, #ffd700 0%, #ffb347 100%);
+  border: 2px solid #ff8c00;
+  box-shadow: 0 4px 15px rgba(255, 215, 0, 0.4),
+    inset 0 2px 5px rgba(255, 255, 255, 0.3);
+}
+
+.first-step-button-primary:hover {
+  box-shadow: 0 6px 20px rgba(255, 215, 0, 0.6),
+    inset 0 2px 5px rgba(255, 255, 255, 0.4);
+}
+
+.first-step-button-secondary {
+  font-size: 16px;
+  color: #654321;
+  background: rgba(255, 255, 255, 0.9);
+  border: 2px solid rgba(255, 140, 0, 0.5);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.first-step-button-secondary:hover {
+  background: rgba(255, 255, 255, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.first-step-button-danger {
+  font-size: 16px;
+  color: #ff4d4f;
+  background: rgba(255, 255, 255, 0.9);
+  border: 2px solid rgba(255, 77, 79, 0.5);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.first-step-button-danger:hover {
+  background: rgba(255, 77, 79, 0.1);
+  border-color: #ff4d4f;
+  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.3);
+}
+
+.first-step-dialog .modal-dialog-panel {
+  border: 2px solid rgba(139, 69, 19, 0.72);
+  background: #fff7eb;
+}
+
+.first-step-dialog .modal-dialog-header {
+  border-bottom: 1px solid rgba(139, 69, 19, 0.18);
+}
+
+.first-step-dialog .modal-dialog-title {
+  color: #654321;
+}
+
+.first-step-dialog .modal-dialog-body {
+  padding: 0 20px 8px;
+}
+
+.first-step-dialog .modal-dialog-footer {
+  padding-top: 12px;
+}
+
+.first-step-dialog-content {
+  color: #5c3a21;
+  line-height: 1.7;
+}
+
+.first-step-dialog-content p {
+  margin: 0 0 10px;
+}
+
+.first-step-dialog-content ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.first-step-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.first-step-dialog-button {
+  appearance: none;
+  min-width: 96px;
+  height: 40px;
+  padding: 0 18px;
+  border: 2px solid rgba(139, 69, 19, 0.65);
+  border-radius: 10px;
+  background: #fff3d7;
+  color: #654321;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.first-step-dialog-button:hover {
+  transform: translateY(-1px);
+  background: #ffe1a1;
+}
+
+.first-step-dialog-button-primary {
+  border-color: #ff8c00;
+  background: linear-gradient(135deg, #ffd700 0%, #ffb347 100%);
+  color: #7a3400;
+}
+
+.first-step-dialog-button-danger {
+  border-color: rgba(255, 77, 79, 0.6);
+  color: #b42318;
+  background: rgba(255, 240, 240, 0.96);
+}
+
+.first-step-dialog-button:focus-visible {
+  outline: 3px solid rgba(255, 215, 0, 0.32);
+  outline-offset: 3px;
+}
+
+/* Sakura background */
 .sakura-container {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   overflow: hidden;
   pointer-events: none;
   z-index: 1;
 }
 
-/* 樱花花瓣 */
 .sakura-petal {
   position: absolute;
   top: -20px;
   pointer-events: none;
+  animation: sakura-fall linear infinite;
 }
 
-/* 樱花飘落动画 - 包含下落、旋转和摆动 */
 @keyframes sakura-fall {
   0% {
     transform: translateY(0) translateX(0) rotate(0deg);
     opacity: 0.8;
   }
+
   10% {
     transform: translateY(10vh) translateX(15px) rotate(36deg);
     opacity: 0.85;
   }
+
   25% {
     transform: translateY(25vh) translateX(-20px) rotate(90deg);
     opacity: 0.9;
   }
+
   40% {
     transform: translateY(40vh) translateX(25px) rotate(144deg);
     opacity: 0.85;
   }
+
   50% {
     transform: translateY(50vh) translateX(-15px) rotate(180deg);
     opacity: 0.8;
   }
+
   60% {
     transform: translateY(60vh) translateX(20px) rotate(216deg);
     opacity: 0.75;
   }
+
   75% {
     transform: translateY(75vh) translateX(-25px) rotate(270deg);
     opacity: 0.7;
   }
+
   90% {
     transform: translateY(90vh) translateX(15px) rotate(324deg);
     opacity: 0.5;
   }
+
   100% {
     transform: translateY(100vh) translateX(-10px) rotate(360deg);
     opacity: 0;
   }
 }
 
-/* 应用动画 */
-.sakura-petal {
-  animation: sakura-fall linear infinite;
-}
-
-/* 不同大小的樱花 */
 .sakura-petal:nth-child(odd) svg {
   width: 24px;
   height: 24px;
@@ -88,56 +293,62 @@
   height: 26px;
 }
 
-/* 不同的樱花颜色和透明度 */
 .sakura-petal:nth-child(5n) svg path {
   fill: #ffc0cb;
   opacity: 0.7;
 }
 
-.sakura-petal:nth-child(5n+1) svg path {
+.sakura-petal:nth-child(5n + 1) svg path {
   fill: #ffb3d9;
   opacity: 0.8;
 }
 
-.sakura-petal:nth-child(5n+2) svg path {
+.sakura-petal:nth-child(5n + 2) svg path {
   fill: #ff99cc;
   opacity: 0.75;
 }
 
-.sakura-petal:nth-child(5n+3) svg path {
+.sakura-petal:nth-child(5n + 3) svg path {
   fill: #ffb3e6;
   opacity: 0.85;
 }
 
-.sakura-petal:nth-child(5n+4) svg path {
+.sakura-petal:nth-child(5n + 4) svg path {
   fill: #ffcce6;
   opacity: 0.7;
 }
 
-/* 新的故事按钮动画效果 */
-.new-story-button {
-  transition: all 0.3s ease !important;
-}
+@media (max-width: 768px) {
+  .first-step-page {
+    align-items: stretch;
+    justify-content: flex-end;
+    padding: 24px 20px 28px;
+  }
 
-.new-story-button:hover {
-  transform: scale(1.05) !important;
-  box-shadow: 0 6px 20px rgba(255, 215, 0, 0.6), inset 0 2px 5px rgba(255, 255, 255, 0.4) !important;
-}
+  .first-step-actions {
+    min-width: 0;
+    width: 100%;
+    gap: 16px;
+  }
 
-.new-story-button:active {
-  transform: scale(0.98) !important;
-}
+  .first-step-button-primary {
+    height: 56px;
+    width: 100%;
+    padding: 0 24px;
+    font-size: 18px;
+  }
 
-/* 继续游戏按钮动画效果 */
-.continue-game-button {
-  transition: all 0.3s ease !important;
-}
+  .first-step-footer-actions {
+    position: relative;
+    left: auto;
+    bottom: auto;
+    width: 100%;
+    margin-top: 24px;
+    justify-content: space-between;
+  }
 
-.continue-game-button:hover {
-  transform: scale(1.05) !important;
-  box-shadow: 0 6px 20px rgba(255, 215, 0, 0.6), inset 0 2px 5px rgba(255, 255, 255, 0.4) !important;
-}
-
-.continue-game-button:active {
-  transform: scale(0.98) !important;
+  .first-step-button-secondary,
+  .first-step-button-danger {
+    flex: 1;
+  }
 }

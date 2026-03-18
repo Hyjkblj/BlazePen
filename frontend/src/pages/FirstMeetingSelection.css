@@ -155,6 +155,7 @@
 
 /* 导航箭头 */
 .scene-nav-arrow {
+  appearance: none;
   width: 60px;
   height: 60px;
   background: rgba(255, 228, 181, 0.6);
@@ -166,10 +167,16 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  font-family: inherit;
   transition: all 0.3s ease;
   color: #8b4513;
   font-size: 24px;
   flex-shrink: 0;
+}
+
+.scene-nav-arrow svg {
+  width: 26px;
+  height: 26px;
 }
 
 .scene-nav-arrow:hover {
@@ -195,25 +202,29 @@
 
 /* 选择按钮 */
 .scene-choice-button {
+  appearance: none;
   width: 150px;
   height: 50px;
+  padding: 0 18px;
   font-size: 18px;
   font-weight: bold;
-  background: rgba(210, 105, 30, 0.8) !important;
+  font-family: inherit;
+  background: rgba(210, 105, 30, 0.8);
   backdrop-filter: blur(5px);
   -webkit-backdrop-filter: blur(5px);
-  border: 2px solid rgba(101, 67, 33, 0.6) !important;
-  border-radius: 8px !important;
-  color: #fff !important;
+  border: 2px solid rgba(101, 67, 33, 0.6);
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
   transition: all 0.3s ease;
   text-transform: uppercase;
 }
 
 .scene-choice-button:hover {
-  background: rgba(139, 69, 19, 0.9) !important;
+  background: rgba(139, 69, 19, 0.9);
   backdrop-filter: blur(5px);
   -webkit-backdrop-filter: blur(5px);
-  border-color: rgba(101, 67, 33, 0.8) !important;
+  border-color: rgba(101, 67, 33, 0.8);
   transform: scale(1.05);
   box-shadow: 0 4px 12px rgba(139, 69, 19, 0.4);
 }
@@ -225,4 +236,10 @@
 .scene-choice-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.scene-nav-arrow:focus-visible,
+.scene-choice-button:focus-visible {
+  outline: 3px solid rgba(255, 215, 0, 0.45);
+  outline-offset: 3px;
 }

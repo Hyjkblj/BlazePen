@@ -13,6 +13,14 @@
       "target_skills": ["K1", "K2", "K3", "K4"],
       "risk_tags": ["fast_publish", "rumor", "headline_pressure"],
       "briefing": "你手上只有前线巡查员口述、地方电台片段和两份互相矛盾的纸条。编辑部要求三十分钟内给出首版快讯口径。",
+      "next_rules": [
+        {
+          "go_to": "S2B",
+          "transition_type": "failure_branch",
+          "reason": "首轮快讯触发公众恐慌，必须先处理稳定沟通支线。",
+          "when_any_flags": ["panic_triggered"]
+        }
+      ],
       "options": [
         {
           "id": "A",
@@ -64,6 +72,52 @@
       "completion_hint": "重点看你是否把不确定信息明确标出，而不是写成确定结论。"
     },
     {
+      "id": "S2B",
+      "title": "恐慌控制支线：街头广播与澄清沟通",
+      "era_date": "1937-08-14",
+      "location": "上海后方临时广播点",
+      "brief": "上一轮快讯已经造成街头情绪明显波动，你必须先帮助编辑部稳定公众认知，避免谣言继续扩散。",
+      "mission": "在不掩盖风险的前提下，给出一版面向群众的澄清与行动引导稿。",
+      "decision_focus": "恐慌止损与公共沟通修复",
+      "phase_tags": ["opening", "middle"],
+      "branch_tags": ["failure_branch", "panic_control"],
+      "target_skills": ["K4", "K7", "K8"],
+      "risk_tags": ["public_panic", "stability_control", "recovery_window"],
+      "briefing": "街头已经出现“前线全面失守”的流言，部分群众开始抢购和拥堵。总编要求你立刻写一版简短但可信的澄清口径，并附上具体行动建议。",
+      "next_rules": [
+        {
+          "go_to": "S3R",
+          "transition_type": "recovery_branch",
+          "reason": "恐慌已基本受控，进入补救复盘支线。",
+          "when_no_flags": ["panic_triggered"]
+        },
+        {
+          "go_to": "S3",
+          "default": true,
+          "transition_type": "mainline_return",
+          "reason": "恐慌尚未完全消退，直接进入下一主线高压场景。"
+        }
+      ],
+      "options": [
+        {
+          "id": "A",
+          "label": "继续使用刺激性标题压住舆论",
+          "impact_hint": "可能让局势继续恶化。"
+        },
+        {
+          "id": "B",
+          "label": "明确已确认事实并给出分步骤行动建议",
+          "impact_hint": "更适合控制恐慌并重建信任。"
+        },
+        {
+          "id": "C",
+          "label": "承认前稿不完整并同步补充核验说明",
+          "impact_hint": "有助于建立纠偏闭环。"
+        }
+      ],
+      "completion_hint": "重点看你能否在澄清、行动建议和可信表达之间取得平衡。"
+    },
+    {
       "id": "S3",
       "title": "南京失守高冲突信息处置",
       "era_date": "1937-12-13",
@@ -93,6 +147,46 @@
         }
       ],
       "completion_hint": "重点看你是否知道哪些细节必须删、哪些证据可以换方式呈现。"
+    },
+    {
+      "id": "S3R",
+      "title": "补救支线：编辑会复盘与口径修正",
+      "era_date": "1937-12-10",
+      "location": "报馆夜间校对室",
+      "brief": "在紧张环境中完成一轮止损后，编辑部要求你复盘前几轮表述问题，并给出新的统一口径。",
+      "mission": "形成一版补救型内部说明，明确哪些说法要撤、哪些信息还能保留。",
+      "decision_focus": "纠偏机制与信任修复",
+      "phase_tags": ["middle"],
+      "branch_tags": ["recovery_branch", "editor_repair"],
+      "target_skills": ["K5", "K6", "K8"],
+      "risk_tags": ["correction", "editor_trust", "recovery"],
+      "briefing": "总编没有追究你前面的失误，而是要求你立刻整理一版“修正说明 + 后续口径表”，确保接下来的报道不再重复同类风险。",
+      "next_rules": [
+        {
+          "go_to": "S4",
+          "default": true,
+          "transition_type": "mainline_return",
+          "reason": "完成补救复盘后，回到主线任务继续推进。"
+        }
+      ],
+      "options": [
+        {
+          "id": "A",
+          "label": "只改标题，不解释前面的问题",
+          "impact_hint": "表面收缩，但修复力度不足。"
+        },
+        {
+          "id": "B",
+          "label": "明确撤回风险表述，并补充新的核验与更新机制",
+          "impact_hint": "更符合补救支线训练目标。"
+        },
+        {
+          "id": "C",
+          "label": "把责任全部推给线人和通讯员",
+          "impact_hint": "短期甩锅，长期损害信任。"
+        }
+      ],
+      "completion_hint": "重点看你是否把“纠错、更新、责任边界”三件事说清楚。"
     },
     {
       "id": "S4",

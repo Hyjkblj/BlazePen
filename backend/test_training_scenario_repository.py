@@ -32,6 +32,22 @@ class ScenarioRepositoryTestCase(unittest.TestCase):
         self.assertIn("briefing", frozen[0])
         self.assertIn("options", frozen[0])
 
+    def test_freeze_related_catalog_should_include_reachable_branch_scenarios(self):
+        """冻结场景目录时，应把主线可达的分支节点一起固化到会话快照里。"""
+        catalog = self.repository.freeze_related_catalog(
+            [
+                {"id": "S1", "title": "卢沟桥"},
+                {"id": "S2", "title": "淞沪"},
+                {"id": "S3", "title": "南京"},
+                {"id": "S4", "title": "武汉"},
+            ]
+        )
+
+        catalog_ids = [item["id"] for item in catalog]
+        self.assertEqual(catalog_ids[:4], ["S1", "S2", "S3", "S4"])
+        self.assertIn("S2B", catalog_ids)
+        self.assertIn("S3R", catalog_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

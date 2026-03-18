@@ -1,12 +1,12 @@
-import { Button, Input, Modal, Slider } from 'antd';
+import ModalDialog from '@/components/ModalDialog';
 import {
-  CloseOutlined,
-  LeftOutlined,
-  ManOutlined,
-  ReloadOutlined,
-  RightOutlined,
-  WomanOutlined,
-} from '@ant-design/icons';
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  FemaleIcon,
+  MaleIcon,
+  RefreshIcon,
+} from '@/components/icons';
 import backgroundImage from '@/assets/images/settingcharacterbackground.png';
 import LoadingScreen from '@/components/loading';
 import {
@@ -17,6 +17,38 @@ import {
 } from '@/config/characterOptions';
 import { useCharacterCreationFlow } from '@/flows/useCharacterCreationFlow';
 import './CharacterSetting.css';
+
+interface MetricSliderProps {
+  label: string;
+  min: number;
+  max: number;
+  value: number;
+  unit: string;
+  onChange: (value: number) => void;
+}
+
+function MetricSlider({ label, min, max, value, unit, onChange }: MetricSliderProps) {
+  return (
+    <div className="slider-group">
+      <span className="slider-label">{label}</span>
+      <div className="slider-track">
+        <input
+          className="character-range-input"
+          type="range"
+          min={min}
+          max={max}
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+          aria-label={label}
+        />
+      </div>
+      <div className="slider-value">
+        {value}
+        {unit}
+      </div>
+    </div>
+  );
+}
 
 function CharacterSetting() {
   const {
@@ -63,98 +95,70 @@ function CharacterSetting() {
         className="character-setting-background"
         style={{
           backgroundImage: `url(${backgroundImage})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
         }}
       />
 
       <div className="character-setting-content">
         <div className="character-name-section">
           <div className="character-name-input">
-            <span className="name-label">姓名:</span>
-            <Input
-              className="name-input"
-              placeholder="请输入角色姓名"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              maxLength={20}
-              suffix={
-                <Button
-                  type="text"
-                  icon={<ReloadOutlined />}
-                  onClick={randomizeName}
-                  className="name-random-icon"
-                  size="small"
-                />
-              }
-            />
+            <label className="name-label" htmlFor="character-name-input">
+              姓名:
+            </label>
+            <div className="name-input-wrapper">
+              <input
+                id="character-name-input"
+                className="name-input-field"
+                placeholder="请输入角色姓名"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                maxLength={20}
+              />
+              <button
+                type="button"
+                onClick={randomizeName}
+                className="name-random-icon"
+                aria-label="随机姓名"
+              >
+                <RefreshIcon />
+              </button>
+            </div>
           </div>
 
-          <Button className="random-button" onClick={randomizeAll}>
+          <button type="button" className="random-button" onClick={randomizeAll}>
             随机一组
-          </Button>
+          </button>
         </div>
 
         <div className="character-setting-top">
-          <div className="slider-group">
-            <span className="slider-label">身高</span>
-            <Slider
-              min={140}
-              max={200}
-              value={height}
-              onChange={(value) => setHeight(Array.isArray(value) ? value[0] : value)}
-              style={{ flex: 1, minWidth: 120 }}
-              tooltip={{ formatter: (value) => `${value}cm` }}
-            />
-            <div className="slider-value">{height}cm</div>
-          </div>
+          <MetricSlider label="身高" min={140} max={200} value={height} unit="cm" onChange={setHeight} />
+          <MetricSlider label="体重" min={35} max={100} value={weight} unit="kg" onChange={setWeight} />
+          <MetricSlider label="年龄" min={16} max={60} value={age} unit="岁" onChange={setAge} />
 
-          <div className="slider-group">
-            <span className="slider-label">体重</span>
-            <Slider
-              min={35}
-              max={100}
-              value={weight}
-              onChange={(value) => setWeight(Array.isArray(value) ? value[0] : value)}
-              style={{ flex: 1, minWidth: 120 }}
-              tooltip={{ formatter: (value) => `${value}kg` }}
-            />
-            <div className="slider-value">{weight}kg</div>
-          </div>
-
-          <div className="slider-group">
-            <span className="slider-label">年龄</span>
-            <Slider
-              min={16}
-              max={60}
-              value={age}
-              onChange={(value) => setAge(Array.isArray(value) ? value[0] : value)}
-              style={{ flex: 1, minWidth: 120 }}
-              tooltip={{ formatter: (value) => `${value}岁` }}
-            />
-            <div className="slider-value">{age}岁</div>
-          </div>
-
-          <Button
+          <button
+            type="button"
             className="gender-button"
             onClick={toggleGender}
-            icon={gender === 'male' ? <ManOutlined /> : <WomanOutlined />}
+            aria-pressed={gender === 'female'}
           >
-            性别: {gender === 'male' ? '男' : '女'}
-          </Button>
+            <span className="character-setting-button-icon" aria-hidden="true">
+              {gender === 'male' ? <MaleIcon /> : <FemaleIcon />}
+            </span>
+            <span>性别: {gender === 'male' ? '男' : '女'}</span>
+          </button>
         </div>
 
         <div className="character-setting-middle">
           <div className="character-options">
             {characterCategories.map((category, index) => (
-              <Button
+              <button
                 key={category}
+                type="button"
                 className={`option-button ${currentCategory === index ? 'active' : ''}`}
                 onClick={() => setCurrentCategory(index)}
+                aria-pressed={currentCategory === index}
               >
                 {category}
-              </Button>
+              </button>
             ))}
           </div>
 
@@ -171,6 +175,7 @@ function CharacterSetting() {
                           selectedAppearance.includes(index) ? 'selected' : ''
                         }`}
                         onClick={() => toggleAppearance(index)}
+                        aria-pressed={selectedAppearance.includes(index)}
                       >
                         {option}
                       </button>
@@ -190,6 +195,7 @@ function CharacterSetting() {
                           selectedPersonality.includes(index) ? 'selected' : ''
                         }`}
                         onClick={() => togglePersonality(index)}
+                        aria-pressed={selectedPersonality.includes(index)}
                       >
                         {option}
                       </button>
@@ -202,14 +208,16 @@ function CharacterSetting() {
                 <div className="category-content">
                   <div className="options-list">
                     {styleOptions.map((option, index) => (
-                      <div
+                      <button
                         key={option}
+                        type="button"
                         className={`option-item ${selectedStyle === index ? 'selected' : ''}`}
                         onClick={() => setSelectedStyle(index)}
+                        aria-pressed={selectedStyle === index}
                       >
                         <span className="option-number">{index + 1}.</span>
                         <span className="option-text">{option}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -219,28 +227,52 @@ function CharacterSetting() {
         </div>
 
         <div className="category-navigation">
-          <Button className="nav-arrow-button" icon={<LeftOutlined />} onClick={previousCategory} />
-          <Button className="nav-arrow-button" icon={<RightOutlined />} onClick={nextCategory} />
-          <Button className="confirm-button" onClick={openConfirmModal}>
-            confirm
-          </Button>
+          <button
+            type="button"
+            className="nav-arrow-button"
+            onClick={previousCategory}
+            aria-label="上一分类"
+          >
+            <ChevronLeftIcon />
+          </button>
+          <button
+            type="button"
+            className="nav-arrow-button"
+            onClick={nextCategory}
+            aria-label="下一分类"
+          >
+            <ChevronRightIcon />
+          </button>
+          <button type="button" className="confirm-button" onClick={openConfirmModal}>
+            确认
+          </button>
         </div>
       </div>
 
-      <Modal
-        title="确认角色信息"
+      <ModalDialog
         open={isModalVisible}
-        onCancel={closeConfirmModal}
-        footer={[
-          <Button key="cancel" onClick={closeConfirmModal}>
-            取消
-          </Button>,
-          <Button key="confirm" type="primary" onClick={() => void submit()}>
-            确认创建
-          </Button>,
-        ]}
+        title="确认角色信息"
+        onClose={closeConfirmModal}
         width={620}
         className="character-confirm-modal"
+        footer={
+          <div className="character-confirm-footer">
+            <button
+              type="button"
+              className="character-confirm-action"
+              onClick={closeConfirmModal}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              className="character-confirm-action character-confirm-action-primary"
+              onClick={() => void submit()}
+            >
+              确认创建
+            </button>
+          </div>
+        }
       >
         <div className="modal-content">
           <div className="modal-section">
@@ -277,13 +309,14 @@ function CharacterSetting() {
                   {selectedAppearanceKeywords.map((keyword) => (
                     <div key={keyword.value} className="keyword-tag-item">
                       <span className="keyword-tag-label">{keyword.label}</span>
-                      <Button
-                        type="text"
-                        icon={<CloseOutlined />}
+                      <button
+                        type="button"
                         onClick={keyword.onRemove}
                         className="keyword-tag-remove"
-                        size="small"
-                      />
+                        aria-label={`移除${keyword.label}`}
+                      >
+                        <CloseIcon />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -299,13 +332,14 @@ function CharacterSetting() {
                   {selectedPersonalityKeywords.map((keyword) => (
                     <div key={keyword.value} className="keyword-tag-item">
                       <span className="keyword-tag-label">{keyword.label}</span>
-                      <Button
-                        type="text"
-                        icon={<CloseOutlined />}
+                      <button
+                        type="button"
                         onClick={keyword.onRemove}
                         className="keyword-tag-remove"
-                        size="small"
-                      />
+                        aria-label={`移除${keyword.label}`}
+                      >
+                        <CloseIcon />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -320,20 +354,21 @@ function CharacterSetting() {
                 <div className="keywords-tags">
                   <div className="keyword-tag-item">
                     <span className="keyword-tag-label">{selectedStyleChip.label}</span>
-                    <Button
-                      type="text"
-                      icon={<CloseOutlined />}
+                    <button
+                      type="button"
                       onClick={selectedStyleChip.onRemove}
                       className="keyword-tag-remove"
-                      size="small"
-                    />
+                      aria-label={`移除${selectedStyleChip.label}`}
+                    >
+                      <CloseIcon />
+                    </button>
                   </div>
                 </div>
               </div>
             )}
           </div>
         </div>
-      </Modal>
+      </ModalDialog>
     </div>
   );
 }

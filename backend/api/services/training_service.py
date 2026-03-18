@@ -57,6 +57,7 @@ SELECTION_SOURCE_ORDERED_SEQUENCE = "ordered_sequence"
 SELECTION_SOURCE_TOP_RECOMMENDATION = "top_recommendation"
 SELECTION_SOURCE_CANDIDATE_POOL = "candidate_pool"
 SELECTION_SOURCE_FALLBACK_SEQUENCE = "fallback_sequence"
+SELECTION_SOURCE_BRANCH_TRANSITION = "branch_transition"
 
 
 def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
@@ -152,8 +153,9 @@ class TrainingService:
         normalized_mode = self.mode_catalog.normalize(training_mode, default="guided")
 
         with self._lock:
-            # 在会话创建时冻结完整场景快照，避免后续发版导致老会话内容漂移。
+            # 在会话创建时同时冻结主线快照和可达分支目录，避免后续发版导致老会话内容漂移。
             frozen_payload_sequence = self._freeze_scenario_payload_sequence(self.scenario_policy.get_default_sequence())
+            frozen_payload_catalog = self._freeze_scenario_payload_catalog(frozen_payload_sequence)
             sequence = self.scenario_repository.build_summary_sequence(frozen_payload_sequence)
             initial_phase_snapshot = self.phase_policy.resolve_round_phase(
                 training_mode=normalized_mode,
@@ -163,6 +165,7 @@ class TrainingService:
             session_meta = self.scenario_policy.build_session_meta(
                 sequence,
                 scenario_payload_sequence=frozen_payload_sequence,
+                scenario_payload_catalog=frozen_payload_catalog,
                 scenario_bank_version=self.scenario_repository.version,
                 player_profile=player_profile,
             )
@@ -192,10 +195,13 @@ class TrainingService:
             current_round_no=row.current_round_no,
             session_sequence=sequence,
             scenario_payload_sequence=frozen_payload_sequence,
+            scenario_payload_catalog=frozen_payload_catalog,
             completed_scenario_ids=[],
             k_state=self._normalize_k_state(row.k_state),
             s_state=self._normalize_s_state(row.s_state),
             recent_risk_rounds=[],
+            runtime_flags=self._resolve_session_runtime_flags(row),
+            current_scenario_id=getattr(row, "current_scenario_id", None),
         )
         return TrainingInitOutput(
             session_id=session_id,
@@ -240,6 +246,10 @@ class TrainingService:
             ).to_dict()
 
         scenario_payload_sequence = self._resolve_session_scenario_payload_sequence(session)
+        scenario_payload_catalog = self._resolve_session_scenario_payload_catalog(
+            session,
+            scenario_payload_sequence=scenario_payload_sequence,
+        )
         session_sequence = self._resolve_session_scenario_sequence(session)
         if not session_sequence:
             raise ValueError("scenario sequence is empty")
@@ -249,10 +259,13 @@ class TrainingService:
             current_round_no=session.current_round_no,
             session_sequence=session_sequence,
             scenario_payload_sequence=scenario_payload_sequence,
+            scenario_payload_catalog=scenario_payload_catalog,
             completed_scenario_ids=self._get_completed_scenario_ids(session_id),
             k_state=self._normalize_k_state(session.k_state),
             s_state=self._normalize_s_state(session.s_state),
             recent_risk_rounds=self._get_recent_risk_rounds(session_id),
+            runtime_flags=self._resolve_session_runtime_flags(session),
+            current_scenario_id=getattr(session, "current_scenario_id", None),
         )
         return TrainingNextScenarioOutput(
             session_id=session_id,
@@ -287,6 +300,10 @@ class TrainingService:
             raise ValueError("training session already completed")
 
         scenario_payload_sequence = self._resolve_session_scenario_payload_sequence(session)
+        scenario_payload_catalog = self._resolve_session_scenario_payload_catalog(
+            session,
+            scenario_payload_sequence=scenario_payload_sequence,
+        )
         session_sequence = self._resolve_session_scenario_sequence(session)
         training_mode = self._normalize_session_training_mode(session)
         completed_scenario_ids = self._get_completed_scenario_ids(session_id)
@@ -301,10 +318,13 @@ class TrainingService:
             current_round_no=session.current_round_no,
             session_sequence=session_sequence,
             scenario_payload_sequence=scenario_payload_sequence,
+            scenario_payload_catalog=scenario_payload_catalog,
             completed_scenario_ids=completed_scenario_ids,
             k_state=k_before,
             s_state=s_before,
             recent_risk_rounds=recent_risk_rounds,
+            runtime_flags=self._resolve_session_runtime_flags(session),
+            current_scenario_id=getattr(session, "current_scenario_id", None),
         )
         self.flow_policy.validate_submission(
             training_mode=training_mode,
@@ -312,10 +332,13 @@ class TrainingService:
             submitted_scenario_id=scenario_id,
             session_sequence=session_sequence,
             scenario_payload_sequence=scenario_payload_sequence,
+            scenario_payload_catalog=scenario_payload_catalog,
             completed_scenario_ids=completed_scenario_ids,
             k_state=k_before,
             s_state=s_before,
             recent_risk_rounds=recent_risk_rounds,
+            runtime_flags=self._resolve_session_runtime_flags(session),
+            current_scenario_id=getattr(session, "current_scenario_id", None),
         )
         decision_context = self._build_round_decision_context(
             training_mode=training_mode,
@@ -331,7 +354,11 @@ class TrainingService:
             training_mode=training_mode,
             decision_context=decision_context,
         )
-        selected_scenario_payload = self._find_scenario_payload_by_id(scenario_payload_sequence, scenario_id)
+        selected_scenario_payload = self._resolve_session_scenario_payload_by_id(
+            scenario_payload_sequence=scenario_payload_sequence,
+            scenario_payload_catalog=scenario_payload_catalog,
+            scenario_id=scenario_id,
+        )
 
         # 评估结果在服务边界统一过契约，避免下游散落字典键判断。
         eval_result = RoundEvaluationPayload.from_raw(
@@ -505,7 +532,11 @@ class TrainingService:
         evaluations = self.training_store.get_round_evaluations_by_session(session_id)
         kt_observations = self.training_store.get_kt_observations(session_id)
         scenario_payload_sequence = self._resolve_session_scenario_payload_sequence(session)
-        scenario_title_map = self._build_report_scenario_title_map(scenario_payload_sequence)
+        scenario_payload_catalog = self._resolve_session_scenario_payload_catalog(
+            session,
+            scenario_payload_sequence=scenario_payload_sequence,
+        )
+        scenario_title_map = self._build_report_scenario_title_map(scenario_payload_catalog)
         eval_map = {item.round_id: item for item in evaluations}
         kt_observation_map = {item.round_no: item for item in kt_observations}
         ending = self.training_store.get_ending_result(session_id)
@@ -722,6 +753,7 @@ class TrainingService:
                         item.to_dict()
                         for item in self._extract_round_consequence_events(row.user_action)
                     ],
+                    "branch_transition": self._extract_round_branch_transition(row.user_action),
                     "timestamp": (
                         getattr(row, "created_at", None).isoformat()
                         if getattr(row, "created_at", None)
@@ -734,10 +766,17 @@ class TrainingService:
     def _build_session_meta(
         self,
         session_sequence: List[Dict[str, str]],
+        scenario_payload_sequence: List[Dict[str, Any]] | None = None,
+        scenario_payload_catalog: List[Dict[str, Any]] | None = None,
         player_profile: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         # 保留兼容包装方法，避免已有调用方受影响。
-        return self.scenario_policy.build_session_meta(session_sequence, player_profile=player_profile)
+        return self.scenario_policy.build_session_meta(
+            session_sequence,
+            scenario_payload_sequence=scenario_payload_sequence,
+            scenario_payload_catalog=scenario_payload_catalog,
+            player_profile=player_profile,
+        )
 
     def _resolve_session_scenario_sequence(self, session: Any) -> List[Dict[str, str]]:
         return self.scenario_policy.resolve_session_sequence(session)
@@ -750,6 +789,22 @@ class TrainingService:
 
         session_sequence = self._resolve_session_scenario_sequence(session)
         return self._freeze_scenario_payload_sequence(session_sequence)
+
+    def _resolve_session_scenario_payload_catalog(
+        self,
+        session: Any,
+        scenario_payload_sequence: List[Dict[str, Any]] | None = None,
+    ) -> List[Dict[str, Any]]:
+        """优先读取会话冻结的场景目录，缺失时兼容回退为动态补齐。"""
+        payload_catalog = self.scenario_policy.resolve_session_payload_catalog(session)
+        if payload_catalog:
+            return payload_catalog
+
+        if scenario_payload_sequence:
+            return self._freeze_scenario_payload_catalog(scenario_payload_sequence)
+
+        session_sequence = self._resolve_session_scenario_sequence(session)
+        return self._freeze_scenario_payload_catalog(session_sequence)
 
     def _resolve_session_player_profile(
         self,
@@ -823,6 +878,10 @@ class TrainingService:
     def _freeze_scenario_payload_sequence(self, scenario_sequence: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """把场景摘要序列补齐为完整场景快照。"""
         return self.scenario_repository.freeze_sequence(scenario_sequence)
+
+    def _freeze_scenario_payload_catalog(self, scenario_sequence: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """把主线和所有可达分支冻结为稳定目录。"""
+        return self.scenario_repository.freeze_related_catalog(scenario_sequence)
 
     def _get_session_or_raise(self, session_id: str) -> Any:
         session = self.training_store.get_training_session(session_id)
@@ -1222,6 +1281,17 @@ class TrainingService:
             return None
         return TrainingRoundDecisionContextOutput.from_payload(user_action.get(USER_ACTION_DECISION_CONTEXT_KEY))
 
+    def _extract_round_branch_transition(
+        self,
+        user_action: Dict[str, Any] | None,
+    ) -> Dict[str, Any] | None:
+        """从回合决策上下文中提取已选分支跳转，供报告与诊断聚合复用。"""
+        decision_context = self._extract_round_decision_context(user_action)
+        if decision_context is None:
+            return None
+        branch_transition = getattr(decision_context, "selected_branch_transition", None)
+        return branch_transition.to_dict() if branch_transition is not None else None
+
     def _build_round_decision_context(
         self,
         training_mode: str,
@@ -1245,6 +1315,7 @@ class TrainingService:
             submitted_scenario_id=submitted_scenario_id,
             recommended_scenario_id=recommended_scenario_id,
             scenario_payloads=scenario_payloads,
+            selected_scenario_payload=selected_payload,
         )
 
         return TrainingRoundDecisionContextOutput.from_payload(
@@ -1260,6 +1331,8 @@ class TrainingService:
                 ),
                 "selected_recommendation": self._extract_recommendation_payload(selected_payload),
                 "recommended_recommendation": self._extract_recommendation_payload(recommended_payload),
+                "selected_branch_transition": self._extract_branch_transition_payload(selected_payload),
+                "recommended_branch_transition": self._extract_branch_transition_payload(recommended_payload),
             }
         )
 
@@ -1295,6 +1368,29 @@ class TrainingService:
                 return dict(payload)
         return None
 
+    def _resolve_session_scenario_payload_by_id(
+        self,
+        scenario_payload_sequence: List[Dict[str, Any]],
+        scenario_payload_catalog: List[Dict[str, Any]] | None,
+        scenario_id: str,
+    ) -> Dict[str, Any] | None:
+        """优先从会话冻结快照读取场景，必要时才兼容回退到场景库。
+
+        这样分支场景即使不在默认主线序列里，也能正常参与评估、观测和报告。
+        """
+        scenario_payload = self._find_scenario_payload_by_id(scenario_payload_sequence, scenario_id)
+        if scenario_payload is not None:
+            return scenario_payload
+
+        scenario_payload = self._find_scenario_payload_by_id(scenario_payload_catalog or [], scenario_id)
+        if scenario_payload is not None:
+            return scenario_payload
+
+        if scenario_payload_catalog:
+            return None
+        repository_payload = self.scenario_repository.get_scenario(scenario_id)
+        return dict(repository_payload) if repository_payload is not None else None
+
     def _extract_recommendation_payload(
         self,
         scenario_payload: Dict[str, Any] | None,
@@ -1306,6 +1402,18 @@ class TrainingService:
         if not isinstance(recommendation, dict):
             return None
         return dict(recommendation)
+
+    def _extract_branch_transition_payload(
+        self,
+        scenario_payload: Dict[str, Any] | None,
+    ) -> Dict[str, Any] | None:
+        """提取场景附带的分支跳转上下文，供日志、诊断和报告复用。"""
+        if not isinstance(scenario_payload, dict):
+            return None
+        branch_transition = scenario_payload.get("branch_transition")
+        if not isinstance(branch_transition, dict):
+            return None
+        return dict(branch_transition)
 
     def _build_decision_candidate_payloads(
         self,
@@ -1341,6 +1449,7 @@ class TrainingService:
         submitted_scenario_id: str,
         recommended_scenario_id: str | None,
         scenario_payloads: List[Dict[str, Any]],
+        selected_scenario_payload: Dict[str, Any] | None = None,
     ) -> str:
         """标记本回合场景是按固定顺序、顶级推荐还是候选池选择出来的。"""
         normalized_mode = self.mode_catalog.normalize(
@@ -1349,6 +1458,10 @@ class TrainingService:
             raise_on_unknown=False,
         ) or "guided"
         submitted_scenario_id = str(submitted_scenario_id or "").strip()
+
+        # 分支跳转是独立来源，不能继续被记成普通主线顺序提交。
+        if isinstance(selected_scenario_payload, dict) and isinstance(selected_scenario_payload.get("branch_transition"), dict):
+            return SELECTION_SOURCE_BRANCH_TRANSITION
 
         if recommended_scenario_id:
             if submitted_scenario_id == recommended_scenario_id:

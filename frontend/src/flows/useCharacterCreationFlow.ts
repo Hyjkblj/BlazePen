@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { App as AntdApp } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import {
   appearanceOptions,
@@ -8,7 +7,7 @@ import {
   styleOptions,
 } from '@/config/characterOptions';
 import { ROUTES } from '@/config/routes';
-import { useGameFlow } from '@/contexts';
+import { useFeedback, useGameFlow } from '@/contexts';
 import { createCharacter } from '@/services/characterApi';
 import { checkServerHealth } from '@/services/healthApi';
 import type { CharacterData } from '@/types/game';
@@ -87,7 +86,7 @@ const pickRandomUniqueIndexes = (max: number, count: number) => {
 
 export function useCharacterCreationFlow(): UseCharacterCreationFlowResult {
   const navigate = useNavigate();
-  const { message } = AntdApp.useApp();
+  const feedback = useFeedback();
   const { state, clearActiveSession, clearRestoreSession, setCharacterDraft, setCreatedCharacterId } =
     useGameFlow();
 
@@ -117,7 +116,7 @@ export function useCharacterCreationFlow(): UseCharacterCreationFlowResult {
     setSelectedAppearance((prev) => {
       if (prev.includes(index)) return prev.filter((value) => value !== index);
       if (prev.length >= maxKeywordSelection) {
-        message.warning('外貌关键词最多选择 5 项');
+        feedback.warning('外貌关键词最多选择 5 项');
         return prev;
       }
       return [...prev, index];
@@ -128,7 +127,7 @@ export function useCharacterCreationFlow(): UseCharacterCreationFlowResult {
     setSelectedPersonality((prev) => {
       if (prev.includes(index)) return prev.filter((value) => value !== index);
       if (prev.length >= maxKeywordSelection) {
-        message.warning('性格关键词最多选择 5 项');
+        feedback.warning('性格关键词最多选择 5 项');
         return prev;
       }
       return [...prev, index];
@@ -179,7 +178,7 @@ export function useCharacterCreationFlow(): UseCharacterCreationFlowResult {
     try {
       const isHealthy = await checkServerHealth();
       if (!isHealthy) {
-        message.error('无法连接到服务器，请检查后端服务是否运行');
+        feedback.error('无法连接到服务器，请检查后端服务是否运行');
         return;
       }
 
@@ -208,7 +207,7 @@ export function useCharacterCreationFlow(): UseCharacterCreationFlowResult {
 
       const characterId = response.character_id;
       if (!isValidCharacterId(characterId)) {
-        message.error('创建角色失败：未获取到有效角色 ID');
+        feedback.error('创建角色失败：未获取到有效角色 ID');
         return;
       }
 
@@ -240,7 +239,7 @@ export function useCharacterCreationFlow(): UseCharacterCreationFlowResult {
       navigate(ROUTES.CHARACTER_SELECTION);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { detail?: string } }; message?: string };
-      message.error(err.response?.data?.detail || err.message || '创建角色失败，请稍后重试');
+      feedback.error(err.response?.data?.detail || err.message || '创建角色失败，请稍后重试');
     } finally {
       setLoading(false);
     }

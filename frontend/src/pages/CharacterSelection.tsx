@@ -1,8 +1,8 @@
-import { Button } from 'antd';
+import type { KeyboardEvent } from 'react';
 import backgroundImage from '@/assets/images/settingcharacterbackground.png';
+import StaticAssetImage from '@/components/StaticAssetImage';
 import LoadingScreen from '@/components/loading';
 import { useCharacterSelectionFlow } from '@/flows/useCharacterSelectionFlow';
-import { getStaticAssetUrl } from '@/services/assetUrl';
 import './CharacterSelection.css';
 
 function CharacterSelection() {
@@ -32,6 +32,29 @@ function CharacterSelection() {
   const primaryCharacter = characters[0];
   const hasGallery = Boolean(primaryCharacter?.imageUrls && primaryCharacter.imageUrls.length >= 3);
 
+  const handleImageSelect = (characterId: string, imageIndex = 0) => {
+    if (loading) {
+      return;
+    }
+
+    selectImage(characterId, imageIndex);
+  };
+
+  const handleCardKeyDown = (
+    event: KeyboardEvent<HTMLDivElement>,
+    characterId: string,
+    imageIndex = 0
+  ) => {
+    if (loading) {
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      selectImage(characterId, imageIndex);
+    }
+  };
+
   return (
     <div className="character-selection-container">
       <div
@@ -54,17 +77,14 @@ function CharacterSelection() {
           <div className="voice-selection-panels">
             <div className="voice-selection-left">
               <div className="voice-character-panel">
-                {selectedImageUrlForVoice ? (
-                  <img
-                    src={getStaticAssetUrl(selectedImageUrlForVoice)}
-                    alt="人物"
-                    className="voice-character-image"
-                  />
-                ) : (
-                  <div className="voice-character-placeholder">
-                    <span className="placeholder-text">人物</span>
-                  </div>
-                )}
+                <StaticAssetImage
+                  key={`voice-character-${selectedImageUrlForVoice ?? 'empty'}`}
+                  imageUrl={selectedImageUrlForVoice}
+                  alt="角色预览"
+                  imageClassName="voice-character-image"
+                  placeholderClassName="voice-character-placeholder"
+                  placeholder={<span className="placeholder-text">人物</span>}
+                />
               </div>
 
               {selectedVoiceId && (
@@ -89,7 +109,9 @@ function CharacterSelection() {
                     { key: 'neutral', title: '中性' },
                   ].map(({ key, title }) => {
                     const voices = presetVoices.filter((voice) => (voice.gender || 'neutral') === key);
-                    if (voices.length === 0) return null;
+                    if (voices.length === 0) {
+                      return null;
+                    }
 
                     return (
                       <div key={key} className="voice-group">
@@ -102,9 +124,11 @@ function CharacterSelection() {
                                 selectedVoiceId === voice.id ? 'selected' : ''
                               }`}
                             >
-                              <Button
+                              <button
+                                type="button"
                                 className="voice-selection-card-main"
                                 onClick={() => selectVoice(voice.id)}
+                                aria-pressed={selectedVoiceId === voice.id}
                               >
                                 <span className="voice-selection-card-name">{voice.name}</span>
                                 {voice.description && (
@@ -112,19 +136,21 @@ function CharacterSelection() {
                                     {voice.description}
                                   </span>
                                 )}
-                              </Button>
-                              <Button
-                                size="small"
-                                className="voice-preview-btn"
+                              </button>
+                              <button
+                                type="button"
+                                className={`voice-preview-btn ${
+                                  previewingVoiceId === voice.id ? 'is-loading' : ''
+                                }`}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   void previewVoice(voice);
                                 }}
                                 disabled={previewingVoiceId !== null}
-                                loading={previewingVoiceId === voice.id}
+                                aria-busy={previewingVoiceId === voice.id}
                               >
                                 {previewingVoiceId === voice.id ? '播放中...' : '试听'}
-                              </Button>
+                              </button>
                             </div>
                           ))}
                         </div>
@@ -137,12 +163,17 @@ function CharacterSelection() {
           </div>
 
           <div className="voice-selection-footer">
-            <Button className="voice-back-button" onClick={backToImageStep}>
+            <button type="button" className="voice-back-button" onClick={backToImageStep}>
               返回
-            </Button>
-            <Button className="voice-confirm-button" onClick={() => void confirmVoice()} disabled={loading}>
+            </button>
+            <button
+              type="button"
+              className="voice-confirm-button"
+              onClick={() => void confirmVoice()}
+              disabled={loading}
+            >
               确认
-            </Button>
+            </button>
           </div>
         </div>
       ) : (
@@ -153,52 +184,35 @@ function CharacterSelection() {
             <div className="character-options-grid">
               {primaryCharacter.imageUrls?.map((imageUrl, index) => (
                 <div
-                  key={index}
+                  key={`${primaryCharacter.id}-${index}`}
                   className={`character-option-card ${
                     selectedCharacter === primaryCharacter.id && selectedImageIndex === index
                       ? 'selected'
                       : ''
                   }`}
-                  onClick={() => selectImage(primaryCharacter.id, index)}
+                  onClick={() => handleImageSelect(primaryCharacter.id, index)}
+                  onKeyDown={(event) => handleCardKeyDown(event, primaryCharacter.id, index)}
+                  role="button"
+                  tabIndex={loading ? -1 : 0}
+                  aria-pressed={
+                    selectedCharacter === primaryCharacter.id && selectedImageIndex === index
+                  }
+                  aria-disabled={loading}
                 >
                   <div className="character-image-container">
-                    {imageUrl ? (
-                      <img
-                        src={getStaticAssetUrl(imageUrl)}
-                        alt={`${primaryCharacter.name} - 选项 ${index + 1}`}
-                        className="character-image"
-                        onError={(event) => {
-                          const target = event.target as HTMLImageElement;
-                          target.style.display = 'none';
-                          const placeholder = target.parentElement?.querySelector(
-                            '.character-image-placeholder'
-                          ) as HTMLElement | null;
-                          if (placeholder) {
-                            placeholder.style.display = 'flex';
-                          }
-                        }}
-                      />
-                    ) : null}
-
-                    <div
-                      className="character-image-placeholder"
-                      style={{ display: imageUrl ? 'none' : 'flex' }}
-                    >
-                      <span className="placeholder-text">人物</span>
-                    </div>
+                    <StaticAssetImage
+                      key={`${primaryCharacter.id}-${imageUrl ?? 'empty'}-${index}`}
+                      imageUrl={imageUrl}
+                      alt={`${primaryCharacter.name} - 选项 ${index + 1}`}
+                      imageClassName="character-image"
+                      placeholderClassName="character-image-placeholder"
+                      placeholder={<span className="placeholder-text">人物</span>}
+                    />
                   </div>
 
-                  <Button
-                    className="character-choice-button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      selectImage(primaryCharacter.id, index);
-                    }}
-                    disabled={loading}
-                  >
+                  <span className="character-choice-button" aria-hidden="true">
                     CHOICE
-                  </Button>
+                  </span>
                 </div>
               ))}
             </div>
@@ -210,45 +224,27 @@ function CharacterSelection() {
                   className={`character-option-card ${
                     selectedCharacter === character.id ? 'selected' : ''
                   }`}
+                  onClick={() => handleImageSelect(character.id)}
+                  onKeyDown={(event) => handleCardKeyDown(event, character.id)}
+                  role="button"
+                  tabIndex={loading ? -1 : 0}
+                  aria-pressed={selectedCharacter === character.id}
+                  aria-disabled={loading}
                 >
                   <div className="character-image-container">
-                    {character.imageUrl ? (
-                      <img
-                        src={getStaticAssetUrl(character.imageUrl)}
-                        alt={character.name}
-                        className="character-image"
-                        onError={(event) => {
-                          const target = event.target as HTMLImageElement;
-                          target.style.display = 'none';
-                          const placeholder = target.parentElement?.querySelector(
-                            '.character-image-placeholder'
-                          ) as HTMLElement | null;
-                          if (placeholder) {
-                            placeholder.style.display = 'flex';
-                          }
-                        }}
-                      />
-                    ) : null}
-
-                    <div
-                      className="character-image-placeholder"
-                      style={{ display: character.imageUrl ? 'none' : 'flex' }}
-                    >
-                      <span className="placeholder-text">人物</span>
-                    </div>
+                    <StaticAssetImage
+                      key={`${character.id}-${character.imageUrl ?? 'empty'}`}
+                      imageUrl={character.imageUrl}
+                      alt={character.name}
+                      imageClassName="character-image"
+                      placeholderClassName="character-image-placeholder"
+                      placeholder={<span className="placeholder-text">人物</span>}
+                    />
                   </div>
 
-                  <Button
-                    className="character-choice-button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      selectImage(character.id, 0);
-                    }}
-                    disabled={loading}
-                  >
+                  <span className="character-choice-button" aria-hidden="true">
                     CHOICE
-                  </Button>
+                  </span>
                 </div>
               ))}
             </div>

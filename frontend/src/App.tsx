@@ -1,15 +1,14 @@
 import AppRouter from './router';
-import { App as AntdApp } from 'antd';
-import { GameFlowProvider } from '@/contexts';
+import { FeedbackProvider, GameFlowProvider } from '@/contexts';
 import './App.css';
 
 function App() {
   return (
-    <AntdApp>
+    <FeedbackProvider>
       <GameFlowProvider>
         <AppRouter />
       </GameFlowProvider>
-    </AntdApp>
+    </FeedbackProvider>
   );
 }
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
+from training.branch_resolver import BranchResolver
 from training.constants import TRAINING_RUNTIME_CONFIG
 from training.recommendation_policy import RecommendationPolicy
 from training.scenario_policy import ScenarioPolicy
@@ -42,11 +43,13 @@ class TrainingRoundFlowPolicy:
         self,
         scenario_policy: ScenarioPolicy | None = None,
         recommendation_policy: RecommendationPolicy | None = None,
+        branch_resolver: BranchResolver | None = None,
         runtime_config: Any = None,
     ):
         self.runtime_config = runtime_config or TRAINING_RUNTIME_CONFIG
         self.scenario_policy = scenario_policy or ScenarioPolicy(runtime_config=self.runtime_config)
         self.recommendation_policy = recommendation_policy or RecommendationPolicy(runtime_config=self.runtime_config)
+        self.branch_resolver = branch_resolver or BranchResolver(runtime_config=self.runtime_config)
         self.mode_catalog = TrainingModeCatalog(runtime_config=self.runtime_config)
 
     def build_next_scenario_bundle(
@@ -56,9 +59,12 @@ class TrainingRoundFlowPolicy:
         session_sequence: Sequence[Dict[str, Any]] | None,
         scenario_payload_sequence: Sequence[Dict[str, Any]] | None,
         completed_scenario_ids: Iterable[str],
+        scenario_payload_catalog: Sequence[Dict[str, Any]] | None = None,
         k_state: Dict[str, float] | None = None,
         s_state: Dict[str, float] | None = None,
         recent_risk_rounds: Sequence[Sequence[str]] | None = None,
+        runtime_flags: Dict[str, Any] | None = None,
+        current_scenario_id: str | None = None,
     ) -> TrainingScenarioFlowBundle:
         """统一解析当前会话下一题及候选列表。"""
         effective_payload_sequence = self._build_effective_payload_sequence(
@@ -67,6 +73,18 @@ class TrainingRoundFlowPolicy:
         )
         if not effective_payload_sequence:
             return TrainingScenarioFlowBundle(scenario=None)
+
+        branch_payload = self._resolve_branch_payload(
+            training_mode=training_mode,
+            current_scenario_id=current_scenario_id,
+            runtime_flags=runtime_flags,
+            effective_payload_sequence=effective_payload_sequence,
+            scenario_payload_catalog=scenario_payload_catalog,
+        )
+        if branch_payload is not None:
+            return TrainingScenarioFlowBundle(
+                scenario=branch_payload,
+            )
 
         next_round_no = int(current_round_no) + 1
         forced_round_payload = self._resolve_forced_round_payload(
@@ -125,15 +143,33 @@ class TrainingRoundFlowPolicy:
         session_sequence: Sequence[Dict[str, Any]] | None,
         scenario_payload_sequence: Sequence[Dict[str, Any]] | None,
         completed_scenario_ids: Iterable[str],
+        scenario_payload_catalog: Sequence[Dict[str, Any]] | None = None,
         k_state: Dict[str, float] | None = None,
         s_state: Dict[str, float] | None = None,
         recent_risk_rounds: Sequence[Sequence[str]] | None = None,
+        runtime_flags: Dict[str, Any] | None = None,
+        current_scenario_id: str | None = None,
     ) -> None:
         """统一校验本回合允许提交的场景范围。"""
         effective_payload_sequence = self._build_effective_payload_sequence(
             session_sequence=session_sequence,
             scenario_payload_sequence=scenario_payload_sequence,
         )
+        branch_payload = self._resolve_branch_payload(
+            training_mode=training_mode,
+            current_scenario_id=current_scenario_id,
+            runtime_flags=runtime_flags,
+            effective_payload_sequence=effective_payload_sequence,
+            scenario_payload_catalog=scenario_payload_catalog,
+        )
+        if branch_payload is not None:
+            expected_id = str(branch_payload["id"])
+            if str(submitted_scenario_id) != expected_id:
+                raise ValueError(
+                    f"scenario mismatch: expected={expected_id}, submitted={submitted_scenario_id}, round={current_round_no + 1}"
+                )
+            return
+
         next_round_no = int(current_round_no) + 1
 
         forced_round_payload = self._resolve_forced_round_payload(
@@ -242,6 +278,27 @@ class TrainingRoundFlowPolicy:
         if scenario_payload_sequence:
             return [dict(item) for item in scenario_payload_sequence if isinstance(item, dict)]
         return [dict(item) for item in session_sequence or [] if isinstance(item, dict)]
+
+    def _resolve_branch_payload(
+        self,
+        *,
+        training_mode: str | None,
+        current_scenario_id: str | None,
+        runtime_flags: Dict[str, Any] | None,
+        effective_payload_sequence: Sequence[Dict[str, Any]],
+        scenario_payload_catalog: Sequence[Dict[str, Any]] | None = None,
+    ) -> Dict[str, Any] | None:
+        """优先解析由世界状态驱动的分支场景。"""
+        branch_resolution = self.branch_resolver.resolve_next_branch(
+            current_scenario_id=current_scenario_id,
+            training_mode=training_mode,
+            runtime_flags=runtime_flags,
+            scenario_payload_sequence=effective_payload_sequence,
+            scenario_payload_catalog=scenario_payload_catalog,
+        )
+        if branch_resolution is None:
+            return None
+        return dict(branch_resolution.scenario)
 
     def _resolve_ordered_fallback_payload(
         self,

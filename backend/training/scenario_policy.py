@@ -42,6 +42,7 @@ class ScenarioPolicy:
         self,
         session_sequence: List[Dict[str, Any]] | None = None,
         scenario_payload_sequence: List[Dict[str, Any]] | None = None,
+        scenario_payload_catalog: List[Dict[str, Any]] | None = None,
         scenario_bank_version: str | None = None,
         player_profile: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
@@ -53,6 +54,9 @@ class ScenarioPolicy:
         }
         if scenario_payload_sequence:
             meta["scenario_payload_sequence"] = self._normalize_payload_sequence(scenario_payload_sequence)
+        if scenario_payload_catalog:
+            # 冻结主线之外的可达分支目录，避免老会话在分支节点回退读取实时场景库。
+            meta["scenario_payload_catalog"] = self._normalize_payload_sequence(scenario_payload_catalog)
         if scenario_bank_version:
             meta["scenario_bank_version"] = str(scenario_bank_version)
 
@@ -78,6 +82,15 @@ class ScenarioPolicy:
             payload_sequence = self._normalize_payload_sequence(session_meta.get("scenario_payload_sequence"))
             if payload_sequence:
                 return payload_sequence
+        return []
+
+    def resolve_session_payload_catalog(self, session: Any) -> List[Dict[str, Any]]:
+        """优先读取会话冻结的完整场景目录，供分支节点稳定回放。"""
+        session_meta = getattr(session, "session_meta", None)
+        if isinstance(session_meta, dict):
+            payload_catalog = self._normalize_payload_sequence(session_meta.get("scenario_payload_catalog"))
+            if payload_catalog:
+                return payload_catalog
         return []
 
     def resolve_session_player_profile(self, session: Any) -> Dict[str, Any] | None:
@@ -180,8 +193,11 @@ class ScenarioPolicy:
             payload = dict(item)
             payload["id"] = scenario_id
             payload["title"] = str(item.get("title") or scenario_id)
+            payload["phase_tags"] = list(item.get("phase_tags") or [])
+            payload["branch_tags"] = list(item.get("branch_tags") or [])
             payload["target_skills"] = list(item.get("target_skills") or [])
             payload["risk_tags"] = list(item.get("risk_tags") or [])
             payload["options"] = [dict(option) for option in item.get("options", []) if isinstance(option, dict)]
+            payload["next_rules"] = [dict(rule) for rule in item.get("next_rules", []) if isinstance(rule, dict)]
             normalized.append(payload)
         return normalized

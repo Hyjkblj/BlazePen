@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>BlazePen Cinematic Decision Demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="demo-shell" id="demoShell">
+      <div class="grain-layer" aria-hidden="true"></div>
+      <div class="vignette-layer" aria-hidden="true"></div>
+      <div class="ghost-cursor" id="ghostCursor" aria-hidden="true"></div>
+
+      <header class="demo-header">
+        <div>
+          <p class="eyebrow">BLAZEPEN // CINEMATIC DECISION DEMO</p>
+          <h1>战地决策二选一 UI 原型</h1>
+        </div>
+        <div class="status-cluster" aria-live="polite">
+          <div class="status-item">
+            <span>模式</span>
+            <strong>剧情抉择</strong>
+          </div>
+          <div class="status-item">
+            <span>状态</span>
+            <strong id="statusText">待选择</strong>
+          </div>
+        </div>
+      </header>
+
+      <main class="decision-stage" id="decisionStage">
+        <div class="background-bleed" aria-hidden="true">
+          <video
+            class="background-video"
+            src="./assets/reference-strip.mp4"
+            poster="./assets/reference-poster.png"
+            autoplay
+            muted
+            loop
+            playsinline
+          ></video>
+        </div>
+
+        <section class="decision-band" aria-label="电影化选择界面">
+          <div class="band-shadow top" aria-hidden="true"></div>
+          <div class="band-shadow bottom" aria-hidden="true"></div>
+
+          <video
+            class="reference-video"
+            src="./assets/reference-strip.mp4"
+            poster="./assets/reference-poster.png"
+            autoplay
+            muted
+            loop
+            playsinline
+          ></video>
+
+          <div class="beam-core" aria-hidden="true"></div>
+          <div class="beam-fragments" aria-hidden="true"></div>
+          <div class="scan-lines" aria-hidden="true"></div>
+          <div class="reticle" id="reticle" aria-hidden="true">
+            <span class="reticle-ring outer"></span>
+            <span class="reticle-ring inner"></span>
+            <span class="reticle-core"></span>
+            <span class="reticle-axis horizontal"></span>
+            <span class="reticle-axis vertical"></span>
+          </div>
+
+          <button
+            class="choice-card is-active"
+            id="choiceLeft"
+            data-index="0"
+            type="button"
+          >
+            <span class="choice-meta">OPTION 01</span>
+            <strong class="choice-title">能放弃</strong>
+            <span class="choice-caption">切断执念，保留退路</span>
+          </button>
+
+          <button
+            class="choice-card"
+            id="choiceRight"
+            data-index="1"
+            type="button"
+          >
+            <span class="choice-meta">OPTION 02</span>
+            <strong class="choice-title">我不知道</strong>
+            <span class="choice-caption">承认不确定，换取核验时间</span>
+          </button>
+
+          <div class="hud-strip top-left">
+            <span>ACT 03</span>
+            <span>FRONTLINE INTERVIEW</span>
+          </div>
+
+          <div class="hud-strip top-right">
+            <span>PRESSURE</span>
+            <span id="pressureValue">74%</span>
+          </div>
+
+          <div class="hud-strip bottom-left">
+            <span>K1 史实核验</span>
+            <span>RISK COMM</span>
+          </div>
+
+          <div class="hud-strip bottom-right">
+            <span>A / ← 选择左侧</span>
+            <span>D / → 选择右侧</span>
+            <span>Enter 确认</span>
+          </div>
+        </section>
+
+        <aside class="review-panel">
+          <div class="metric-card">
+            <span class="metric-label">可信度</span>
+            <strong>0.72</strong>
+            <p>当前 UI 重心放在“临场压迫感”和“选择瞬间的戏剧张力”。</p>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">可评审项</span>
+            <strong>动效 / 氛围 / 可读性</strong>
+            <p>鼠标悬停、键盘切换、确认锁定、准星追踪都已做成可交互原型。</p>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

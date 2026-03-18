@@ -1,0 +1,71 @@
+# OS and editor files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+deploy/player.env
+*.pem
+*.key
+*.crt
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.python-version
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+
+# Frontend / Node
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/release/
+*.tsbuildinfo
+
+# Runtime data and generated assets
+backend/audio/cache/
+backend/images/characters/
+backend/images/composite/
+backend/images/smallscenes/
+backend/vector_db/
+vector_db/
+chroma_db/
+backend/chroma_db/
+backend/logs/
+logs/
+*.log
+tmp_video_review/
+
+# Local databases and caches
+*.db
+*.sqlite
+*.sqlite3
+.cache/
+
+# Archives, backups, temp files
+backend-lite.tar.gz
+*.bak
+*.backup
+*.tmp
+*.temp

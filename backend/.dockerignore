@@ -1,0 +1,37 @@
+__pycache__/
+*.py[cod]
+*.log
+.pytest_cache/
+.mypy_cache/
+venv/
+env/
+.env
+.venv/
+node_modules/
+
+# Large runtime data
+audio/
+images/
+vector_db/
+**/*.wav
+**/*.mp3
+**/*.jpg
+**/*.jpeg
+**/*.png
+
+# Build and docs that are not required at runtime
+tests/
+tools/
+docs/
+*.md
+
+# Root-level local scripts that should not be shipped
+test_*.py
+debug_*.py
+diagnose_*.py
+check_*.py
+verify_*.py
+install_*.ps1
+fix_*.ps1
+start_backend.ps1
+test_voice_frontend.html

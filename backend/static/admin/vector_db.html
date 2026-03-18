@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>向量数据库管理</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .stat-card h3 {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+
+        .stat-card .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .toolbar {
+            padding: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .toolbar input,
+        .toolbar select,
+        .toolbar button {
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .toolbar input {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .toolbar select {
+            min-width: 150px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #229954;
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+
+        .content {
+            padding: 20px;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .data-table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .data-table td {
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .data-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .data-table .checkbox {
+            width: 40px;
+        }
+
+        .data-table .doc-id {
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .data-table .type-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .type-event {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .type-dialogue {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+
+        .data-table .preview {
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            margin-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state svg {
+            width: 100px;
+            height: 100px;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+
+        .alert {
+            padding: 12px 20px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .metadata-display {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: monospace;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .document-display {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 向量数据库管理</h1>
+            <p>查看、添加、删除向量数据库中的事件和对话数据</p>
+        </div>
+
+        <div class="stats-bar" id="statsBar">
+            <div class="stat-card">
+                <h3>总记录数</h3>
+                <div class="value" id="totalCount">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>事件数</h3>
+                <div class="value" id="eventCount">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>对话轮次数</h3>
+                <div class="value" id="dialogueCount">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>角色数</h3>
+                <div class="value" id="characterCount">0</div>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <input type="text" id="searchInput" placeholder="搜索文档ID、事件ID或内容...">
+            <select id="characterFilter">
+                <option value="">所有角色</option>
+            </select>
+            <select id="typeFilter">
+                <option value="">所有类型</option>
+                <option value="event">完整事件</option>
+                <option value="dialogue_round">对话轮次</option>
+            </select>
+            <button class="btn btn-primary" onclick="loadData()">🔄 刷新</button>
+            <button class="btn btn-success" onclick="showAddEventModal()">➕ 添加事件</button>
+            <button class="btn btn-success" onclick="showAddDialogueModal()">💬 添加对话</button>
+            <button class="btn btn-danger" onclick="deleteSelected()">🗑️ 删除选中</button>
+            <button class="btn btn-secondary" onclick="resetDatabase()">⚠️ 重置数据库</button>
+        </div>
+
+        <div class="content">
+            <div id="alertContainer"></div>
+            <div id="loadingIndicator" class="loading" style="display: none;">
+                <p>加载中...</p>
+            </div>
+            <div id="dataContainer"></div>
+        </div>
+    </div>
+
+    <!-- 添加事件模态框 -->
+    <div id="addEventModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>添加事件</h2>
+            </div>
+            <form id="addEventForm">
+                <div class="form-group">
+                    <label>角色ID *</label>
+                    <input type="number" id="eventCharacterId" required>
+                </div>
+                <div class="form-group">
+                    <label>事件ID *</label>
+                    <input type="text" id="eventEventId" required>
+                </div>
+                <div class="form-group">
+                    <label>故事文本 *</label>
+                    <textarea id="eventStoryText" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>对话文本 *</label>
+                    <textarea id="eventDialogueText" required></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('addEventModal')">取消</button>
+                    <button type="submit" class="btn btn-primary">添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 添加对话模态框 -->
+    <div id="addDialogueModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>添加对话轮次</h2>
+            </div>
+            <form id="addDialogueForm">
+                <div class="form-group">
+                    <label>角色ID *</label>
+                    <input type="number" id="dialogueCharacterId" required>
+                </div>
+                <div class="form-group">
+                    <label>事件ID *</label>
+                    <input type="text" id="dialogueEventId" required>
+                </div>
+                <div class="form-group">
+                    <label>故事背景 *</label>
+                    <textarea id="dialogueStoryBackground" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>对话轮次 *</label>
+                    <input type="number" id="dialogueRound" required>
+                </div>
+                <div class="form-group">
+                    <label>角色对话 *</label>
+                    <textarea id="dialogueCharacterDialogue" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>玩家选择 *</label>
+                    <textarea id="dialoguePlayerChoice" required></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('addDialogueModal')">取消</button>
+                    <button type="submit" class="btn btn-primary">添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 查看详情模态框 -->
+    <div id="viewModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>数据详情</h2>
+            </div>
+            <div id="viewContent"></div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('viewModal')">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/v1/admin/vector-db';
+        let allData = [];
+        let filteredData = [];
+
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            document.getElementById('searchInput').addEventListener('input', filterData);
+            document.getElementById('characterFilter').addEventListener('change', filterData);
+            document.getElementById('typeFilter').addEventListener('change', filterData);
+            
+            document.getElementById('addEventForm').addEventListener('submit', handleAddEvent);
+            document.getElementById('addDialogueForm').addEventListener('submit', handleAddDialogue);
+        }
+
+        async function loadData() {
+            showLoading(true);
+            try {
+                const response = await fetch(`${API_BASE}/list`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP错误: ${response.status} ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.code === 200) {
+                    allData = result.data.items || [];
+                    filteredData = allData;
+                    
+                    updateStats(result.data);
+                    updateCharacterFilter(result.data.character_stats || {});
+                    renderTable();
+                    
+                    // 如果没有数据，显示提示信息
+                    if (allData.length === 0) {
+                        console.log('向量数据库为空，这是正常的。运行游戏后会生成数据。');
+                    } else {
+                        console.log(`成功加载 ${allData.length} 条数据`);
+                    }
+                } else {
+                    showAlert('加载数据失败: ' + result.message, 'error');
+                    console.error('API返回错误:', result);
+                }
+            } catch (error) {
+                showAlert('加载数据失败: ' + error.message, 'error');
+                console.error('加载数据异常:', error);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function updateStats(data) {
+            document.getElementById('totalCount').textContent = data.total || 0;
+            
+            const typeStats = {};
+            const characterSet = new Set();
+            
+            allData.forEach(item => {
+                characterSet.add(item.character_id);
+                const type = item.type || 'event';
+                typeStats[type] = (typeStats[type] || 0) + 1;
+            });
+            
+            document.getElementById('eventCount').textContent = typeStats.event || typeStats.complete_event || 0;
+            document.getElementById('dialogueCount').textContent = typeStats.dialogue_round || 0;
+            document.getElementById('characterCount').textContent = characterSet.size;
+        }
+
+        function updateCharacterFilter(characterStats) {
+            const select = document.getElementById('characterFilter');
+            const currentValue = select.value;
+            
+            // 清空选项（保留"所有角色"）
+            select.innerHTML = '<option value="">所有角色</option>';
+            
+            // 添加角色选项
+            Object.keys(characterStats).sort().forEach(charId => {
+                const option = document.createElement('option');
+                option.value = charId;
+                option.textContent = `角色 ${charId} (${characterStats[charId].total}条)`;
+                select.appendChild(option);
+            });
+            
+            // 恢复之前的选择
+            select.value = currentValue;
+        }
+
+        function filterData() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const characterFilter = document.getElementById('characterFilter').value;
+            const typeFilter = document.getElementById('typeFilter').value;
+            
+            filteredData = allData.filter(item => {
+                const matchSearch = !searchTerm || 
+                    item.doc_id.toLowerCase().includes(searchTerm) ||
+                    item.event_id.toLowerCase().includes(searchTerm) ||
+                    item.document.toLowerCase().includes(searchTerm);
+                
+                const matchCharacter = !characterFilter || item.character_id === characterFilter;
+                const matchType = !typeFilter || item.type === typeFilter;
+                
+                return matchSearch && matchCharacter && matchType;
+            });
+            
+            renderTable();
+        }
+
+        function renderTable() {
+            const container = document.getElementById('dataContainer');
+            
+            if (filteredData.length === 0) {
+                const isEmpty = allData.length === 0;
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        <p style="font-size: 18px; margin-bottom: 10px; color: #333;">${isEmpty ? '暂无数据' : '没有匹配的数据'}</p>
+                        ${isEmpty ? `
+                            <p style="color: #666; margin-bottom: 20px;">
+                                向量数据库中还没有数据。你可以：
+                            </p>
+                            <div style="text-align: left; max-width: 500px; margin: 0 auto; color: #666;">
+                                <p>1. 点击上方的 <strong>"➕ 添加事件"</strong> 或 <strong>"💬 添加对话"</strong> 按钮手动添加数据</p>
+                                <p>2. 运行游戏并完成一些事件，数据会自动保存到向量数据库</p>
+                            </div>
+                        ` : '<p style="color: #666;">请尝试调整搜索条件或筛选器</p>'}
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th class="checkbox"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                            <th>文档ID</th>
+                            <th>角色ID</th>
+                            <th>事件ID</th>
+                            <th>类型</th>
+                            <th>对话轮次</th>
+                            <th>内容预览</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            filteredData.forEach(item => {
+                const typeClass = item.type === 'dialogue_round' ? 'type-dialogue' : 'type-event';
+                const typeText = item.type === 'dialogue_round' ? '对话轮次' : '完整事件';
+                
+                html += `
+                    <tr>
+                        <td class="checkbox">
+                            <input type="checkbox" class="row-checkbox" value="${item.doc_id}">
+                        </td>
+                        <td class="doc-id">${item.doc_id}</td>
+                        <td>${item.character_id}</td>
+                        <td>${item.event_id}</td>
+                        <td><span class="type-badge ${typeClass}">${typeText}</span></td>
+                        <td>${item.dialogue_round || '-'}</td>
+                        <td class="preview" title="${escapeHtml(item.document)}">${escapeHtml(item.document_preview)}</td>
+                        <td>
+                            <button class="btn btn-primary" style="padding: 5px 10px; font-size: 12px;" onclick="viewDetail('${item.doc_id}')">查看</button>
+                            <button class="btn btn-danger" style="padding: 5px 10px; font-size: 12px;" onclick="deleteItem('${item.doc_id}')">删除</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                    </tbody>
+                </table>
+            `;
+            
+            container.innerHTML = html;
+        }
+
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAll');
+            const checkboxes = document.querySelectorAll('.row-checkbox');
+            checkboxes.forEach(cb => cb.checked = selectAll.checked);
+        }
+
+        async function deleteItem(docId) {
+            if (!confirm(`确定要删除文档 "${docId}" 吗？`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/delete`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({doc_ids: [docId]})
+                });
+                
+                const result = await response.json();
+                if (result.code === 200) {
+                    showAlert('删除成功', 'success');
+                    loadData();
+                } else {
+                    showAlert('删除失败: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('删除失败: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteSelected() {
+            const selected = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => cb.value);
+            
+            if (selected.length === 0) {
+                showAlert('请先选择要删除的数据', 'error');
+                return;
+            }
+            
+            if (!confirm(`确定要删除选中的 ${selected.length} 条数据吗？`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/delete`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({doc_ids: selected})
+                });
+                
+                const result = await response.json();
+                if (result.code === 200) {
+                    showAlert(`成功删除 ${result.data.deleted_count} 条数据`, 'success');
+                    loadData();
+                } else {
+                    showAlert('删除失败: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('删除失败: ' + error.message, 'error');
+            }
+        }
+
+        async function resetDatabase() {
+            if (!confirm('⚠️ 警告：这将删除向量数据库中的所有数据！\n\n确定要继续吗？')) {
+                return;
+            }
+            
+            if (!confirm('再次确认：这将永久删除所有数据，无法恢复！')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/reset`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                if (result.code === 200) {
+                    showAlert('数据库已重置', 'success');
+                    loadData();
+                } else {
+                    showAlert('重置失败: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('重置失败: ' + error.message, 'error');
+            }
+        }
+
+        function showAddEventModal() {
+            document.getElementById('addEventModal').classList.add('active');
+        }
+
+        function showAddDialogueModal() {
+            document.getElementById('addDialogueModal').classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        async function handleAddEvent(e) {
+            e.preventDefault();
+            
+            const data = {
+                character_id: parseInt(document.getElementById('eventCharacterId').value),
+                event_id: document.getElementById('eventEventId').value,
+                story_text: document.getElementById('eventStoryText').value,
+                dialogue_text: document.getElementById('eventDialogueText').value
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/add-event`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                if (result.code === 200) {
+                    showAlert('事件添加成功', 'success');
+                    closeModal('addEventModal');
+                    document.getElementById('addEventForm').reset();
+                    loadData();
+                } else {
+                    showAlert('添加失败: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('添加失败: ' + error.message, 'error');
+            }
+        }
+
+        async function handleAddDialogue(e) {
+            e.preventDefault();
+            
+            const data = {
+                character_id: parseInt(document.getElementById('dialogueCharacterId').value),
+                event_id: document.getElementById('dialogueEventId').value,
+                story_background: document.getElementById('dialogueStoryBackground').value,
+                dialogue_round: parseInt(document.getElementById('dialogueRound').value),
+                character_dialogue: document.getElementById('dialogueCharacterDialogue').value,
+                player_choice: document.getElementById('dialoguePlayerChoice').value
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/add-dialogue`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                if (result.code === 200) {
+                    showAlert('对话轮次添加成功', 'success');
+                    closeModal('addDialogueModal');
+                    document.getElementById('addDialogueForm').reset();
+                    loadData();
+                } else {
+                    showAlert('添加失败: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('添加失败: ' + error.message, 'error');
+            }
+        }
+
+        async function viewDetail(docId) {
+            const item = allData.find(d => d.doc_id === docId);
+            if (!item) return;
+            
+            const content = `
+                <div class="form-group">
+                    <label>文档ID</label>
+                    <div class="metadata-display">${item.doc_id}</div>
+                </div>
+                <div class="form-group">
+                    <label>元数据</label>
+                    <div class="metadata-display">${JSON.stringify(item.metadata, null, 2)}</div>
+                </div>
+                <div class="form-group">
+                    <label>完整内容</label>
+                    <div class="document-display">${escapeHtml(item.document)}</div>
+                </div>
+            `;
+            
+            document.getElementById('viewContent').innerHTML = content;
+            document.getElementById('viewModal').classList.add('active');
+        }
+
+        function showLoading(show) {
+            document.getElementById('loadingIndicator').style.display = show ? 'block' : 'none';
+        }
+
+        function showAlert(message, type) {
+            const container = document.getElementById('alertContainer');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type} show`;
+            alert.textContent = message;
+            container.innerHTML = '';
+            container.appendChild(alert);
+            
+            setTimeout(() => {
+                alert.classList.remove('show');
+                setTimeout(() => alert.remove(), 300);
+            }, 3000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 点击模态框外部关闭
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.classList.remove('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+

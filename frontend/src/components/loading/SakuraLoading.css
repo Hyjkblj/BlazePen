@@ -1,0 +1,128 @@
+/* 全屏加载容器 */
+.loading-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 背景遮罩 */
+.loading-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+}
+
+/* 加载内容 */
+.loading-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+/* 樱花加载动画容器 */
+.sakura-loader {
+  position: relative;
+  width: 120px;
+  height: 120px;
+}
+
+/* 樱花花瓣加载动画 */
+.sakura-petal-loader {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform-origin: center;
+  animation: sakura-spin 3s linear infinite;
+}
+
+.sakura-1 {
+  transform: translate(-50%, -50%) rotate(0deg) translateY(-40px);
+  animation-delay: 0s;
+}
+
+.sakura-2 {
+  transform: translate(-50%, -50%) rotate(120deg) translateY(-40px);
+  animation-delay: -1s;
+}
+
+.sakura-3 {
+  transform: translate(-50%, -50%) rotate(240deg) translateY(-40px);
+  animation-delay: -2s;
+}
+
+/* 樱花旋转动画 */
+@keyframes sakura-spin {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg) translateY(-40px) rotate(0deg);
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg) translateY(-40px) rotate(-360deg);
+    opacity: 0.9;
+  }
+}
+
+/* 加载文本 */
+.loading-text {
+  font-size: 20px;
+  color: #fff;
+  font-weight: 500;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  letter-spacing: 1px;
+}
+
+/* 加载点动画 */
+.loading-dots {
+  display: flex;
+  gap: 8px;
+  margin-top: -8px;
+}
+
+.dot {
+  font-size: 32px;
+  color: #ffb3d9;
+  font-weight: bold;
+  animation: dot-bounce 1.4s ease-in-out infinite;
+}
+
+.dot-1 {
+  animation-delay: 0s;
+}
+
+.dot-2 {
+  animation-delay: 0.2s;
+}
+
+.dot-3 {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.7;
+  }
+  30% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+}

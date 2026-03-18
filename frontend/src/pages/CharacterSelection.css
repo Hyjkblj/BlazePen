@@ -1,0 +1,413 @@
+/* 角色选择页面容器 */
+.character-selection-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f5f5dc;
+  overflow: hidden;
+  padding: 40px;
+  box-sizing: border-box;
+}
+
+/* 背景图片 */
+.character-selection-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: 0;
+}
+
+/* 主内容区域 */
+.character-selection-content {
+  position: relative;
+  z-index: 1;
+  width: 1200px;
+  max-width: calc(100vw - 80px);
+  max-height: calc(100vh - 80px);
+  min-height: 600px;
+  background: #ffe4b5;
+  border: 3px solid #8b4513;
+  border-radius: 16px;
+  padding: 40px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-sizing: border-box;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.selection-title {
+  text-align: center;
+  font-size: 32px;
+  font-weight: bold;
+  color: #654321;
+  margin-bottom: 40px;
+}
+
+/* 角色选项网格 */
+.character-options-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 30px;
+  width: 100%;
+}
+
+/* 角色选项卡片 */
+.character-option-card {
+  background: #fff;
+  border: 2px solid #8b4513;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.character-option-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 24px rgba(139, 69, 19, 0.3);
+  border-color: #654321;
+}
+
+.character-option-card.selected {
+  border-color: #654321;
+  border-width: 3px;
+  box-shadow: 0 8px 24px rgba(139, 69, 19, 0.5);
+}
+
+/* 角色图片容器 - 9:16竖屏比例（适合人物立绘） */
+.character-image-container {
+  width: 100%;
+  aspect-ratio: 9 / 16;  /* 9:16竖屏比例，适合人物立绘 */
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.character-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.character-image-placeholder {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.character-image-placeholder::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 30%;
+  height: 30%;
+  background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.1) 50%);
+  clip-path: polygon(100% 0, 0 0, 100% 100%);
+}
+
+.placeholder-text {
+  font-size: 48px;
+  font-weight: bold;
+  color: #fff;
+  z-index: 1;
+}
+
+/* 选择按钮 */
+.character-choice-button {
+  width: 100%;
+  height: 50px;
+  font-size: 18px;
+  font-weight: bold;
+  background: #d2691e !important;
+  border: 2px solid #654321 !important;
+  border-radius: 8px !important;
+  color: #fff !important;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+}
+
+.character-choice-button:hover {
+  background: #8b4513 !important;
+  border-color: #654321 !important;
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(139, 69, 19, 0.4);
+}
+
+.character-choice-button:active {
+  transform: scale(0.98);
+}
+
+.character-choice-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ========== 音色选择界面（与设计图一致：左人物右音色，底部确认） ========== */
+.voice-selection-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 600px;
+  height: 100%;
+}
+
+.voice-selection-title {
+  text-align: center;
+  font-size: 28px;
+  font-weight: bold;
+  color: #654321;
+  margin-bottom: 8px;
+}
+
+.voice-selection-hint {
+  text-align: center;
+  font-size: 14px;
+  color: #8b6914;
+  margin-bottom: 20px;
+}
+
+.voice-selection-panels {
+  display: flex;
+  gap: 24px;
+  flex: 1;
+  min-height: 0;
+}
+
+.voice-selection-left {
+  flex: 0 0 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.voice-character-panel {
+  width: 100%;
+  max-width: 260px;
+  aspect-ratio: 9 / 16;
+  background: #fff;
+  border: 2px solid #8b4513;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.voice-character-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.voice-character-placeholder {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.voice-character-placeholder .placeholder-text {
+  font-size: 32px;
+  color: #fff;
+}
+
+.voice-current-selection {
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #8b4513;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.voice-current-label {
+  font-size: 12px;
+  color: #8b6914;
+  display: block;
+}
+
+.voice-current-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #654321;
+}
+
+.voice-selection-right {
+  flex: 1;
+  min-height: 0;
+  background: #d2691e;
+  border: 2px solid #654321;
+  border-radius: 12px;
+  padding: 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.voice-selection-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 200px;
+  font-size: 16px;
+  color: #fff;
+}
+
+.voice-selection-grouped {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.voice-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.voice-group-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.voice-selection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.voice-selection-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px;
+  background: #ffe4b5;
+  border: 2px solid #8b4513;
+  border-radius: 8px;
+  color: #654321;
+  text-align: left;
+  transition: all 0.25s ease;
+}
+
+.voice-selection-card-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+
+.voice-selection-card:hover {
+  background: #ffd700;
+  border-color: #654321;
+  transform: scale(1.02);
+}
+
+.voice-selection-card.selected {
+  background: #8b4513;
+  border-color: #654321;
+  color: #fff;
+}
+
+.voice-selection-card.selected .voice-selection-card-main {
+  color: #fff;
+}
+
+.voice-preview-btn {
+  align-self: flex-start;
+  font-size: 12px;
+}
+
+.voice-selection-card .voice-selection-card-name {
+  font-weight: 600;
+}
+
+.voice-selection-card-name {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.voice-selection-card-desc {
+  font-size: 12px;
+  opacity: 0.9;
+  line-height: 1.3;
+}
+
+.voice-selection-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+  padding-top: 16px;
+}
+
+.voice-back-button {
+  min-width: 100px;
+  height: 44px;
+  font-size: 16px;
+  background: #ffe4b5 !important;
+  border: 2px solid #8b4513 !important;
+  border-radius: 8px !important;
+  color: #654321 !important;
+}
+
+.voice-back-button:hover {
+  background: #ffd700 !important;
+  border-color: #654321 !important;
+}
+
+.voice-confirm-button {
+  min-width: 120px;
+  height: 44px;
+  font-size: 16px;
+  font-weight: bold;
+  background: #d2691e !important;
+  border: 2px solid #654321 !important;
+  border-radius: 8px !important;
+  color: #fff !important;
+}
+
+.voice-confirm-button:hover {
+  background: #8b4513 !important;
+  border-color: #654321 !important;
+}
+
+.voice-confirm-button:disabled {
+  opacity: 0.7;
+}

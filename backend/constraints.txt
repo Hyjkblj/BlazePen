@@ -1,0 +1,5 @@
+# 版本约束文件 - 防止依赖被意外升级
+# 使用方法: pip install -r requirements.txt -c constraints.txt
+
+numpy==1.26.4
+rembg==2.0.41

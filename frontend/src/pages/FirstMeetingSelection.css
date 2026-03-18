@@ -1,0 +1,228 @@
+/* 初遇场景选择页面容器 */
+.first-meeting-selection-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f5f5dc;
+  overflow: hidden;
+}
+
+/* 背景图片 */
+.first-meeting-background {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: 0;
+}
+
+/* 主内容区域 */
+.first-meeting-content {
+  position: relative;
+  z-index: 1;
+  width: 1200px;
+  min-height: 700px;
+  background: rgba(255, 228, 181, 0.3);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 3px solid rgba(139, 69, 19, 0.5);
+  border-radius: 16px;
+  padding: 40px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30px;
+}
+
+/* 标题横幅 */
+.meeting-title-banner {
+  width: 200px;
+  height: 60px;
+  background: rgba(255, 228, 181, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  border: 2px solid rgba(139, 69, 19, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.title-text {
+  font-size: 32px;
+  font-weight: bold;
+  color: #654321;
+  text-shadow: 0 2px 4px rgba(255, 255, 255, 0.5);
+}
+
+/* 场景显示区域 */
+.scene-display-area {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  min-height: 400px;
+}
+
+/* 场景内容 */
+.scene-content {
+  flex: 1;
+  max-width: 800px;
+  width: 100%;
+  aspect-ratio: 16 / 9; /* 16:9 宽高比 */
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* 场景图片 */
+.scene-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  display: block;
+}
+
+/* 场景占位符 */
+.scene-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  clip-path: polygon(0 0, calc(100% - 50px) 0, 100% 50px, 100% 100%, 0 100%);
+}
+
+.scene-placeholder::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.1) 50%);
+  clip-path: polygon(100% 0, 0 0, 100% 100%);
+}
+
+.placeholder-text {
+  font-size: 48px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  margin-bottom: 10px;
+}
+
+.placeholder-description {
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.8);
+  text-align: center;
+  padding: 0 20px;
+  line-height: 1.6;
+}
+
+.scene-placeholder {
+  flex-direction: column;
+  z-index: 1;
+}
+
+/* 导航箭头 */
+.scene-nav-arrow {
+  width: 60px;
+  height: 60px;
+  background: rgba(255, 228, 181, 0.6);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  border: 2px solid rgba(139, 69, 19, 0.6);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: #8b4513;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.scene-nav-arrow:hover {
+  background: rgba(139, 69, 19, 0.8);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  color: #fff;
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(139, 69, 19, 0.4);
+}
+
+.scene-nav-arrow:active {
+  transform: scale(0.95);
+}
+
+/* 选择按钮容器 */
+.scene-choice-button-container {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 20px;
+}
+
+/* 选择按钮 */
+.scene-choice-button {
+  width: 150px;
+  height: 50px;
+  font-size: 18px;
+  font-weight: bold;
+  background: rgba(210, 105, 30, 0.8) !important;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  border: 2px solid rgba(101, 67, 33, 0.6) !important;
+  border-radius: 8px !important;
+  color: #fff !important;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+}
+
+.scene-choice-button:hover {
+  background: rgba(139, 69, 19, 0.9) !important;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  border-color: rgba(101, 67, 33, 0.8) !important;
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(139, 69, 19, 0.4);
+}
+
+.scene-choice-button:active {
+  transform: scale(0.98);
+}
+
+.scene-choice-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

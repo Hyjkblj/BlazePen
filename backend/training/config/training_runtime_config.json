@@ -1,0 +1,376 @@
+{
+  "skill_codes": ["K1", "K2", "K3", "K4", "K5", "K6", "K7", "K8"],
+  "s_state_codes": [
+    "credibility",
+    "accuracy",
+    "public_panic",
+    "source_safety",
+    "editor_trust",
+    "actionability"
+  ],
+  "skill_snapshot_fields": {
+    "K1": "k1",
+    "K2": "k2",
+    "K3": "k3",
+    "K4": "k4",
+    "K5": "k5",
+    "K6": "k6",
+    "K7": "k7",
+    "K8": "k8"
+  },
+  "s_state_snapshot_fields": {
+    "credibility": "credibility",
+    "accuracy": "accuracy",
+    "public_panic": "public_panic",
+    "source_safety": "source_safety",
+    "editor_trust": "editor_trust",
+    "actionability": "actionability"
+  },
+  "scenario": {
+    "version": "training_scenario_v1",
+    "default_sequence": [
+      {"id": "S1", "title": "卢沟桥事变快讯发布"},
+      {"id": "S2", "title": "淞沪会战连续战况"},
+      {"id": "S3", "title": "南京失守高冲突信息处置"},
+      {"id": "S4", "title": "武汉会战后方动员沟通"},
+      {"id": "S5", "title": "百团大战多源冲突核验"},
+      {"id": "S6", "title": "终战节点宣布性报道"}
+    ]
+  },
+  "defaults": {
+    "default_k_value": 0.45,
+    "default_k_state": {
+      "K1": 0.45,
+      "K2": 0.45,
+      "K3": 0.45,
+      "K4": 0.45,
+      "K5": 0.45,
+      "K6": 0.45,
+      "K7": 0.45,
+      "K8": 0.45
+    },
+    "default_s_state": {
+      "credibility": 0.6,
+      "accuracy": 0.6,
+      "public_panic": 0.3,
+      "source_safety": 0.65,
+      "editor_trust": 0.55,
+      "actionability": 0.5
+    }
+  },
+  "skill_weights": {
+    "K1": 0.2,
+    "K2": 0.1,
+    "K3": 0.1,
+    "K4": 0.1,
+    "K5": 0.2,
+    "K6": 0.15,
+    "K7": 0.1,
+    "K8": 0.05
+  },
+  "switches": {
+    "use_llm_eval": false,
+    "enforce_scenario_order": true
+  },
+  "llm": {
+    "provider": "auto",
+    "default_eval_model": "rules_v1",
+    "max_tokens": 700,
+    "temperature": 0.2,
+    "max_retries": 2,
+    "retry_delay": 0.8
+  },
+  "limits": {
+    "max_skill_delta": 0.2,
+    "max_s_delta": 0.2
+  },
+  "messages": {
+    "empty_evidence_text": "本轮输入已纳入训练评估",
+    "duplicate_fallback_evidence": "复用已落库回合结果"
+  },
+  "risk_flags": {
+    "unverified_publish": "high_risk_unverified_publish",
+    "source_exposure": "source_exposure_risk"
+  },
+  "confidence": {
+    "llm_weight": 0.65,
+    "rule_weight": 0.35
+  },
+  "hard_penalties": [
+    {
+      "flag": "source_exposure_risk",
+      "skill_delta": {
+        "K5": -0.08
+      },
+      "s_delta": {
+        "source_safety": -0.12,
+        "credibility": -0.03
+      },
+      "note": "已应用来源安全硬惩罚"
+    },
+    {
+      "flag": "high_risk_unverified_publish",
+      "skill_delta": {
+        "K1": -0.06,
+        "K4": -0.05
+      },
+      "s_delta": {
+        "accuracy": -0.08,
+        "public_panic": 0.1
+      },
+      "note": "已应用核验硬惩罚"
+    }
+  ],
+  "rule_engine": {
+    "base_confidence": 0.78,
+    "default_skill_delta": 0.01,
+    "llm_merge_weights": {
+      "llm": 0.7,
+      "rule": 0.3
+    },
+    "rules": [
+      {
+        "id": "verify",
+        "keywords": ["核实", "核验", "双重来源", "多源", "交叉验证"],
+        "keywords_en": ["verify", "cross-check", "double source"],
+        "skill_delta": {
+          "K1": 0.05,
+          "K2": 0.03
+        },
+        "s_delta": {
+          "accuracy": 0.04,
+          "credibility": 0.03
+        },
+        "risk_flags": [],
+        "evidence": "包含事实核验或多源确认策略"
+      },
+      {
+        "id": "source_protect",
+        "keywords": ["暂不公开", "保护线人", "匿名来源", "不披露细节", "保护来源"],
+        "keywords_en": ["anonymous source", "protect source", "withhold identity"],
+        "skill_delta": {
+          "K5": 0.05
+        },
+        "s_delta": {
+          "source_safety": 0.05
+        },
+        "risk_flags": [],
+        "evidence": "体现来源保护与伦理边界"
+      },
+      {
+        "id": "correction",
+        "keywords": ["更正", "修正", "纠偏", "辟谣", "撤稿"],
+        "keywords_en": ["correction", "retract", "rectify"],
+        "skill_delta": {
+          "K6": 0.05
+        },
+        "s_delta": {
+          "credibility": 0.02
+        },
+        "risk_flags": [],
+        "evidence": "体现纠错闭环意识"
+      },
+      {
+        "id": "unverified_publish",
+        "keywords": ["立即发布全部", "未经核实", "绝对真实", "震惊", "先发再说", "马上发"],
+        "keywords_en": ["publish now", "unverified", "100% true", "shocking"],
+        "skill_delta": {
+          "K1": -0.08,
+          "K4": -0.04
+        },
+        "s_delta": {
+          "accuracy": -0.06,
+          "public_panic": 0.08
+        },
+        "risk_flags": ["high_risk_unverified_publish"],
+        "evidence": "存在未经核实即发布或煽动性表达风险"
+      },
+      {
+        "id": "source_exposure",
+        "keywords": ["公开线人姓名", "公开真实姓名", "详细住址", "具体位置", "完整身份"],
+        "keywords_en": ["source name", "full identity", "exact location", "real name", "detailed address"],
+        "skill_delta": {
+          "K5": -0.12
+        },
+        "s_delta": {
+          "source_safety": -0.1
+        },
+        "risk_flags": ["source_exposure_risk"],
+        "evidence": "可能暴露来源身份信息"
+      }
+    ]
+  },
+  "ending": {
+    "severe_flags": ["source_exposure_risk"],
+    "thresholds": {
+      "fail_source_safety": 0.35,
+      "fail_public_panic": 0.75,
+      "excellent_score": 0.82,
+      "excellent_accuracy": 0.8,
+      "excellent_source_safety": 0.85,
+      "recovery_score": 0.64,
+      "recovery_improvement": 0.18,
+      "steady_score": 0.7
+    },
+    "types": {
+      "costly": "代价沉重",
+      "excellent": "史笔如铁",
+      "recovery": "逆风修正",
+      "steady": "艰难守真",
+      "fail": "失真扩散"
+    }
+  },
+  "recommendation": {
+    "enabled_modes": ["adaptive", "self-paced", "self_paced"],
+    "strict_modes": ["adaptive"],
+    "candidate_limit": 3,
+    "fallback_mode": "guided",
+    "recent_risk_window": 2,
+    "weights": {
+      "weakness": 0.7,
+      "state_boost": 0.3,
+      "recent_risk": 0.2,
+      "phase_alignment": 0.08
+    },
+    "state_boosts": [
+      {
+        "state_key": "source_safety",
+        "trigger": "lt",
+        "threshold": 0.55,
+        "boost_skills": ["K5"],
+        "boost": 0.25,
+        "reason": "来源安全偏低，优先补强来源保护能力"
+      },
+      {
+        "state_key": "accuracy",
+        "trigger": "lt",
+        "threshold": 0.6,
+        "boost_skills": ["K1", "K2"],
+        "boost": 0.18,
+        "reason": "准确性偏低，优先补强核验与来源评估"
+      },
+      {
+        "state_key": "credibility",
+        "trigger": "lt",
+        "threshold": 0.58,
+        "boost_skills": ["K1", "K6"],
+        "boost": 0.14,
+        "reason": "可信度偏低，优先补强核验与纠错闭环"
+      },
+      {
+        "state_key": "public_panic",
+        "trigger": "gt",
+        "threshold": 0.5,
+        "boost_skills": ["K4", "K7"],
+        "boost": 0.2,
+        "reason": "公众恐慌偏高，优先补强风险沟通和行动指引"
+      },
+      {
+        "state_key": "editor_trust",
+        "trigger": "lt",
+        "threshold": 0.5,
+        "boost_skills": ["K6", "K8"],
+        "boost": 0.12,
+        "reason": "编辑部信任偏低，优先补强纠偏与更新闭环"
+      },
+      {
+        "state_key": "actionability",
+        "trigger": "lt",
+        "threshold": 0.5,
+        "boost_skills": ["K7", "K8"],
+        "boost": 0.12,
+        "reason": "行动指引偏弱，优先补强可执行表达"
+      }
+    ],
+    "risk_boosts": [
+      {
+        "risk_flag": "source_exposure_risk",
+        "boost_skills": ["K5", "K6"],
+        "boost": 1.0,
+        "consecutive_bonus": 0.4,
+        "reason": "最近出现来源暴露风险，优先补强来源保护与纠错能力"
+      },
+      {
+        "risk_flag": "high_risk_unverified_publish",
+        "boost_skills": ["K1", "K4"],
+        "boost": 1.0,
+        "consecutive_bonus": 0.35,
+        "reason": "最近出现未核实即发布风险，优先补强核验与风险沟通能力"
+      }
+    ],
+    "phase_boosts": [
+      {
+        "current_phase_tags": ["opening"],
+        "scenario_phase_tags": ["opening"],
+        "boost": 1.0,
+        "reason": "当前处于开场阶段，优先推荐建立背景和规则感的场景"
+      },
+      {
+        "current_phase_tags": ["middle"],
+        "scenario_phase_tags": ["middle"],
+        "boost": 1.0,
+        "reason": "当前处于中段阶段，优先推荐承压决策和风险升级场景"
+      },
+      {
+        "current_phase_tags": ["climax"],
+        "scenario_phase_tags": ["climax"],
+        "boost": 1.0,
+        "reason": "当前处于高潮阶段，优先推荐高压冲突下的综合能力场景"
+      },
+      {
+        "current_phase_tags": ["closing"],
+        "scenario_phase_tags": ["closing"],
+        "boost": 1.0,
+        "reason": "当前处于收束阶段，优先推荐总结性和终局性场景"
+      },
+      {
+        "distance": 0,
+        "boost": 1.0,
+        "reason": "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+      },
+      {
+        "distance": 1,
+        "boost": 0.45,
+        "reason": "与当前训练阶段相邻，作为未配置阶段标签时的兜底"
+      }
+    ]
+  },
+  "flow": {
+    "stage_windows": [
+      {
+        "start_round": 1,
+        "end_round": 2,
+        "phase_tags": ["opening"],
+        "reason": "前两轮主要建立报道规则、角色压力和基础核验意识"
+      },
+      {
+        "start_round": 3,
+        "end_round": 4,
+        "phase_tags": ["middle"],
+        "reason": "中段进入持续承压与伦理边界判断"
+      },
+      {
+        "start_round": 5,
+        "end_round": 5,
+        "phase_tags": ["climax"],
+        "reason": "倒数第二轮进入冲突拉满的综合核验场景"
+      },
+      {
+        "start_round": 6,
+        "end_round": 6,
+        "phase_tags": ["closing"],
+        "reason": "最后一轮用于终局报道与整体能力收束"
+      }
+    ],
+    "forced_rounds": []
+  },
+  "reporting": {
+    "max_review_suggestions": 4,
+    "high_risk_round_preview_limit": 3,
+    "thresholds": {
+      "weak_skill_threshold": 0.6,
+      "strong_improvement_threshold": 0.1,
+      "limited_improvement_threshold": 0.03
+    }
+  }
+}

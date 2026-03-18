@@ -1,0 +1,91 @@
+name: noendstory
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: noendstory-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-noendstory}
+      POSTGRES_USER: ${DB_USER:-noendstory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - noendstory_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-noendstory} -d ${DB_NAME:-noendstory}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/no-end-story/no-end-story-backend:latest}
+    container_name: noendstory-backend
+    restart: unless-stopped
+    env_file:
+      - ./player.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ENV: ${ENV:-dev}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-noendstory}
+      DB_USER: ${DB_USER:-noendstory}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+
+      VECTOR_DB_PATH: /data/vector_db
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text2vec-chinese}
+
+      IMAGE_SAVE_DIR: /data/images/characters
+      SCENE_IMAGE_SAVE_DIR: /data/images/scenes
+      SMALL_SCENE_IMAGE_SAVE_DIR: /data/images/smallscenes
+      COMPOSITE_IMAGE_SAVE_DIR: /data/images/composite
+      IMAGE_SAVE_ENABLED: ${IMAGE_SAVE_ENABLED:-true}
+
+      TTS_PROVIDER: ${TTS_PROVIDER:-volcengine}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DASHSCOPE_MODEL: ${DASHSCOPE_MODEL:-qwen-flash}
+      DASHSCOPE_TTS_MODEL: ${DASHSCOPE_TTS_MODEL:-sambert-zhichu-v1}
+      VOLCENGINE_ARK_API_KEY: ${VOLCENGINE_ARK_API_KEY:-}
+      VOLCENGINE_REGION: ${VOLCENGINE_REGION:-cn-beijing}
+      # Unified text model switch (edit LLM_TEXT_MODEL in player.env only).
+      LLM_TEXT_MODEL: ${LLM_TEXT_MODEL:-deepseek-v3-250324}
+      # Backward-compatible bridge: old code reads VOLCENGINE_TEXT_MODEL,
+      # unified switch uses LLM_TEXT_MODEL (edit one place in player.env).
+      VOLCENGINE_TEXT_MODEL: ${LLM_TEXT_MODEL:-deepseek-v3-250324}
+      VOLCENGINE_IMAGE_MODEL: ${VOLCENGINE_IMAGE_MODEL:-doubao-seedream-4-0-250828}
+      VOLCENGINE_IMAGE_SIZE: ${VOLCENGINE_IMAGE_SIZE:-2K}
+      VOLCENGINE_TTS_APP_ID: ${VOLCENGINE_TTS_APP_ID:-}
+      VOLCENGINE_TTS_ACCESS_TOKEN: ${VOLCENGINE_TTS_ACCESS_TOKEN:-}
+      VOLCENGINE_TTS_SECRET_KEY: ${VOLCENGINE_TTS_SECRET_KEY:-}
+      VOLCENGINE_TTS_MODEL: ${VOLCENGINE_TTS_MODEL:-seed-tts-2.0}
+      VOLCENGINE_TTS_RESOURCE_ID: ${VOLCENGINE_TTS_RESOURCE_ID:-volc.tts.default}
+      VOLCENGINE_TTS_WEBSOCKET_URL: ${VOLCENGINE_TTS_WEBSOCKET_URL:-wss://openspeech.bytedance.com/api/v3/tts/bidirection}
+      VOLCENGINE_TTS_USE_WEBSOCKET: ${VOLCENGINE_TTS_USE_WEBSOCKET:-false}
+      VOLCENGINE_TTS_ENABLE_TIMESTAMP: ${VOLCENGINE_TTS_ENABLE_TIMESTAMP:-false}
+      VOLCENGINE_TTS_ENABLE_CACHE: ${VOLCENGINE_TTS_ENABLE_CACHE:-true}
+      VOLCENGINE_TTS_ENABLE_EMOTION: ${VOLCENGINE_TTS_ENABLE_EMOTION:-true}
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - noendstory_data:/data
+      - noendstory_audio:/app/audio/cache
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+volumes:
+  noendstory_pgdata:
+  noendstory_data:
+  noendstory_audio:

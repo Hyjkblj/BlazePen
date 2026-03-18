@@ -151,6 +151,9 @@ class TrainingStoreProtocol(Protocol):
     def get_training_session(self, session_id: str) -> TrainingSessionRecord | None:
         ...
 
+    def update_training_session(self, session_id: str, updates: dict) -> TrainingSessionRecord | None:
+        ...
+
     def get_training_rounds(self, session_id: str) -> List[TrainingRoundRecord]:
         ...
 
@@ -302,6 +305,11 @@ class DatabaseTrainingStore:
 
     def get_training_session(self, session_id: str) -> TrainingSessionRecord | None:
         row = self.storage_backend.get_training_session(session_id)
+        return self._to_training_session_record(row)
+
+    def update_training_session(self, session_id: str, updates: dict) -> TrainingSessionRecord | None:
+        """更新训练会话，供服务层做惰性回填和增量修复。"""
+        row = self.storage_backend.update_training_session(session_id, updates)
         return self._to_training_session_record(row)
 
     def get_training_rounds(self, session_id: str) -> List[TrainingRoundRecord]:

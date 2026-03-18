@@ -1,13 +1,13 @@
-﻿import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useFeedback, useGameFlow } from '@/contexts';
+import { getSceneNameById } from '@/config/scenes';
 import { getCharacterImages, initializeStory } from '@/services/characterApi';
 import { initGame } from '@/services/gameApi';
 import * as gameStorage from '@/storage/gameStorage';
-import { getSceneNameById } from '@/config/scenes';
+import type { GameMessage, GameSessionSnapshot, PlayerOption } from '@/types/game';
 import { getFallbackSceneImageUrls, resolveCharacterImageUrl } from '@/utils/game';
 import { logger } from '@/utils/logger';
-import type { GameMessage, GameSessionSnapshot, PlayerOption } from '@/types/game';
-import type { GameStateBag } from './useGameState';
+import type { GameSessionInitActions } from './useGameState';
 
 export interface UseGameInitResult {
   loadGameSave: (threadId: string) => boolean;
@@ -29,7 +29,7 @@ interface StoryData {
   player_options?: PlayerOption[];
 }
 
-export function useGameInit(state: GameStateBag): UseGameInitResult {
+export function useGameInit(actions: GameSessionInitActions): UseGameInitResult {
   const feedback = useFeedback();
   const {
     state: flowState,
@@ -38,11 +38,10 @@ export function useGameInit(state: GameStateBag): UseGameInitResult {
     setActiveSession,
     setCurrentCharacterId,
   } = useGameFlow();
-  const { actions } = state;
 
   const loadCharacterImageFromAPI = useCallback(
     (characterId: string | null) => {
-      if (!characterId || characterId === 'undefined' || characterId === 'null' || String(characterId).trim() === '') {
+      if (!characterId || ['undefined', 'null', ''].includes(String(characterId).trim())) {
         return;
       }
 
@@ -110,10 +109,7 @@ export function useGameInit(state: GameStateBag): UseGameInitResult {
         actions.setCharacterImageUrl(null);
       }
     },
-    [
-      actions,
-      setCharacterImage,
-    ]
+    [actions, setCharacterImage]
   );
 
   const loadGameSave = useCallback(
@@ -145,6 +141,7 @@ export function useGameInit(state: GameStateBag): UseGameInitResult {
     ) => {
       try {
         const lastMessage = messages.length > 0 ? messages[messages.length - 1].content : undefined;
+
         gameStorage.setGameSave({
           threadId,
           characterId,
@@ -153,6 +150,7 @@ export function useGameInit(state: GameStateBag): UseGameInitResult {
           snapshot,
           timestamp: Date.now(),
         });
+
         gameStorage.setMainGameSave({
           threadId,
           characterId,
@@ -188,18 +186,14 @@ export function useGameInit(state: GameStateBag): UseGameInitResult {
       actions.setDialogue(storyData.character_dialogue);
       actions.setOptions(storyData.player_options);
     },
-    [
-      actions,
-      setCharacterImage,
-    ]
+    [actions, setCharacterImage]
   );
 
   const initializeGame = useCallback(async () => {
-    const characterData = flowState.characterDraft;
-    const restoreSession = flowState.runtimeSession.restoreSession;
-    const activeSession = flowState.runtimeSession.activeSession;
+    const characterDraft = flowState.characterDraft;
+    const { restoreSession, activeSession, currentCharacterId } = flowState.runtimeSession;
     const fallbackCharacterId =
-      flowState.runtimeSession.currentCharacterId || activeSession.characterId || characterData?.characterId || null;
+      currentCharacterId || activeSession.characterId || characterDraft?.characterId || null;
 
     if (restoreSession.threadId) {
       const restoreCharacterId = restoreSession.characterId || fallbackCharacterId || null;
@@ -230,8 +224,7 @@ export function useGameInit(state: GameStateBag): UseGameInitResult {
       actions.setCharacterId(activeSession.characterId);
       setCurrentCharacterId(activeSession.characterId);
 
-      const hasSavedMessages = loadGameSave(activeSession.threadId);
-      if (hasSavedMessages) {
+      if (loadGameSave(activeSession.threadId)) {
         return;
       }
 
@@ -243,10 +236,10 @@ export function useGameInit(state: GameStateBag): UseGameInitResult {
             activeSession.initialGameData.scene
           ) {
             applyStoryData(activeSession.initialGameData, activeSession.characterId);
-          } else if (characterData?.selectedScene?.id) {
+          } else if (characterDraft?.selectedScene?.id) {
             actions.enterScene(
-              characterData.selectedScene.id,
-              characterData.selectedScene.name ?? getSceneNameById(characterData.selectedScene.id),
+              characterDraft.selectedScene.id,
+              characterDraft.selectedScene.name ?? getSceneNameById(characterDraft.selectedScene.id),
               'reset'
             );
           }
@@ -275,19 +268,19 @@ export function useGameInit(state: GameStateBag): UseGameInitResult {
         } catch (error: unknown) {
           logger.error('failed to parse initial game data', error);
         }
-      } else if (characterData?.selectedScene?.id) {
+      } else if (characterDraft?.selectedScene?.id) {
         try {
           actions.enterScene(
-            characterData.selectedScene.id,
-            characterData.selectedScene.name ?? getSceneNameById(characterData.selectedScene.id),
+            characterDraft.selectedScene.id,
+            characterDraft.selectedScene.name ?? getSceneNameById(characterDraft.selectedScene.id),
             'reset'
           );
 
-          const imageUrl = resolveCharacterImageUrl(characterData);
+          const imageUrl = resolveCharacterImageUrl(characterDraft);
           const storyData = await initializeStory(
             activeSession.threadId,
             activeSession.characterId,
-            characterData.selectedScene.id,
+            characterDraft.selectedScene.id,
             imageUrl
           );
 
@@ -300,64 +293,70 @@ export function useGameInit(state: GameStateBag): UseGameInitResult {
       return;
     }
 
-    if (fallbackCharacterId) {
-      actions.setCharacterId(fallbackCharacterId);
-      setCurrentCharacterId(fallbackCharacterId);
+    if (!fallbackCharacterId) {
+      return;
+    }
 
-      try {
-        const initRes = await initGame({ game_mode: 'solo', character_id: fallbackCharacterId });
-        const newThreadId = initRes.thread_id;
+    actions.setCharacterId(fallbackCharacterId);
+    setCurrentCharacterId(fallbackCharacterId);
 
-        if (!newThreadId) {
-          feedback.error('Missing thread id, cannot initialize game.');
-          return;
-        }
+    try {
+      const initRes = await initGame({ game_mode: 'solo', character_id: fallbackCharacterId });
+      const newThreadId = initRes.thread_id;
 
-        actions.setThreadId(newThreadId);
-        setActiveSession({
-          threadId: newThreadId,
-          characterId: fallbackCharacterId,
-          initialGameData: null,
-        });
-
-        const imageUrl = resolveCharacterImageUrl(characterData);
-        const storyData = await initializeStory(newThreadId, fallbackCharacterId, undefined, imageUrl);
-
-        applyStoryData(storyData, fallbackCharacterId);
-
-        const initialMessages: GameMessage[] = [];
-        if (storyData.story_background) {
-          initialMessages.push({ role: 'assistant', content: storyData.story_background });
-        }
-        if (storyData.character_dialogue) {
-          initialMessages.push({ role: 'assistant', content: storyData.character_dialogue });
-        }
-        actions.replaceMessages(initialMessages);
-      } catch (error: unknown) {
-        logger.error('failed to initialize game', error);
-        feedback.error('Failed to initialize game.');
+      if (!newThreadId) {
+        feedback.error('Missing thread id, cannot initialize game.');
+        return;
       }
+
+      actions.setThreadId(newThreadId);
+      setActiveSession({
+        threadId: newThreadId,
+        characterId: fallbackCharacterId,
+        initialGameData: null,
+      });
+
+      const imageUrl = resolveCharacterImageUrl(characterDraft);
+      const storyData = await initializeStory(newThreadId, fallbackCharacterId, undefined, imageUrl);
+
+      applyStoryData(storyData, fallbackCharacterId);
+
+      const initialMessages: GameMessage[] = [];
+      if (storyData.story_background) {
+        initialMessages.push({ role: 'assistant', content: storyData.story_background });
+      }
+      if (storyData.character_dialogue) {
+        initialMessages.push({ role: 'assistant', content: storyData.character_dialogue });
+      }
+      actions.replaceMessages(initialMessages);
+    } catch (error: unknown) {
+      logger.error('failed to initialize game', error);
+      feedback.error('Failed to initialize game.');
     }
   }, [
+    actions,
     applyStoryData,
     clearInitialGameData,
     clearRestoreSession,
-    flowState,
-    loadGameSave,
     feedback,
+    flowState.characterDraft,
+    flowState.runtimeSession,
+    loadGameSave,
     setActiveSession,
     setCharacterImage,
     setCurrentCharacterId,
-    actions,
   ]);
 
   const initializedRef = useRef(false);
+
   useEffect(() => {
-    if (initializedRef.current) return;
+    if (initializedRef.current) {
+      return;
+    }
+
     initializedRef.current = true;
     void initializeGame();
   }, [initializeGame]);
 
   return { loadGameSave, saveGameProgress, setCharacterImage };
 }
-

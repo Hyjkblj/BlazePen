@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '@/config/routes';
 import { useFeedback, useGameFlow } from '@/contexts';
+import { getStaticAssetUrl } from '@/services/assetUrl';
 import { getCharacterImages, removeCharacterBackground } from '@/services/characterApi';
 import { checkServerHealth } from '@/services/healthApi';
 import { getPresetVoices, getVoicePreviewAudio, setVoiceConfig } from '@/services/ttsApi';
@@ -53,9 +54,6 @@ const isValidStoredId = (value: unknown): value is string | number =>
 
 const delay = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
-const resolvePreviewAudioUrl = (audioUrl: string) =>
-  audioUrl.startsWith('http') ? audioUrl : `${window.location.origin}${audioUrl}`;
-
 const hasDeletedPortraitImages = (imageUrls: string[]) =>
   imageUrls.some((url) => Boolean(url && deletedPortraitPattern.test(url)));
 
@@ -76,6 +74,21 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
   );
   const [voicesLoading, setVoicesLoading] = useState(false);
   const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const previewRequestIdRef = useRef(0);
+
+  const stopPreviewAudio = useCallback(() => {
+    const activeAudio = previewAudioRef.current;
+    if (!activeAudio) {
+      return;
+    }
+
+    activeAudio.pause();
+    activeAudio.currentTime = 0;
+    activeAudio.onended = null;
+    activeAudio.onerror = null;
+    previewAudioRef.current = null;
+  }, []);
 
   const loadCharacters = useCallback(async () => {
     setLoading(true);
@@ -86,7 +99,7 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
       const createdCharacterId = state.createdCharacterId || characterData?.characterId;
 
       if (!characterData) {
-        feedback.warning('未找到角色数据，请先创建角色');
+        feedback.warning('未找到角色数据，请先创建角色。');
         window.setTimeout(() => navigate(ROUTES.CHARACTER_SETTING), 1500);
         return;
       }
@@ -94,7 +107,7 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
       if (!isValidStoredId(createdCharacterId)) {
         setCharacterDraft(null);
         setCreatedCharacterId(null);
-        feedback.error('角色数据无效，请重新创建角色');
+        feedback.error('角色数据无效，请重新创建角色。');
         return;
       }
 
@@ -117,7 +130,7 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
       const characterOptions: CharacterOption[] = [
         {
           id: normalizedCharacterId,
-          name: characterData.name || '角色1',
+          name: characterData.name || '角色 1',
           imageUrl: characterData.transparentImageUrl || characterData.imageUrl,
           imageUrls,
           gender: characterData.gender === 'male' ? 'male' : 'female',
@@ -151,7 +164,7 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
       setCharacters(characterOptions);
     } catch (error: unknown) {
       logger.error('Failed to load characters:', error);
-      feedback.error('加载角色失败，请稍后重试');
+      feedback.error('加载角色失败，请稍后重试。');
     } finally {
       setLoading(false);
     }
@@ -162,26 +175,41 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
   }, [loadCharacters]);
 
   useEffect(() => {
-    if (step !== 'voice') return;
+    return () => {
+      previewRequestIdRef.current += 1;
+      stopPreviewAudio();
+    };
+  }, [stopPreviewAudio]);
+
+  useEffect(() => {
+    if (step !== 'voice') {
+      return;
+    }
 
     let cancelled = false;
     setVoicesLoading(true);
 
     void getPresetVoices()
       .then((voices) => {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
+
         setPresetVoices(voices);
         if (voices.length === 0) {
-          feedback.warning('未获取到音色列表，请检查后端服务');
+          feedback.warning('未获取到音色列表，请检查后端服务。');
         }
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
+
         const err = error as { response?: { status?: number } };
         if (err.response?.status === 503) {
-          feedback.warning('TTS 服务暂不可用，但您仍可选择音色');
+          feedback.warning('TTS 服务暂不可用，但您仍可选择音色。');
         } else {
-          feedback.error('获取音色列表失败，请检查后端服务');
+          feedback.error('获取音色列表失败，请检查后端服务。');
         }
         setPresetVoices([]);
       })
@@ -205,7 +233,7 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
 
     const selectedImageUrl = character.imageUrls?.[imageIndex];
     if (!selectedImageUrl && !character.imageUrl) {
-      feedback.warning('图片数据异常，请刷新页面重试');
+      feedback.warning('图片数据异常，请刷新页面重试。');
       return;
     }
 
@@ -234,44 +262,74 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
   };
 
   const previewVoice = async (voice: PresetVoiceItem) => {
-    if (previewingVoiceId) return;
+    previewRequestIdRef.current += 1;
+    const requestId = previewRequestIdRef.current;
 
+    stopPreviewAudio();
     setPreviewingVoiceId(voice.id);
 
     try {
       const result = await getVoicePreviewAudio(voice.id, voice.preview_text || undefined);
-      if (!result?.audio_url) {
-        feedback.warning('试听功能暂不可用，但您仍可选择此音色');
+      if (previewRequestIdRef.current !== requestId) {
         return;
       }
 
-      const audio = new Audio(resolvePreviewAudioUrl(result.audio_url));
-      audio.onended = () => setPreviewingVoiceId(null);
+      if (!result?.audio_url) {
+        feedback.warning('试听功能暂不可用，但您仍可选择此音色。');
+        return;
+      }
+
+      const audio = new Audio(getStaticAssetUrl(result.audio_url));
+      previewAudioRef.current = audio;
+
+      audio.onended = () => {
+        if (previewAudioRef.current === audio) {
+          previewAudioRef.current = null;
+        }
+        if (previewRequestIdRef.current === requestId) {
+          setPreviewingVoiceId(null);
+        }
+      };
+
       audio.onerror = () => {
-        setPreviewingVoiceId(null);
-        feedback.warning('试听音频播放失败');
+        if (previewAudioRef.current === audio) {
+          previewAudioRef.current = null;
+        }
+        if (previewRequestIdRef.current === requestId) {
+          setPreviewingVoiceId(null);
+        }
+        feedback.warning('试听音频播放失败。');
       };
 
       try {
         await audio.play();
       } catch {
-        setPreviewingVoiceId(null);
-        feedback.warning('试听音频播放失败');
+        if (previewAudioRef.current === audio) {
+          previewAudioRef.current = null;
+        }
+        if (previewRequestIdRef.current === requestId) {
+          setPreviewingVoiceId(null);
+        }
+        feedback.warning('试听音频播放失败。');
       }
     } catch (error: unknown) {
       const err = error as {
         response?: { status?: number; data?: { message?: string } };
         message?: string;
       };
-      const errorMsg = err.response?.data?.message || err.message || '试听失败';
+      const errorMessage = err.response?.data?.message || err.message || '试听失败';
 
       if (err.response?.status === 503) {
-        feedback.warning(`${errorMsg}。您仍可选择此音色，游戏中使用时请确保 TTS 服务已启用。`);
+        feedback.warning(
+          `${errorMessage}。您仍可选择此音色，游戏中使用时请确认 TTS 服务已启用。`
+        );
       } else {
-        feedback.warning(`试听失败：${errorMsg}`);
+        feedback.warning(`试听失败：${errorMessage}`);
       }
     } finally {
-      setPreviewingVoiceId(null);
+      if (previewRequestIdRef.current === requestId && !previewAudioRef.current) {
+        setPreviewingVoiceId(null);
+      }
     }
   };
 
@@ -281,7 +339,7 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
     const characterData = state.characterDraft;
 
     if (!character || !characterId || !characterData) {
-      feedback.error('角色数据异常');
+      feedback.error('角色数据异常。');
       return;
     }
 
@@ -294,7 +352,7 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
     try {
       const isHealthy = await checkServerHealth();
       if (!isHealthy) {
-        feedback.error('无法连接到服务器，请检查后端服务是否运行');
+        feedback.error('无法连接到服务器，请检查后端服务是否正在运行。');
         return;
       }
 
@@ -360,19 +418,22 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
         navigate(ROUTES.FIRST_MEETING);
       } catch (error: unknown) {
         logger.error('Failed to confirm character selection:', error);
-        feedback.warning('选择图片失败，将使用原图继续');
+        feedback.warning('选择图片失败，将使用原图继续。');
         await delay(500);
         navigate(ROUTES.FIRST_MEETING);
       }
     } catch (error: unknown) {
       logger.error('Failed to submit character selection:', error);
-      feedback.error('选择角色失败，请稍后重试');
+      feedback.error('选择角色失败，请稍后重试。');
     } finally {
       setLoading(false);
     }
   };
 
   const backToImageStep = () => {
+    stopPreviewAudio();
+    previewRequestIdRef.current += 1;
+    setPreviewingVoiceId(null);
     setStep('image');
   };
 

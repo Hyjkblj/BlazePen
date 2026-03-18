@@ -45,6 +45,19 @@ export interface GameSessionActions {
   scrollToBottom: () => void;
 }
 
+export type GameSessionInitActions = Pick<
+  GameSessionActions,
+  | 'replaceMessages'
+  | 'setThreadId'
+  | 'setCharacterId'
+  | 'setCharacterImageUrl'
+  | 'setDialogue'
+  | 'setOptions'
+  | 'enterScene'
+  | 'applyCompositeScene'
+  | 'applySceneVisual'
+>;
+
 export interface GameStateBag {
   state: GameSessionState;
   actions: GameSessionActions;

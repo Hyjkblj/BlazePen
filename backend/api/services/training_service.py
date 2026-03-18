@@ -20,6 +20,7 @@ from training.round_flow_policy import TrainingRoundFlowPolicy
 from training.runtime_events import RuntimeConsequenceEvent
 from training.runtime_state import GameRuntimeFlags, GameRuntimeState
 from training.scenario_policy import ScenarioPolicy
+from training.session_snapshot_policy import SessionScenarioSnapshotPolicy
 from training.training_outputs import (
     TrainingAuditEventOutput,
     TrainingConsequenceEventOutput,
@@ -97,6 +98,7 @@ class TrainingService:
         telemetry_policy: TrainingTelemetryPolicy | None = None,
         reporting_policy: TrainingReportingPolicy | None = None,
         consequence_engine: ConsequenceEngine | None = None,
+        session_snapshot_policy: SessionScenarioSnapshotPolicy | None = None,
         runtime_config: Any = None,
     ):
         self.runtime_config = runtime_config or TRAINING_RUNTIME_CONFIG
@@ -135,6 +137,11 @@ class TrainingService:
             scenario_version=self.runtime_config.scenario.version,
             runtime_config=self.runtime_config,
         )
+        # 会话快照策略独立抽离，便于后续继续演进老会话回填、快照诊断和分支冻结逻辑。
+        self.session_snapshot_policy = session_snapshot_policy or SessionScenarioSnapshotPolicy(
+            scenario_policy=self.scenario_policy,
+            scenario_repository=self.scenario_repository,
+        )
         self.flow_policy = flow_policy or TrainingRoundFlowPolicy(
             scenario_policy=self.scenario_policy,
             recommendation_policy=self.recommendation_policy,
@@ -154,8 +161,11 @@ class TrainingService:
 
         with self._lock:
             # 在会话创建时同时冻结主线快照和可达分支目录，避免后续发版导致老会话内容漂移。
-            frozen_payload_sequence = self._freeze_scenario_payload_sequence(self.scenario_policy.get_default_sequence())
-            frozen_payload_catalog = self._freeze_scenario_payload_catalog(frozen_payload_sequence)
+            snapshot_bundle = self.session_snapshot_policy.freeze_session_snapshots(
+                self.scenario_policy.get_default_sequence()
+            )
+            frozen_payload_sequence = snapshot_bundle.scenario_payload_sequence
+            frozen_payload_catalog = snapshot_bundle.scenario_payload_catalog
             sequence = self.scenario_repository.build_summary_sequence(frozen_payload_sequence)
             initial_phase_snapshot = self.phase_policy.resolve_round_phase(
                 training_mode=normalized_mode,
@@ -245,11 +255,13 @@ class TrainingService:
                 ending=ending.report_payload if ending else None,
             ).to_dict()
 
-        scenario_payload_sequence = self._resolve_session_scenario_payload_sequence(session)
-        scenario_payload_catalog = self._resolve_session_scenario_payload_catalog(
-            session,
-            scenario_payload_sequence=scenario_payload_sequence,
+        snapshot_bundle = self.session_snapshot_policy.ensure_session_snapshots(
+            session=session,
+            training_store=self.training_store,
         )
+        session = snapshot_bundle.session or session
+        scenario_payload_sequence = snapshot_bundle.scenario_payload_sequence
+        scenario_payload_catalog = snapshot_bundle.scenario_payload_catalog
         session_sequence = self._resolve_session_scenario_sequence(session)
         if not session_sequence:
             raise ValueError("scenario sequence is empty")
@@ -299,11 +311,13 @@ class TrainingService:
         if session.status == "completed":
             raise ValueError("training session already completed")
 
-        scenario_payload_sequence = self._resolve_session_scenario_payload_sequence(session)
-        scenario_payload_catalog = self._resolve_session_scenario_payload_catalog(
-            session,
-            scenario_payload_sequence=scenario_payload_sequence,
+        snapshot_bundle = self.session_snapshot_policy.ensure_session_snapshots(
+            session=session,
+            training_store=self.training_store,
         )
+        session = snapshot_bundle.session or session
+        scenario_payload_sequence = snapshot_bundle.scenario_payload_sequence
+        scenario_payload_catalog = snapshot_bundle.scenario_payload_catalog
         session_sequence = self._resolve_session_scenario_sequence(session)
         training_mode = self._normalize_session_training_mode(session)
         completed_scenario_ids = self._get_completed_scenario_ids(session_id)
@@ -354,7 +368,7 @@ class TrainingService:
             training_mode=training_mode,
             decision_context=decision_context,
         )
-        selected_scenario_payload = self._resolve_session_scenario_payload_by_id(
+        selected_scenario_payload = self.session_snapshot_policy.resolve_scenario_payload_by_id(
             scenario_payload_sequence=scenario_payload_sequence,
             scenario_payload_catalog=scenario_payload_catalog,
             scenario_id=scenario_id,
@@ -531,11 +545,13 @@ class TrainingService:
         rounds = self.training_store.get_training_rounds(session_id)
         evaluations = self.training_store.get_round_evaluations_by_session(session_id)
         kt_observations = self.training_store.get_kt_observations(session_id)
-        scenario_payload_sequence = self._resolve_session_scenario_payload_sequence(session)
-        scenario_payload_catalog = self._resolve_session_scenario_payload_catalog(
-            session,
-            scenario_payload_sequence=scenario_payload_sequence,
+        snapshot_bundle = self.session_snapshot_policy.ensure_session_snapshots(
+            session=session,
+            training_store=self.training_store,
         )
+        session = snapshot_bundle.session or session
+        scenario_payload_sequence = snapshot_bundle.scenario_payload_sequence
+        scenario_payload_catalog = snapshot_bundle.scenario_payload_catalog
         scenario_title_map = self._build_report_scenario_title_map(scenario_payload_catalog)
         eval_map = {item.round_id: item for item in evaluations}
         kt_observation_map = {item.round_no: item for item in kt_observations}
@@ -763,48 +779,8 @@ class TrainingService:
             )
         return snapshots
 
-    def _build_session_meta(
-        self,
-        session_sequence: List[Dict[str, str]],
-        scenario_payload_sequence: List[Dict[str, Any]] | None = None,
-        scenario_payload_catalog: List[Dict[str, Any]] | None = None,
-        player_profile: Dict[str, Any] | None = None,
-    ) -> Dict[str, Any]:
-        # 保留兼容包装方法，避免已有调用方受影响。
-        return self.scenario_policy.build_session_meta(
-            session_sequence,
-            scenario_payload_sequence=scenario_payload_sequence,
-            scenario_payload_catalog=scenario_payload_catalog,
-            player_profile=player_profile,
-        )
-
     def _resolve_session_scenario_sequence(self, session: Any) -> List[Dict[str, str]]:
         return self.scenario_policy.resolve_session_sequence(session)
-
-    def _resolve_session_scenario_payload_sequence(self, session: Any) -> List[Dict[str, Any]]:
-        """优先读取会话冻结的完整场景快照，缺失时按摘要序列动态补齐。"""
-        payload_sequence = self.scenario_policy.resolve_session_payload_sequence(session)
-        if payload_sequence:
-            return payload_sequence
-
-        session_sequence = self._resolve_session_scenario_sequence(session)
-        return self._freeze_scenario_payload_sequence(session_sequence)
-
-    def _resolve_session_scenario_payload_catalog(
-        self,
-        session: Any,
-        scenario_payload_sequence: List[Dict[str, Any]] | None = None,
-    ) -> List[Dict[str, Any]]:
-        """优先读取会话冻结的场景目录，缺失时兼容回退为动态补齐。"""
-        payload_catalog = self.scenario_policy.resolve_session_payload_catalog(session)
-        if payload_catalog:
-            return payload_catalog
-
-        if scenario_payload_sequence:
-            return self._freeze_scenario_payload_catalog(scenario_payload_sequence)
-
-        session_sequence = self._resolve_session_scenario_sequence(session)
-        return self._freeze_scenario_payload_catalog(session_sequence)
 
     def _resolve_session_player_profile(
         self,
@@ -874,14 +850,6 @@ class TrainingService:
                 else self._resolve_session_runtime_flags(session)
             ),
         )
-
-    def _freeze_scenario_payload_sequence(self, scenario_sequence: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """把场景摘要序列补齐为完整场景快照。"""
-        return self.scenario_repository.freeze_sequence(scenario_sequence)
-
-    def _freeze_scenario_payload_catalog(self, scenario_sequence: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """把主线和所有可达分支冻结为稳定目录。"""
-        return self.scenario_repository.freeze_related_catalog(scenario_sequence)
 
     def _get_session_or_raise(self, session_id: str) -> Any:
         session = self.training_store.get_training_session(session_id)
@@ -1367,29 +1335,6 @@ class TrainingService:
             if str(payload.get("id") or "").strip() == str(scenario_id or "").strip():
                 return dict(payload)
         return None
-
-    def _resolve_session_scenario_payload_by_id(
-        self,
-        scenario_payload_sequence: List[Dict[str, Any]],
-        scenario_payload_catalog: List[Dict[str, Any]] | None,
-        scenario_id: str,
-    ) -> Dict[str, Any] | None:
-        """优先从会话冻结快照读取场景，必要时才兼容回退到场景库。
-
-        这样分支场景即使不在默认主线序列里，也能正常参与评估、观测和报告。
-        """
-        scenario_payload = self._find_scenario_payload_by_id(scenario_payload_sequence, scenario_id)
-        if scenario_payload is not None:
-            return scenario_payload
-
-        scenario_payload = self._find_scenario_payload_by_id(scenario_payload_catalog or [], scenario_id)
-        if scenario_payload is not None:
-            return scenario_payload
-
-        if scenario_payload_catalog:
-            return None
-        repository_payload = self.scenario_repository.get_scenario(scenario_id)
-        return dict(repository_payload) if repository_payload is not None else None
 
     def _extract_recommendation_payload(
         self,

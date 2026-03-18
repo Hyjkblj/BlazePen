@@ -27,7 +27,8 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
   const feedback = useFeedback();
   const { state: flowState, setActiveSession } = useGameFlow();
   const gameState = useGameState();
-  const { saveGameProgress, setCharacterImage } = useGameInit(gameState);
+  const { actions } = gameState;
+  const { saveGameProgress, setCharacterImage } = useGameInit(actions);
 
   const {
     actNumber,
@@ -45,7 +46,6 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
     messages,
     threadId,
   } = gameState.state;
-  const { actions } = gameState;
 
   useGameTts(currentDialogue, characterId);
 

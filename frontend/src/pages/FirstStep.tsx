@@ -1,56 +1,15 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import backgroundImage from '@/assets/images/firstbackground.jpg';
 import ModalDialog from '@/components/ModalDialog';
-import {
-  DocumentIcon,
-  LogoutIcon,
-  PlayIcon,
-  SettingsIcon,
-} from '@/components/icons';
+import { DocumentIcon, LogoutIcon, PlayIcon, SettingsIcon } from '@/components/icons';
 import LoadingScreen from '@/components/loading';
-import { ROUTES } from '@/config/routes';
-import { useFeedback, useGameFlow } from '@/contexts';
-import { checkServerHealth } from '@/services/healthApi';
-import * as gameStorage from '@/storage/gameStorage';
+import { useFirstStepFlow } from '@/flows/useFirstStepFlow';
 import './FirstStep.css';
 
 function FirstStep() {
-  const navigate = useNavigate();
-  const feedback = useFeedback();
-  const { setRestoreSession } = useGameFlow();
-  const [loading, setLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState('正在连接服务器...');
+  const { loading, loadingMessage, continueGame, startNewStory, exitToHome } = useFirstStepFlow();
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [showExitDialog, setShowExitDialog] = useState(false);
-
-  const handleContinueGame = async () => {
-    const saveData = gameStorage.getMainGameSave();
-    if (!saveData?.threadId) {
-      feedback.warning('没有找到存档，请先开始新的故事。');
-      return;
-    }
-
-    setLoading(true);
-    setLoadingMessage('正在连接服务器...');
-
-    try {
-      const isHealthy = await checkServerHealth();
-      if (!isHealthy) {
-        feedback.error('无法连接到服务器，请检查后端服务是否正在运行。');
-        return;
-      }
-
-      setRestoreSession(saveData.threadId, saveData.characterId ?? null);
-      setLoadingMessage('正在加载存档...');
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      navigate(ROUTES.GAME);
-    } catch {
-      feedback.error('连接服务器失败，请稍后重试。');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return <LoadingScreen message={loadingMessage} />;
@@ -91,7 +50,9 @@ function FirstStep() {
         <button
           type="button"
           className="first-step-button first-step-button-primary"
-          onClick={handleContinueGame}
+          onClick={() => {
+            void continueGame();
+          }}
         >
           <span className="first-step-button-icon" aria-hidden="true">
             <DocumentIcon />
@@ -102,7 +63,7 @@ function FirstStep() {
         <button
           type="button"
           className="first-step-button first-step-button-primary"
-          onClick={() => navigate(ROUTES.CHARACTER_SETTING)}
+          onClick={startNewStory}
         >
           <span className="first-step-button-icon" aria-hidden="true">
             <PlayIcon />
@@ -185,7 +146,7 @@ function FirstStep() {
               className="first-step-dialog-button first-step-dialog-button-danger"
               onClick={() => {
                 setShowExitDialog(false);
-                navigate(ROUTES.HOME);
+                exitToHome();
               }}
             >
               退出

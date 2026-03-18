@@ -3,10 +3,12 @@ import path from 'path';
 import { existsSync } from 'fs';
 import { spawn } from 'child_process';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { buildBackendRedirectUrl, isAllowedWindowNavigation } from './navigationPolicy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+const FRONTEND_DEV_ORIGIN = 'http://localhost:3000';
 const DEFAULT_LOCAL_BACKEND_ORIGIN = 'http://localhost:8000';
 const DEFAULT_REMOTE_BACKEND_ORIGIN = 'http://8.166.138.219';
 const BACKEND_ORIGIN = (
@@ -16,41 +18,19 @@ const BACKEND_ORIGIN = (
 const BACKEND_HEALTH_URL = `${BACKEND_ORIGIN}/health`;
 const BACKEND_BOOT_TIMEOUT_MS = 120000;
 const ASPECT_RATIO = 16 / 9;
+
 let backendBootPromise = null;
 let redirectHookInstalled = false;
 
-function normalizeFilePathname(pathname) {
-  // On Windows, file:///D:/health becomes /D:/health. Strip drive letter for route matching.
-  return pathname.replace(/^\/[A-Za-z]:/, '');
-}
-
-function resolveBackendProxyPath(requestUrl) {
-  try {
-    const url = new URL(requestUrl);
-    if (url.protocol !== 'file:') return null;
-
-    const pathname = normalizeFilePathname(url.pathname);
-    const isApi = pathname === '/api' || pathname.startsWith('/api/');
-    const isStatic = pathname === '/static' || pathname.startsWith('/static/');
-    const isHealth = pathname === '/health';
-
-    if (isApi || isStatic || isHealth) {
-      return `${pathname}${url.search}`;
-    }
-  } catch {
-    // Ignore malformed URL and fall through to no-redirect.
-  }
-  return null;
-}
-
-/** 在给定最大宽高内计算最大的 16:9 尺寸 */
 function get16by9Size(maxWidth, maxHeight) {
   let width = maxWidth;
   let height = Math.round(width / ASPECT_RATIO);
+
   if (height > maxHeight) {
     height = maxHeight;
     width = Math.round(height * ASPECT_RATIO);
   }
+
   return { width, height };
 }
 
@@ -63,6 +43,7 @@ async function checkBackendHealth() {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
     const response = await fetch(BACKEND_HEALTH_URL, { method: 'GET', signal: controller.signal });
+
     clearTimeout(timer);
     return response.ok;
   } catch {
@@ -72,17 +53,27 @@ async function checkBackendHealth() {
 
 async function waitBackendHealthy(timeoutMs) {
   const deadline = Date.now() + timeoutMs;
+
   while (Date.now() < deadline) {
-    if (await checkBackendHealth()) return true;
+    if (await checkBackendHealth()) {
+      return true;
+    }
+
     await sleep(2000);
   }
+
   return false;
 }
 
 function shouldAutoStartBackend() {
-  if (process.platform !== 'win32') return false;
-  if (process.env.NO_END_STORY_DISABLE_AUTO_BACKEND === '1') return false;
-  if (app.isPackaged) return process.env.NO_END_STORY_AUTO_BACKEND === '1';
+  if (process.platform !== 'win32') {
+    return false;
+  }
+
+  if (process.env.NO_END_STORY_DISABLE_AUTO_BACKEND === '1') {
+    return false;
+  }
+
   return process.env.NO_END_STORY_AUTO_BACKEND === '1';
 }
 
@@ -96,8 +87,7 @@ function resolveStartScriptPath() {
 
 function runStartScript(scriptPath) {
   return new Promise((resolve, reject) => {
-    const child = spawn(scriptPath, [], {
-      shell: true,
+    const child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${scriptPath}"`], {
       windowsHide: true,
       cwd: path.dirname(scriptPath),
     });
@@ -106,7 +96,9 @@ function runStartScript(scriptPath) {
 
     child.stdout?.on('data', (data) => {
       const text = String(data).trim();
-      if (text) console.log(`[backend-stack] ${text}`);
+      if (text) {
+        console.log(`[backend-stack] ${text}`);
+      }
     });
 
     child.stderr?.on('data', (data) => {
@@ -121,17 +113,26 @@ function runStartScript(scriptPath) {
     child.on('close', (code) => {
       if (code === 0) {
         resolve();
-      } else {
-        reject(new Error(`start_stack.bat exited with code ${code}. ${stderr}`.trim()));
+        return;
       }
+
+      reject(new Error(`start_stack.bat exited with code ${code}. ${stderr}`.trim()));
     });
   });
 }
 
 async function ensureBackendReady() {
-  if (await checkBackendHealth()) return;
-  if (!shouldAutoStartBackend()) return;
-  if (backendBootPromise) return backendBootPromise;
+  if (await checkBackendHealth()) {
+    return;
+  }
+
+  if (!shouldAutoStartBackend()) {
+    return;
+  }
+
+  if (backendBootPromise) {
+    return backendBootPromise;
+  }
 
   backendBootPromise = (async () => {
     const scriptPath = resolveStartScriptPath();
@@ -155,14 +156,14 @@ async function ensureBackendReady() {
 }
 
 function createWindow() {
-  // 生产环境：从 file:// 加载时，将 /api、/static、/health 请求转发到本地后端
   if (!isDev && !redirectHookInstalled) {
     session.defaultSession.webRequest.onBeforeRequest({ urls: ['file://*'] }, (details, callback) => {
-      const proxyPath = resolveBackendProxyPath(details.url);
-      if (proxyPath) {
-        callback({ redirectURL: `${BACKEND_ORIGIN}${proxyPath}` });
+      const redirectUrl = buildBackendRedirectUrl(details.url, BACKEND_ORIGIN);
+      if (redirectUrl) {
+        callback({ redirectURL: redirectUrl });
         return;
       }
+
       callback({});
     });
     redirectHookInstalled = true;
@@ -187,29 +188,27 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      enableRemoteModule: false,
     },
-    icon: path.join(__dirname, '../build/icon.png'), // 如果有图标的话
+    icon: path.join(__dirname, '../build/icon.png'),
   });
 
-  // 开发环境加载本地服务器，生产环境加载打包文件
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event, navigationUrl) => {
+    if (!isAllowedWindowNavigation(navigationUrl, { isDev, frontendDevOrigin: FRONTEND_DEV_ORIGIN })) {
+      event.preventDefault();
+    }
+  });
+
   if (isDev) {
-    win.loadURL('http://localhost:3000');
+    win.loadURL(FRONTEND_DEV_ORIGIN);
   } else {
-    // 生产环境加载打包后的文件
     const distIndexPath = path.join(__dirname, '../dist/index.html');
     const distIndexUrl = pathToFileURL(distIndexPath);
     distIndexUrl.hash = '/';
     win.loadURL(distIndexUrl.toString());
   }
-
-  // 窗口关闭事件
-  win.on('closed', () => {
-    // 在macOS上，即使所有窗口关闭，应用通常也会继续运行
-  });
 }
 
-// 当Electron完成初始化并准备创建浏览器窗口时调用
 app.whenReady().then(async () => {
   try {
     await ensureBackendReady();
@@ -219,7 +218,6 @@ app.whenReady().then(async () => {
 
   createWindow();
 
-  // macOS特定：当没有窗口打开时，点击dock图标会重新创建窗口
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -227,16 +225,12 @@ app.whenReady().then(async () => {
   });
 });
 
-// 所有窗口关闭时退出应用（macOS除外）
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// 安全：防止新窗口打开
 app.on('web-contents-created', (event, contents) => {
-  contents.on('new-window', (event, navigationUrl) => {
-    event.preventDefault();
-  });
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
 });

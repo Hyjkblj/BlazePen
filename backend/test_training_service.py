@@ -15,6 +15,7 @@ from training.config_loader import FlowForcedRoundConfig, ScenarioItemConfig, lo
 from training.exceptions import DuplicateRoundSubmissionError
 from training.scenario_policy import ScenarioPolicy
 from training.scenario_repository import ScenarioRepository
+from training.session_snapshot_policy import SessionScenarioSnapshotPolicy
 from training.training_store import DatabaseTrainingStore
 
 
@@ -158,6 +159,32 @@ class _FailOnScenarioReadRepository:
 
     def get_scenario(self, scenario_id):
         raise AssertionError(f"unexpected repository fallback: {scenario_id}")
+
+
+class _SpySessionSnapshotPolicy:
+    """会话快照策略桩：验证服务层确实通过可注入策略管理场景快照。"""
+
+    def __init__(self, delegate):
+        self.delegate = delegate
+        self.freeze_call_count = 0
+        self.ensure_call_count = 0
+        self.resolve_call_count = 0
+
+    def freeze_session_snapshots(self, session_sequence):
+        self.freeze_call_count += 1
+        return self.delegate.freeze_session_snapshots(session_sequence)
+
+    def ensure_session_snapshots(self, *, session, training_store):
+        self.ensure_call_count += 1
+        return self.delegate.ensure_session_snapshots(session=session, training_store=training_store)
+
+    def resolve_scenario_payload_by_id(self, *, scenario_id, scenario_payload_sequence, scenario_payload_catalog=None):
+        self.resolve_call_count += 1
+        return self.delegate.resolve_scenario_payload_by_id(
+            scenario_id=scenario_id,
+            scenario_payload_sequence=scenario_payload_sequence,
+            scenario_payload_catalog=scenario_payload_catalog,
+        )
 
 
 class _SpyReportingPolicy:
@@ -773,6 +800,37 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertEqual(report["ability_radar"][0]["code"], "K1")
         self.assertEqual(diagnostics["summary"]["last_event_type"], "spy_event")
 
+    def test_service_should_delegate_session_snapshot_lifecycle_to_injected_policy(self):
+        """注入自定义快照策略后，服务层应通过策略完成冻结、回填与场景解析。"""
+        repository = ScenarioRepository()
+        scenario_policy = ScenarioPolicy(default_sequence=TrainingService._SCENARIO_SEQUENCE)
+        spy_snapshot_policy = _SpySessionSnapshotPolicy(
+            SessionScenarioSnapshotPolicy(
+                scenario_policy=scenario_policy,
+                scenario_repository=repository,
+            )
+        )
+        service = TrainingService(
+            db_manager=_FakeDbManager(),
+            evaluator=self.evaluator,
+            scenario_policy=scenario_policy,
+            scenario_repository=repository,
+            session_snapshot_policy=spy_snapshot_policy,
+        )
+
+        init_result = service.init_training(user_id="u3-snapshot-spy")
+        session_id = init_result["session_id"]
+        service.get_next_scenario(session_id)
+        service.submit_round(
+            session_id=session_id,
+            scenario_id="S1",
+            user_input="hello",
+        )
+
+        self.assertGreaterEqual(spy_snapshot_policy.freeze_call_count, 1)
+        self.assertGreaterEqual(spy_snapshot_policy.ensure_call_count, 2)
+        self.assertGreaterEqual(spy_snapshot_policy.resolve_call_count, 1)
+
     def test_report_round_snapshots_should_fallback_to_evaluation_risk_flags_when_observation_missing(self):
         """历史数据缺少 KT 观测时，报告快照仍应从评估结果兜底补齐风险字段。"""
         spy_policy = _SpyReportingPolicy()
@@ -855,6 +913,34 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertEqual(result["scenario"]["id"], init_result["next_scenario"]["id"])
         self.assertEqual(result["scenario"]["briefing"], init_result["next_scenario"]["briefing"])
         self.assertNotEqual(result["scenario"]["briefing"], "这是变更后的最新场景正文")
+
+    def test_get_next_scenario_should_backfill_missing_scenario_payload_catalog(self):
+        """历史会话缺少分支目录时，应在首次读取时惰性补齐并回写 session_meta。"""
+        init_result = self.service.init_training(user_id="u10-backfill-catalog")
+        session_id = init_result["session_id"]
+        session_row = self.service.db_manager.sessions[session_id]
+        session_row.session_meta.pop("scenario_payload_catalog", None)
+
+        result = self.service.get_next_scenario(session_id)
+        catalog_ids = [item["id"] for item in session_row.session_meta["scenario_payload_catalog"]]
+
+        self.assertEqual(result["scenario"]["id"], init_result["next_scenario"]["id"])
+        self.assertIn("S2B", catalog_ids)
+        self.assertIn("S3R", catalog_ids)
+
+    def test_get_next_scenario_should_backfill_missing_payload_sequence_and_catalog(self):
+        """更老的历史会话只有摘要序列时，也应一次性补齐完整快照与分支目录。"""
+        init_result = self.service.init_training(user_id="u10-backfill-all")
+        session_id = init_result["session_id"]
+        session_row = self.service.db_manager.sessions[session_id]
+        session_row.session_meta.pop("scenario_payload_sequence", None)
+        session_row.session_meta.pop("scenario_payload_catalog", None)
+
+        result = self.service.get_next_scenario(session_id)
+
+        self.assertEqual(result["scenario"]["id"], init_result["next_scenario"]["id"])
+        self.assertTrue(session_row.session_meta["scenario_payload_sequence"])
+        self.assertTrue(session_row.session_meta["scenario_payload_catalog"])
 
     def test_get_next_scenario_should_return_normalized_state_shape(self):
         """读取下一场景时，应补齐老会话可能缺失的状态字段。"""

@@ -1,32 +1,9 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import backgroundImage from '@/assets/images/home-background.jpg';
 import LoadingScreen from '@/components/loading';
-import { checkServerHealth } from '@/services/healthApi';
-import { ROUTES } from '@/config/routes';
+import { useHomeFlow } from '@/flows/useHomeFlow';
 
 function Home() {
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const handleBegin = async () => {
-    setErrorMessage(null);
-    setLoading(true);
-
-    try {
-      const isHealthy = await checkServerHealth();
-      if (isHealthy) {
-        navigate(ROUTES.FIRST_STEP);
-      } else {
-        setErrorMessage('无法连接到服务器，请检查后端服务是否运行。');
-      }
-    } catch {
-      setErrorMessage('连接服务器失败，请稍后重试。');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { loading, errorMessage, beginStory } = useHomeFlow();
 
   if (loading) {
     return <LoadingScreen message="正在连接服务器..." />;
@@ -52,10 +29,7 @@ function Home() {
       <div
         style={{
           position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
+          inset: 0,
           background: 'rgba(0, 0, 0, 0.2)',
           zIndex: 1,
         }}
@@ -91,7 +65,7 @@ function Home() {
               fontWeight: 'bold',
               color: '#ffd700',
               textShadow: '3px 3px 6px rgba(0, 0, 0, 0.5), 0 0 10px rgba(255, 215, 0, 0.5)',
-              marginTop: '0',
+              marginTop: 0,
               lineHeight: '1.2',
               fontFamily: 'Arial Black, sans-serif',
               letterSpacing: '2px',
@@ -103,7 +77,9 @@ function Home() {
 
         <button
           type="button"
-          onClick={handleBegin}
+          onClick={() => {
+            void beginStory();
+          }}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -123,13 +99,15 @@ function Home() {
             boxShadow: '0 4px 15px rgba(255, 140, 0, 0.4), inset 0 2px 5px rgba(255, 255, 255, 0.3)',
             transition: 'all 0.3s ease',
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'scale(1.05)';
-            e.currentTarget.style.boxShadow = '0 6px 20px rgba(255, 140, 0, 0.6), inset 0 2px 5px rgba(255, 255, 255, 0.4)';
+          onMouseEnter={(event) => {
+            event.currentTarget.style.transform = 'scale(1.05)';
+            event.currentTarget.style.boxShadow =
+              '0 6px 20px rgba(255, 140, 0, 0.6), inset 0 2px 5px rgba(255, 255, 255, 0.4)';
           }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'scale(1)';
-            e.currentTarget.style.boxShadow = '0 4px 15px rgba(255, 140, 0, 0.4), inset 0 2px 5px rgba(255, 255, 255, 0.3)';
+          onMouseLeave={(event) => {
+            event.currentTarget.style.transform = 'scale(1)';
+            event.currentTarget.style.boxShadow =
+              '0 4px 15px rgba(255, 140, 0, 0.4), inset 0 2px 5px rgba(255, 255, 255, 0.3)';
           }}
         >
           <span aria-hidden="true" style={{ display: 'inline-flex', width: '26px', height: '26px' }}>
@@ -140,7 +118,7 @@ function Home() {
           BEGIN
         </button>
 
-        {errorMessage && (
+        {errorMessage ? (
           <div
             role="alert"
             style={{
@@ -160,7 +138,7 @@ function Home() {
           >
             {errorMessage}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

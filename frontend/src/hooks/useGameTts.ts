@@ -1,45 +1,107 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { getStaticAssetUrl } from '@/services/assetUrl';
 import { generateSpeech } from '@/services/ttsApi';
 import { logger } from '@/utils/logger';
 
-/**
- * 当 currentDialogue / characterId 变化时，使用角色音色播放 TTS
- */
+const extractSpokenText = (dialogue: string) =>
+  dialogue.replace(/^[^:：]+[:：]/, '').trim() || dialogue;
+
 export function useGameTts(currentDialogue: string, characterId: string | null) {
-  const lastTtsDialogueRef = useRef('');
+  const lastTtsKeyRef = useRef('');
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const requestIdRef = useRef(0);
+
+  const stopAudio = useCallback(() => {
+    const activeAudio = activeAudioRef.current;
+    if (!activeAudio) {
+      return;
+    }
+
+    activeAudio.pause();
+    activeAudio.currentTime = 0;
+    activeAudio.onended = null;
+    activeAudio.onerror = null;
+    activeAudioRef.current = null;
+  }, []);
 
   useEffect(() => {
-    if (!currentDialogue?.trim() || !characterId) return;
-    if (currentDialogue === lastTtsDialogueRef.current) return;
-    lastTtsDialogueRef.current = currentDialogue;
+    return () => {
+      requestIdRef.current += 1;
+      stopAudio();
+    };
+  }, [stopAudio]);
 
-    const textForTts = currentDialogue.replace(/^[^:：]+[：:]/, '').trim() || currentDialogue;
-    if (!textForTts) return;
+  useEffect(() => {
+    const normalizedDialogue = currentDialogue?.trim();
+    if (!normalizedDialogue || !characterId) {
+      return;
+    }
 
-    const charId = typeof characterId === 'string' ? characterId : String(characterId);
-    if (charId === 'undefined' || charId === 'null' || charId === '') return;
+    const normalizedCharacterId = String(characterId).trim();
+    if (!normalizedCharacterId || normalizedCharacterId === 'undefined' || normalizedCharacterId === 'null') {
+      return;
+    }
+
+    const ttsKey = `${normalizedCharacterId}:${normalizedDialogue}`;
+    if (ttsKey === lastTtsKeyRef.current) {
+      return;
+    }
+
+    lastTtsKeyRef.current = ttsKey;
+    const textForTts = extractSpokenText(normalizedDialogue);
+    if (!textForTts) {
+      return;
+    }
+
+    requestIdRef.current += 1;
+    const requestId = requestIdRef.current;
+    stopAudio();
 
     let cancelled = false;
-    const audioRef = { current: null as HTMLAudioElement | null };
-    (async () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
+
+    void (async () => {
+      try {
+        const result = await generateSpeech(textForTts, normalizedCharacterId);
+        if (cancelled || requestIdRef.current !== requestId || !result?.audio_url) {
+          return;
+        }
+
+        const audio = new Audio(getStaticAssetUrl(result.audio_url));
+        activeAudioRef.current = audio;
+
+        audio.onended = () => {
+          if (activeAudioRef.current === audio) {
+            activeAudioRef.current = null;
+          }
+        };
+
+        audio.onerror = () => {
+          if (activeAudioRef.current === audio) {
+            activeAudioRef.current = null;
+          }
+          logger.warn('[game] TTS playback failed.');
+        };
+
+        try {
+          await audio.play();
+        } catch (error) {
+          if (activeAudioRef.current === audio) {
+            activeAudioRef.current = null;
+          }
+          logger.warn('[game] TTS playback failed:', error);
+        }
+      } catch (error) {
+        if (!cancelled && requestIdRef.current === requestId) {
+          logger.warn('[game] TTS request failed:', error);
+        }
       }
-      const result = await generateSpeech(textForTts, characterId);
-      if (cancelled || !result?.audio_url) return;
-      const url = result.audio_url.startsWith('http')
-        ? result.audio_url
-        : `${window.location.origin}${result.audio_url}`;
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      audio.play().catch((e) => logger.warn('[游戏] TTS 播放失败:', e));
-      audio.onended = () => {
-        audioRef.current = null;
-      };
     })();
+
     return () => {
       cancelled = true;
+      if (requestIdRef.current === requestId) {
+        stopAudio();
+      }
     };
-  }, [currentDialogue, characterId]);
+  }, [characterId, currentDialogue, stopAudio]);
 }

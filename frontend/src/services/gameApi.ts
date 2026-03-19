@@ -11,6 +11,8 @@ import type {
   GenericApiRecord,
   ProcessGameInputResponse,
 } from '@/types/api';
+import type { GameTurnResult } from '@/types/game';
+import { normalizeStoryScenePayload } from '@/utils/storyScene';
 import { logger } from '@/utils/logger';
 
 export const initGame = async (data: GameInitRequest): Promise<GameInitResponse> => {
@@ -27,10 +29,15 @@ export const initGame = async (data: GameInitRequest): Promise<GameInitResponse>
 
 export const processGameInput = async (
   data: GameInputRequest
-): Promise<ProcessGameInputResponse> => {
+): Promise<GameTurnResult> => {
   try {
     const response = await httpClient.post('/v1/game/input', data, { timeout: 90000 });
-    return unwrapApiData<ProcessGameInputResponse>(response);
+    const responseData = unwrapApiData<ProcessGameInputResponse>(response);
+
+    return {
+      threadId: typeof responseData.thread_id === 'string' ? responseData.thread_id : null,
+      ...normalizeStoryScenePayload(responseData),
+    };
   } catch (error: unknown) {
     if (isTimeoutError(error)) {
       throw new Error('Game input processing timed out.');

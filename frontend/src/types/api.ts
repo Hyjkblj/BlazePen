@@ -37,15 +37,7 @@ export interface CharacterImagesResponse {
   images?: string[];
 }
 
-export interface RemoveBackgroundResponse {
-  original_url: string;
-  transparent_url: string;
-  local_path: string;
-  selected_image_url?: string;
-}
-
-export interface InitializeStoryResponse extends GenericApiRecord {
-  thread_id?: string;
+export interface StoryResponsePayload extends GenericApiRecord {
   scene?: string;
   scene_image_url?: string;
   composite_image_url?: string;
@@ -53,6 +45,17 @@ export interface InitializeStoryResponse extends GenericApiRecord {
   character_dialogue?: string;
   player_options?: PlayerOption[];
   is_game_finished?: boolean;
+}
+
+export interface RemoveBackgroundResponse {
+  original_url: string;
+  transparent_url: string;
+  local_path: string;
+  selected_image_url?: string;
+}
+
+export interface InitializeStoryResponse extends StoryResponsePayload {
+  thread_id?: string;
 }
 
 export interface SceneApiItem extends GenericApiRecord {
@@ -83,14 +86,8 @@ export interface GameInitResponse extends GenericApiRecord {
   thread_id?: string;
 }
 
-export interface ProcessGameInputResponse extends GenericApiRecord {
+export interface ProcessGameInputResponse extends StoryResponsePayload {
   thread_id?: string;
-  scene?: string;
-  scene_image_url?: string;
-  composite_image_url?: string;
-  character_dialogue?: string;
-  player_options?: PlayerOption[];
-  is_game_finished?: boolean;
 }
 
 export interface PresetVoiceItem {

@@ -10,13 +10,18 @@ from typing import Any, Dict, List
 from training.constants import DEFAULT_EVAL_MODEL, DEFAULT_K_STATE, DEFAULT_S_STATE, SKILL_CODES, TRAINING_RUNTIME_CONFIG
 from training.consequence_engine import ConsequenceEngine
 from training.contracts import RoundEvaluationPayload
+from training.decision_context_policy import TrainingDecisionContextPolicy
 from training.ending_policy import EndingPolicy
 from training.evaluator import TrainingRoundEvaluator
 from training.exceptions import DuplicateRoundSubmissionError, TrainingSessionNotFoundError
+from training.output_assembler_policy import TrainingOutputAssemblerPolicy
 from training.phase_policy import TrainingPhasePolicy, TrainingPhaseSnapshot
+from training.report_context_policy import TrainingReportContextPolicy
 from training.recommendation_policy import RecommendationPolicy
 from training.reporting_policy import TrainingReportingPolicy
+from training.round_transition_policy import TrainingRoundTransitionPolicy
 from training.round_flow_policy import TrainingRoundFlowPolicy
+from training.runtime_artifact_policy import TrainingRuntimeArtifactPolicy
 from training.runtime_events import RuntimeConsequenceEvent
 from training.runtime_state import GameRuntimeFlags, GameRuntimeState
 from training.scenario_policy import ScenarioPolicy
@@ -24,7 +29,6 @@ from training.session_snapshot_policy import SessionScenarioSnapshotPolicy
 from training.training_outputs import (
     TrainingAuditEventOutput,
     TrainingConsequenceEventOutput,
-    TrainingDecisionCandidateOutput,
     TrainingDiagnosticsOutput,
     TrainingEvaluationOutput,
     TrainingInitOutput,
@@ -47,18 +51,6 @@ from training.training_store import DatabaseTrainingStore, TrainingStoreProtocol
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-USER_ACTION_TEXT_KEY = "text"
-USER_ACTION_SELECTED_OPTION_KEY = "selected_option"
-USER_ACTION_DECISION_CONTEXT_KEY = "decision_context"
-USER_ACTION_RUNTIME_STATE_KEY = "runtime_state"
-USER_ACTION_CONSEQUENCE_EVENTS_KEY = "consequence_events"
-USER_ACTION_BRANCH_HINTS_KEY = "branch_hints"
-SELECTION_SOURCE_ORDERED_SEQUENCE = "ordered_sequence"
-SELECTION_SOURCE_TOP_RECOMMENDATION = "top_recommendation"
-SELECTION_SOURCE_CANDIDATE_POOL = "candidate_pool"
-SELECTION_SOURCE_FALLBACK_SEQUENCE = "fallback_sequence"
-SELECTION_SOURCE_BRANCH_TRANSITION = "branch_transition"
 
 
 def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
@@ -99,6 +91,11 @@ class TrainingService:
         reporting_policy: TrainingReportingPolicy | None = None,
         consequence_engine: ConsequenceEngine | None = None,
         session_snapshot_policy: SessionScenarioSnapshotPolicy | None = None,
+        decision_context_policy: TrainingDecisionContextPolicy | None = None,
+        runtime_artifact_policy: TrainingRuntimeArtifactPolicy | None = None,
+        round_transition_policy: TrainingRoundTransitionPolicy | None = None,
+        output_assembler_policy: TrainingOutputAssemblerPolicy | None = None,
+        report_context_policy: TrainingReportContextPolicy | None = None,
         runtime_config: Any = None,
     ):
         self.runtime_config = runtime_config or TRAINING_RUNTIME_CONFIG
@@ -141,6 +138,25 @@ class TrainingService:
         self.session_snapshot_policy = session_snapshot_policy or SessionScenarioSnapshotPolicy(
             scenario_policy=self.scenario_policy,
             scenario_repository=self.scenario_repository,
+        )
+        # 回合决策上下文装配独立下沉，避免服务层继续堆积推荐/分支来源判定细节。
+        self.decision_context_policy = decision_context_policy or TrainingDecisionContextPolicy(
+            recommendation_policy=self.recommendation_policy,
+            mode_catalog=self.mode_catalog,
+            runtime_config=self.runtime_config,
+        )
+        # 运行时状态与回合工件的组装单独下沉，继续降低 service 对 user_action 契约的耦合。
+        self.runtime_artifact_policy = runtime_artifact_policy or TrainingRuntimeArtifactPolicy()
+        # 单回合状态推进链路单独下沉，避免 submit_round 同时承载评估、状态演化和 user_action 回写。
+        self.round_transition_policy = round_transition_policy or TrainingRoundTransitionPolicy(
+            runtime_artifact_policy=self.runtime_artifact_policy,
+        )
+        # 输出 DTO 装配统一下沉，避免服务层继续持有大段 payload -> DTO 转换逻辑。
+        self.output_assembler_policy = output_assembler_policy or TrainingOutputAssemblerPolicy()
+        # 报告回放上下文装配独立下沉，避免 service 再持有大段 history/snapshot 组装逻辑。
+        self.report_context_policy = report_context_policy or TrainingReportContextPolicy(
+            runtime_artifact_policy=self.runtime_artifact_policy,
+            output_assembler_policy=self.output_assembler_policy,
         )
         self.flow_policy = flow_policy or TrainingRoundFlowPolicy(
             scenario_policy=self.scenario_policy,
@@ -359,11 +375,6 @@ class TrainingService:
             submitted_scenario_id=scenario_id,
             next_scenario_bundle=next_scenario_bundle,
         )
-        user_action = self._build_round_user_action(
-            user_input=user_input,
-            selected_option=selected_option,
-            decision_context=decision_context,
-        )
         recommendation_log_payload = self._build_recommendation_log_payload(
             training_mode=training_mode,
             decision_context=decision_context,
@@ -373,46 +384,27 @@ class TrainingService:
             scenario_payload_catalog=scenario_payload_catalog,
             scenario_id=scenario_id,
         )
-
-        # 评估结果在服务边界统一过契约，避免下游散落字典键判断。
-        eval_result = RoundEvaluationPayload.from_raw(
-            self.evaluator.evaluate_round(
-                user_input=user_input,
-                scenario_id=scenario_id,
-                round_no=round_no,
-                k_before=k_before,
-                s_before=s_before,
-            )
-        ).to_dict()
-
-        updated_k = self._update_k(k_before, eval_result["skill_delta"])
-        updated_s = self._update_s(s_before, eval_result["s_delta"])
-        runtime_state = self._build_runtime_state(
+        transition_artifacts = self.round_transition_policy.build_round_transition_artifacts(
             session=session,
-            current_round_no=round_no,
-            current_scene_id=scenario_id,
-            k_state=updated_k,
-            s_state=updated_s,
-        )
-        consequence_result = self.consequence_engine.apply(
-            runtime_state=runtime_state,
-            evaluation_payload=eval_result,
+            evaluator=self.evaluator,
+            consequence_engine=self.consequence_engine,
             round_no=round_no,
-            scenario_payload=selected_scenario_payload,
+            scenario_id=scenario_id,
+            user_input=user_input,
             selected_option=selected_option,
+            decision_context=decision_context,
+            k_before=k_before,
+            s_before=s_before,
             recent_risk_rounds=recent_risk_rounds,
+            scenario_payload=selected_scenario_payload,
         )
-        runtime_state = consequence_result.runtime_state
-        updated_session_meta = self._merge_session_meta_runtime_flags(
-            session_meta=getattr(session, "session_meta", None),
-            runtime_flags=runtime_state.runtime_flags.to_dict(),
-        )
-        user_action = self._attach_runtime_artifacts_to_user_action(
-            user_action=user_action,
-            runtime_state=runtime_state,
-            consequence_events=consequence_result.consequence_events,
-            branch_hints=consequence_result.branch_hints,
-        )
+        eval_result = transition_artifacts.evaluation_payload
+        updated_k = transition_artifacts.updated_k_state
+        updated_s = transition_artifacts.updated_s_state
+        runtime_state = transition_artifacts.runtime_state
+        consequence_result = transition_artifacts.consequence_result
+        updated_session_meta = transition_artifacts.updated_session_meta
+        user_action = transition_artifacts.user_action
 
         is_completed = self.flow_policy.is_session_completed(
             round_no=round_no,
@@ -644,21 +636,10 @@ class TrainingService:
         session: Any,
         rounds: List[Any],
     ) -> tuple[Dict[str, float], Dict[str, float]]:
-        """解析报告起点状态。
-
-        规则：
-        1. 有回合时，以首轮 `before` 状态作为 round=0 起点
-        2. 无回合时，以当前会话状态作为起点
-        """
-        if rounds:
-            first_round = rounds[0]
-            return (
-                self._normalize_k_state(getattr(first_round, "kt_before", None)),
-                self._normalize_s_state(getattr(first_round, "state_before", None)),
-            )
-        return (
-            self._normalize_k_state(getattr(session, "k_state", None)),
-            self._normalize_s_state(getattr(session, "s_state", None)),
+        """委托报告上下文策略解析报告起点状态。"""
+        return self.report_context_policy.resolve_report_initial_states(
+            session=session,
+            rounds=rounds,
         )
 
     def _build_training_report_history(
@@ -667,49 +648,19 @@ class TrainingService:
         eval_map: Dict[str, Any],
         kt_observation_map: Dict[int, Any],
     ) -> List[TrainingReportHistoryItemOutput]:
-        """批量构建训练报告回放历史，避免主流程内联过多 DTO 拼装细节。"""
-        history: List[TrainingReportHistoryItemOutput] = []
-        for row in rounds:
-            evaluation_row = eval_map.get(row.round_id)
-            evaluation_payload = None
-            if evaluation_row:
-                # 报告回放也走同一契约，保证前后端看到的是稳定结构。
-                evaluation_payload = self._build_training_evaluation_output(evaluation_row.raw_payload)
-
-            history.append(
-                TrainingReportHistoryItemOutput(
-                    round_no=row.round_no,
-                    scenario_id=row.scenario_id,
-                    user_input=row.user_input_raw,
-                    selected_option=row.selected_option,
-                    evaluation=evaluation_payload,
-                    k_state_before=row.kt_before,
-                    k_state_after=row.kt_after,
-                    s_state_before=row.state_before,
-                    s_state_after=row.state_after,
-                    timestamp=row.created_at.isoformat() if row.created_at else None,
-                    decision_context=self._extract_round_decision_context(row.user_action),
-                    kt_observation=self._build_training_kt_observation_output(
-                        kt_observation_map.get(row.round_no)
-                    ),
-                    runtime_state=self._extract_round_runtime_state(row.user_action),
-                    consequence_events=self._extract_round_consequence_events(row.user_action),
-                )
-            )
-        return history
+        """委托报告上下文策略构建训练报告回放历史。"""
+        return self.report_context_policy.build_report_history(
+            rounds=rounds,
+            eval_map=eval_map,
+            kt_observation_map=kt_observation_map,
+        )
 
     def _build_report_scenario_title_map(
         self,
         scenario_payload_sequence: List[Dict[str, Any]],
     ) -> Dict[str, str]:
-        """把冻结场景快照整理成标题索引，供报告时间线复用。"""
-        title_map: Dict[str, str] = {}
-        for payload in scenario_payload_sequence or []:
-            scenario_id = str(payload.get("id") or "").strip()
-            if not scenario_id:
-                continue
-            title_map[scenario_id] = str(payload.get("title") or scenario_id)
-        return title_map
+        """委托报告上下文策略构建场景标题索引。"""
+        return self.report_context_policy.build_report_scenario_title_map(scenario_payload_sequence)
 
     def _build_training_report_round_snapshots(
         self,
@@ -718,66 +669,13 @@ class TrainingService:
         kt_observation_map: Dict[int, Any],
         scenario_title_map: Dict[str, str],
     ) -> List[Dict[str, Any]]:
-        """把回合行数据整理成报告策略可直接消费的标准快照。"""
-        snapshots: List[Dict[str, Any]] = []
-        for row in rounds:
-            round_no = int(getattr(row, "round_no", 0) or 0)
-            scenario_id = str(getattr(row, "scenario_id", "") or "")
-            evaluation_row = eval_map.get(getattr(row, "round_id", ""))
-            evaluation_payload = RoundEvaluationPayload.from_raw(
-                getattr(evaluation_row, "raw_payload", None)
-            ).to_dict()
-            kt_observation_output = self._build_training_kt_observation_output(
-                kt_observation_map.get(round_no)
-            )
-            risk_flags = (
-                list(kt_observation_output.risk_flags)
-                if kt_observation_output is not None and kt_observation_output.risk_flags
-                else [
-                    str(flag)
-                    for flag in evaluation_payload.get("risk_flags", [])
-                    if str(flag or "").strip()
-                ]
-            )
-
-            # 历史数据可能还没有 KT 观测，报告层统一回退到评估结果补齐风险字段。
-            snapshots.append(
-                {
-                    "round_no": round_no,
-                    "scenario_id": scenario_id,
-                    "scenario_title": (
-                        kt_observation_output.scenario_title
-                        if kt_observation_output is not None
-                        and kt_observation_output.scenario_title
-                        else scenario_title_map.get(scenario_id, scenario_id)
-                    ),
-                    "k_state": self._normalize_k_state(getattr(row, "kt_after", None)),
-                    "s_state": self._normalize_s_state(getattr(row, "state_after", None)),
-                    "is_high_risk": (
-                        bool(kt_observation_output.is_high_risk)
-                        if kt_observation_output is not None
-                        else bool(risk_flags)
-                    ),
-                    "risk_flags": risk_flags,
-                    "primary_skill_code": (
-                        kt_observation_output.primary_skill_code
-                        if kt_observation_output is not None
-                        else None
-                    ),
-                    "runtime_flags": self._extract_round_runtime_flags(row.user_action),
-                    "consequence_events": [
-                        item.to_dict()
-                        for item in self._extract_round_consequence_events(row.user_action)
-                    ],
-                    "branch_transition": self._extract_round_branch_transition(row.user_action),
-                    "timestamp": (
-                        getattr(row, "created_at", None).isoformat()
-                        if getattr(row, "created_at", None)
-                        else None
-                    ),
-                }
-            )
-        return snapshots
+        """委托报告上下文策略构建 round_snapshots。"""
+        return self.report_context_policy.build_report_round_snapshots(
+            rounds=rounds,
+            eval_map=eval_map,
+            kt_observation_map=kt_observation_map,
+            scenario_title_map=scenario_title_map,
+        )
 
     def _resolve_session_scenario_sequence(self, session: Any) -> List[Dict[str, str]]:
         return self.scenario_policy.resolve_session_sequence(session)
@@ -798,33 +696,26 @@ class TrainingService:
         return dict(payload or {})
 
     def _build_default_runtime_flags(self) -> Dict[str, bool]:
-        """构建默认运行时 flags。"""
-        return GameRuntimeFlags().to_dict()
+        """委托运行时工件策略构建默认 flags。"""
+        return self.runtime_artifact_policy.build_default_runtime_flags()
 
     def _resolve_session_runtime_flags(
         self,
         session: Any,
     ) -> Dict[str, bool]:
-        """统一从 session_meta 中读取运行时 flags。"""
-        session_meta = getattr(session, "session_meta", None)
-        if not isinstance(session_meta, dict):
-            return self._build_default_runtime_flags()
-        return GameRuntimeFlags.from_payload(session_meta.get("runtime_flags")).to_dict()
+        """委托运行时工件策略读取会话 runtime_flags。"""
+        return self.runtime_artifact_policy.resolve_session_runtime_flags(session)
 
     def _merge_session_meta_runtime_flags(
         self,
         session_meta: Dict[str, Any] | None,
         runtime_flags: Dict[str, Any] | GameRuntimeFlags | None,
     ) -> Dict[str, Any]:
-        """在保留原有 session_meta 的前提下更新运行时 flags。"""
-        normalized_meta = dict(session_meta or {})
-        normalized_flags = (
-            runtime_flags.to_dict()
-            if isinstance(runtime_flags, GameRuntimeFlags)
-            else GameRuntimeFlags.from_payload(runtime_flags).to_dict()
+        """委托运行时工件策略合并 session_meta 与 runtime_flags。"""
+        return self.runtime_artifact_policy.merge_session_meta_runtime_flags(
+            session_meta=session_meta,
+            runtime_flags=runtime_flags,
         )
-        normalized_meta["runtime_flags"] = normalized_flags
-        return normalized_meta
 
     def _build_runtime_state(
         self,
@@ -836,19 +727,15 @@ class TrainingService:
         s_state: Dict[str, Any] | None = None,
         runtime_flags: Dict[str, Any] | GameRuntimeFlags | None = None,
     ) -> GameRuntimeState:
-        """统一构建运行时状态，避免服务层散落重复聚合逻辑。"""
-        return GameRuntimeState.from_session(
-            session,
-            round_no=current_round_no,
+        """委托运行时工件策略构建统一运行时状态。"""
+        return self.runtime_artifact_policy.build_runtime_state(
+            session=session,
+            player_profile=self._resolve_session_player_profile_payload(session),
+            current_round_no=current_round_no,
             current_scene_id=current_scene_id,
             k_state=k_state,
             s_state=s_state,
-            player_profile=self._resolve_session_player_profile_payload(session),
-            runtime_flags=(
-                runtime_flags
-                if runtime_flags is not None
-                else self._resolve_session_runtime_flags(session)
-            ),
+            runtime_flags=runtime_flags,
         )
 
     def _get_session_or_raise(self, session_id: str) -> Any:
@@ -873,184 +760,98 @@ class TrainingService:
         self,
         user_action: Dict[str, Any] | None,
     ) -> TrainingRuntimeStateOutput | None:
-        """从回合 user_action 中恢复运行时状态。"""
-        if not isinstance(user_action, dict):
-            return None
-        return self._build_training_runtime_state_output(user_action.get(USER_ACTION_RUNTIME_STATE_KEY))
+        """委托运行时工件策略恢复回合运行时状态。"""
+        return self.runtime_artifact_policy.extract_round_runtime_state(user_action)
 
     def _extract_round_runtime_flags(
         self,
         user_action: Dict[str, Any] | None,
     ) -> Dict[str, Any]:
-        """从回合 user_action 中提取运行时 flags。"""
-        runtime_state = self._extract_round_runtime_state(user_action)
-        if runtime_state is None:
-            return {}
-        return runtime_state.to_dict().get("runtime_flags", {})
+        """委托运行时工件策略提取回合 runtime_flags。"""
+        return self.runtime_artifact_policy.extract_round_runtime_flags(user_action)
 
     def _extract_round_consequence_events(
         self,
         user_action: Dict[str, Any] | None,
     ) -> List[TrainingConsequenceEventOutput]:
-        """从回合 user_action 中恢复后果事件列表。"""
-        if not isinstance(user_action, dict):
-            return []
-        return self._build_training_consequence_event_outputs(
-            user_action.get(USER_ACTION_CONSEQUENCE_EVENTS_KEY)
-        )
+        """委托运行时工件策略恢复回合后果事件。"""
+        return self.runtime_artifact_policy.extract_round_consequence_events(user_action)
 
     def _build_training_scenario_output(self, payload: Dict[str, Any] | None) -> TrainingScenarioOutput | None:
-        """把原始场景字典转换成稳定场景 DTO。"""
-        return TrainingScenarioOutput.from_payload(payload)
+        """委托输出装配策略转换场景 DTO。"""
+        return self.output_assembler_policy.build_scenario_output(payload)
 
     def _build_training_player_profile_output(
         self,
         payload: Dict[str, Any] | None,
     ) -> TrainingPlayerProfileOutput | None:
-        """把玩家档案字典转换成稳定输出 DTO。"""
-        return TrainingPlayerProfileOutput.from_payload(payload)
+        """委托输出装配策略转换玩家档案 DTO。"""
+        return self.output_assembler_policy.build_player_profile_output(payload)
 
     def _build_training_evaluation_output(self, payload: Dict[str, Any] | None) -> TrainingEvaluationOutput:
-        """把原始评估字典转换成稳定评估 DTO。"""
-        return TrainingEvaluationOutput.from_payload(payload)
+        """委托输出装配策略转换评估 DTO。"""
+        return self.output_assembler_policy.build_evaluation_output(payload)
 
     def _build_training_runtime_state_output(
         self,
         runtime_state: GameRuntimeState | Dict[str, Any] | None,
     ) -> TrainingRuntimeStateOutput | None:
-        """把运行时状态转换成稳定输出 DTO。"""
-        if runtime_state is None:
-            return None
-        payload = runtime_state.to_dict() if isinstance(runtime_state, GameRuntimeState) else runtime_state
-        return TrainingRuntimeStateOutput.from_payload(payload)
+        """委托输出装配策略转换运行时状态 DTO。"""
+        return self.output_assembler_policy.build_runtime_state_output(runtime_state)
 
     def _build_training_consequence_event_output(
         self,
         payload: RuntimeConsequenceEvent | Dict[str, Any] | None,
     ) -> TrainingConsequenceEventOutput | None:
-        """把运行时后果事件转换成稳定输出 DTO。"""
-        if payload is None:
-            return None
-        event_payload = payload.to_dict() if isinstance(payload, RuntimeConsequenceEvent) else payload
-        return TrainingConsequenceEventOutput.from_payload(event_payload)
+        """委托输出装配策略转换单个后果事件 DTO。"""
+        return self.output_assembler_policy.build_consequence_event_output(payload)
 
     def _build_training_consequence_event_outputs(
         self,
         payloads: List[RuntimeConsequenceEvent | Dict[str, Any]] | None,
     ) -> List[TrainingConsequenceEventOutput]:
-        """批量转换运行时后果事件。"""
-        outputs: List[TrainingConsequenceEventOutput] = []
-        for item in payloads or []:
-            output = self._build_training_consequence_event_output(item)
-            if output is not None:
-                outputs.append(output)
-        return outputs
+        """委托输出装配策略批量转换后果事件 DTO。"""
+        return self.output_assembler_policy.build_consequence_event_outputs(payloads)
 
     def _build_training_kt_observation_output(self, row: Any) -> TrainingKtObservationOutput | None:
-        """把 KT 观测记录转换成稳定输出 DTO。"""
-        if row is None:
-            return None
-        return TrainingKtObservationOutput.from_payload(
-            {
-                "round_no": getattr(row, "round_no", None),
-                "scenario_id": getattr(row, "scenario_id", None),
-                "scenario_title": getattr(row, "scenario_title", ""),
-                "training_mode": getattr(row, "training_mode", "guided"),
-                "primary_skill_code": getattr(row, "primary_skill_code", None),
-                "primary_risk_flag": getattr(row, "primary_risk_flag", None),
-                "is_high_risk": getattr(row, "is_high_risk", False),
-                "target_skills": getattr(row, "target_skills", []),
-                "weak_skills_before": getattr(row, "weak_skills_before", []),
-                "risk_flags": getattr(row, "risk_flags", []),
-                "focus_tags": getattr(row, "focus_tags", []),
-                "evidence": getattr(row, "evidence", []),
-                "skill_observations": getattr(row, "skill_observations", []),
-                "state_observations": getattr(row, "state_observations", []),
-                "observation_summary": getattr(row, "observation_summary", ""),
-            }
-        )
+        """委托输出装配策略转换 KT 观测 DTO。"""
+        return self.output_assembler_policy.build_kt_observation_output(row)
 
     def _build_training_recommendation_log_output(self, row: Any) -> TrainingRecommendationLogOutput | None:
-        """把推荐日志记录转换成稳定输出 DTO。"""
-        if row is None:
-            return None
-        return TrainingRecommendationLogOutput.from_payload(
-            {
-                "round_no": getattr(row, "round_no", None),
-                "training_mode": getattr(row, "training_mode", "guided"),
-                "selection_source": getattr(row, "selection_source", None),
-                "recommended_scenario_id": getattr(row, "recommended_scenario_id", None),
-                "selected_scenario_id": getattr(row, "selected_scenario_id", None),
-                "candidate_pool": getattr(row, "candidate_pool", []),
-                "recommended_recommendation": getattr(row, "recommended_recommendation", {}),
-                "selected_recommendation": getattr(row, "selected_recommendation", {}),
-                "decision_context": getattr(row, "decision_context", {}),
-            }
-        )
+        """委托输出装配策略转换推荐日志 DTO。"""
+        return self.output_assembler_policy.build_recommendation_log_output(row)
 
     def _build_training_recommendation_log_outputs(
         self,
         rows: List[Any],
     ) -> List[TrainingRecommendationLogOutput]:
-        """批量转换推荐日志，统一过滤空值，保持诊断主流程简洁。"""
-        outputs: List[TrainingRecommendationLogOutput] = []
-        for row in rows:
-            output = self._build_training_recommendation_log_output(row)
-            if output is not None:
-                outputs.append(output)
-        return outputs
+        """委托输出装配策略批量转换推荐日志 DTO。"""
+        return self.output_assembler_policy.build_recommendation_log_outputs(rows)
 
     def _build_training_audit_event_output(self, row: Any) -> TrainingAuditEventOutput | None:
-        """把审计事件记录转换成稳定输出 DTO。"""
-        if row is None:
-            return None
-        return TrainingAuditEventOutput.from_payload(
-            {
-                "event_type": getattr(row, "event_type", None),
-                "round_no": getattr(row, "round_no", None),
-                "payload": getattr(row, "payload", {}),
-                "timestamp": getattr(row, "created_at", None).isoformat() if getattr(row, "created_at", None) else None,
-            }
-        )
+        """委托输出装配策略转换审计事件 DTO。"""
+        return self.output_assembler_policy.build_audit_event_output(row)
 
     def _build_training_audit_event_outputs(
         self,
         rows: List[Any],
     ) -> List[TrainingAuditEventOutput]:
-        """批量转换审计事件，统一过滤空值，保持诊断主流程简洁。"""
-        outputs: List[TrainingAuditEventOutput] = []
-        for row in rows:
-            output = self._build_training_audit_event_output(row)
-            if output is not None:
-                outputs.append(output)
-        return outputs
+        """委托输出装配策略批量转换审计事件 DTO。"""
+        return self.output_assembler_policy.build_audit_event_outputs(rows)
 
     def _build_training_kt_observation_outputs(
         self,
         rows: List[Any],
     ) -> List[TrainingKtObservationOutput]:
-        """批量转换 KT 观测，统一过滤空值，便于报告和诊断共用。"""
-        outputs: List[TrainingKtObservationOutput] = []
-        for row in rows:
-            output = self._build_training_kt_observation_output(row)
-            if output is not None:
-                outputs.append(output)
-        return outputs
+        """委托输出装配策略批量转换 KT 观测 DTO。"""
+        return self.output_assembler_policy.build_kt_observation_outputs(rows)
 
     def _build_training_scenario_output_list(
         self,
         payloads: List[Dict[str, Any]] | None,
     ) -> List[TrainingScenarioOutput] | None:
-        """批量转换候选场景列表，并自动过滤无效项。"""
-        if payloads is None:
-            return None
-
-        outputs: List[TrainingScenarioOutput] = []
-        for item in payloads:
-            scenario_output = self._build_training_scenario_output(item)
-            if scenario_output is not None:
-                outputs.append(scenario_output)
-        return outputs
+        """委托输出装配策略批量转换候选场景 DTO。"""
+        return self.output_assembler_policy.build_scenario_output_list(payloads)
 
     def _build_duplicate_submit_response(self, session_id: str, round_no: int) -> Dict[str, Any] | None:
         """从已落库数据构建幂等响应。"""
@@ -1106,38 +907,6 @@ class TrainingService:
             ending=ending_row.report_payload if ending_row else None,
             decision_context=self._extract_round_decision_context(round_row.user_action),
         ).to_dict()
-
-    def _build_round_user_action(
-        self,
-        user_input: str,
-        selected_option: str | None,
-        decision_context: TrainingRoundDecisionContextOutput | None,
-    ) -> Dict[str, Any]:
-        """统一封装回合提交时写入 user_action 的结构，减少服务层散落的契约键名。"""
-        payload = {
-            USER_ACTION_TEXT_KEY: user_input,
-            USER_ACTION_SELECTED_OPTION_KEY: selected_option,
-        }
-        if decision_context is not None:
-            payload[USER_ACTION_DECISION_CONTEXT_KEY] = decision_context.to_dict()
-        return payload
-
-    def _attach_runtime_artifacts_to_user_action(
-        self,
-        user_action: Dict[str, Any],
-        runtime_state: GameRuntimeState,
-        consequence_events: List[RuntimeConsequenceEvent],
-        branch_hints: List[str] | None = None,
-    ) -> Dict[str, Any]:
-        """把运行时结果并入 user_action，便于历史回放与幂等重放。"""
-        payload = dict(user_action or {})
-        payload[USER_ACTION_RUNTIME_STATE_KEY] = runtime_state.to_dict()
-        payload[USER_ACTION_CONSEQUENCE_EVENTS_KEY] = [item.to_dict() for item in consequence_events or []]
-        if branch_hints:
-            payload[USER_ACTION_BRANCH_HINTS_KEY] = [
-                str(item) for item in branch_hints if str(item or "").strip()
-            ]
-        return payload
 
     def _build_recommendation_log_payload(
         self,
@@ -1244,10 +1013,8 @@ class TrainingService:
         self,
         user_action: Dict[str, Any] | None,
     ) -> TrainingRoundDecisionContextOutput | None:
-        """从持久化的 user_action 中读取决策上下文，兼容历史数据缺失该字段的情况。"""
-        if not isinstance(user_action, dict):
-            return None
-        return TrainingRoundDecisionContextOutput.from_payload(user_action.get(USER_ACTION_DECISION_CONTEXT_KEY))
+        """委托运行时工件策略恢复回合决策上下文。"""
+        return self.runtime_artifact_policy.extract_round_decision_context(user_action)
 
     def _extract_round_branch_transition(
         self,
@@ -1267,163 +1034,11 @@ class TrainingService:
         next_scenario_bundle: Any,
     ) -> TrainingRoundDecisionContextOutput | None:
         """把本回合推荐结果转成稳定的“决策上下文”，供落库、响应和报告回放复用。"""
-        scenario_payloads = self._collect_decision_scenario_payloads(next_scenario_bundle)
-        if not scenario_payloads:
-            return None
-
-        recommended_payload = self._extract_recommended_scenario_payload(next_scenario_bundle)
-        recommended_scenario_id = (
-            str(recommended_payload.get("id") or "").strip()
-            if isinstance(recommended_payload, dict)
-            else None
-        ) or None
-        selected_payload = self._find_scenario_payload_by_id(scenario_payloads, submitted_scenario_id)
-        selection_source = self._resolve_selection_source(
+        return self.decision_context_policy.build_round_decision_context(
             training_mode=training_mode,
             submitted_scenario_id=submitted_scenario_id,
-            recommended_scenario_id=recommended_scenario_id,
-            scenario_payloads=scenario_payloads,
-            selected_scenario_payload=selected_payload,
+            next_scenario_bundle=next_scenario_bundle,
         )
-
-        return TrainingRoundDecisionContextOutput.from_payload(
-            {
-                "mode": training_mode,
-                "selection_source": selection_source,
-                "selected_scenario_id": submitted_scenario_id,
-                "recommended_scenario_id": recommended_scenario_id,
-                "candidate_pool": self._build_decision_candidate_payloads(
-                    scenario_payloads=scenario_payloads,
-                    selected_scenario_id=submitted_scenario_id,
-                    recommended_scenario_id=recommended_scenario_id,
-                ),
-                "selected_recommendation": self._extract_recommendation_payload(selected_payload),
-                "recommended_recommendation": self._extract_recommendation_payload(recommended_payload),
-                "selected_branch_transition": self._extract_branch_transition_payload(selected_payload),
-                "recommended_branch_transition": self._extract_branch_transition_payload(recommended_payload),
-            }
-        )
-
-    def _collect_decision_scenario_payloads(self, next_scenario_bundle: Any) -> List[Dict[str, Any]]:
-        """提取当前回合可见的场景候选集，供决策上下文序列化。"""
-        candidate_source = getattr(next_scenario_bundle, "scenario_candidates", None)
-        if candidate_source is None:
-            candidate_source = [getattr(next_scenario_bundle, "scenario", None)]
-
-        scenario_payloads: List[Dict[str, Any]] = []
-        for item in candidate_source or []:
-            if isinstance(item, dict) and str(item.get("id") or "").strip():
-                scenario_payloads.append(dict(item))
-        return scenario_payloads
-
-    def _extract_recommended_scenario_payload(self, next_scenario_bundle: Any) -> Dict[str, Any] | None:
-        """只有场景携带 recommendation 元信息时，才视为真正的推荐结果。"""
-        scenario_payload = getattr(next_scenario_bundle, "scenario", None)
-        if not isinstance(scenario_payload, dict):
-            return None
-        if not isinstance(scenario_payload.get("recommendation"), dict):
-            return None
-        return dict(scenario_payload)
-
-    def _find_scenario_payload_by_id(
-        self,
-        scenario_payloads: List[Dict[str, Any]],
-        scenario_id: str,
-    ) -> Dict[str, Any] | None:
-        """按场景 ID 在候选集中定位原始场景载荷，便于提取推荐元信息。"""
-        for payload in scenario_payloads:
-            if str(payload.get("id") or "").strip() == str(scenario_id or "").strip():
-                return dict(payload)
-        return None
-
-    def _extract_recommendation_payload(
-        self,
-        scenario_payload: Dict[str, Any] | None,
-    ) -> Dict[str, Any] | None:
-        """从场景载荷中抽取推荐元信息，避免上下文里嵌入整份场景数据。"""
-        if not isinstance(scenario_payload, dict):
-            return None
-        recommendation = scenario_payload.get("recommendation")
-        if not isinstance(recommendation, dict):
-            return None
-        return dict(recommendation)
-
-    def _extract_branch_transition_payload(
-        self,
-        scenario_payload: Dict[str, Any] | None,
-    ) -> Dict[str, Any] | None:
-        """提取场景附带的分支跳转上下文，供日志、诊断和报告复用。"""
-        if not isinstance(scenario_payload, dict):
-            return None
-        branch_transition = scenario_payload.get("branch_transition")
-        if not isinstance(branch_transition, dict):
-            return None
-        return dict(branch_transition)
-
-    def _build_decision_candidate_payloads(
-        self,
-        scenario_payloads: List[Dict[str, Any]],
-        selected_scenario_id: str,
-        recommended_scenario_id: str | None,
-    ) -> List[Dict[str, Any]]:
-        """把完整场景载荷收敛成适合回放展示的候选题摘要。"""
-        candidate_outputs: List[Dict[str, Any]] = []
-        for scenario_payload in scenario_payloads:
-            scenario_id = str(scenario_payload.get("id") or "").strip()
-            if not scenario_id:
-                continue
-
-            recommendation = self._extract_recommendation_payload(scenario_payload) or {}
-            candidate_output = TrainingDecisionCandidateOutput.from_payload(
-                {
-                    "scenario_id": scenario_id,
-                    "title": str(scenario_payload.get("title") or scenario_id),
-                    "rank": recommendation.get("rank"),
-                    "rank_score": recommendation.get("rank_score", 0.0),
-                    "is_selected": scenario_id == str(selected_scenario_id or "").strip(),
-                    "is_recommended": scenario_id == str(recommended_scenario_id or "").strip(),
-                }
-            )
-            if candidate_output is not None:
-                candidate_outputs.append(candidate_output.to_dict())
-        return candidate_outputs
-
-    def _resolve_selection_source(
-        self,
-        training_mode: str,
-        submitted_scenario_id: str,
-        recommended_scenario_id: str | None,
-        scenario_payloads: List[Dict[str, Any]],
-        selected_scenario_payload: Dict[str, Any] | None = None,
-    ) -> str:
-        """标记本回合场景是按固定顺序、顶级推荐还是候选池选择出来的。"""
-        normalized_mode = self.mode_catalog.normalize(
-            training_mode,
-            default="guided",
-            raise_on_unknown=False,
-        ) or "guided"
-        submitted_scenario_id = str(submitted_scenario_id or "").strip()
-
-        # 分支跳转是独立来源，不能继续被记成普通主线顺序提交。
-        if isinstance(selected_scenario_payload, dict) and isinstance(selected_scenario_payload.get("branch_transition"), dict):
-            return SELECTION_SOURCE_BRANCH_TRANSITION
-
-        if recommended_scenario_id:
-            if submitted_scenario_id == recommended_scenario_id:
-                return SELECTION_SOURCE_TOP_RECOMMENDATION
-
-            candidate_ids = {
-                str(payload.get("id") or "").strip()
-                for payload in scenario_payloads
-                if isinstance(payload, dict)
-            }
-            if submitted_scenario_id in candidate_ids:
-                return SELECTION_SOURCE_CANDIDATE_POOL
-            return SELECTION_SOURCE_FALLBACK_SEQUENCE
-
-        if self.recommendation_policy.supports_mode(normalized_mode):
-            return SELECTION_SOURCE_FALLBACK_SEQUENCE
-        return SELECTION_SOURCE_ORDERED_SEQUENCE
 
     def _normalize_k_state(self, k_state: Dict[str, float] | None) -> Dict[str, float]:
         source = k_state or {}
@@ -1446,24 +1061,6 @@ class TrainingService:
             key: round(_clamp(float(source.get(key, DEFAULT_S_STATE[key]))), 4)
             for key in DEFAULT_S_STATE.keys()
         }
-
-    def _update_k(self, k_state: Dict[str, float], skill_delta: Dict[str, float]) -> Dict[str, float]:
-        updated: Dict[str, float] = {}
-        for code in SKILL_CODES:
-            updated[code] = round(
-                _clamp(float(k_state.get(code, DEFAULT_K_STATE[code])) + float(skill_delta.get(code, 0.0))),
-                4,
-            )
-        return updated
-
-    def _update_s(self, s_state: Dict[str, float], s_delta: Dict[str, float]) -> Dict[str, float]:
-        updated: Dict[str, float] = {}
-        for key in DEFAULT_S_STATE.keys():
-            updated[key] = round(
-                _clamp(float(s_state.get(key, DEFAULT_S_STATE[key])) + float(s_delta.get(key, 0.0))),
-                4,
-            )
-        return updated
 
     def _resolve_ending(self, k: Dict[str, float], s: Dict[str, float], evaluation_rows: List[Any]) -> Dict[str, Any]:
         # 保留兼容包装方法，实际规则由 EndingPolicy 承担。

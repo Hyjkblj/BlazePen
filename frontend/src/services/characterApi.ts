@@ -14,6 +14,8 @@ import type {
   InitializeStoryResponse,
   RemoveBackgroundResponse,
 } from '@/types/api';
+import type { StorySceneData } from '@/types/game';
+import { normalizeStoryScenePayload } from '@/utils/storyScene';
 import { logger } from '@/utils/logger';
 
 export const createCharacter = async (
@@ -81,7 +83,7 @@ export const initializeStory = async (
   characterId: string,
   sceneId?: string,
   characterImageUrl?: string
-): Promise<InitializeStoryResponse> => {
+): Promise<StorySceneData> => {
   try {
     if (!threadId || !characterId) {
       throw new Error(`Missing required params: threadId=${threadId}, characterId=${characterId}`);
@@ -97,7 +99,7 @@ export const initializeStory = async (
       },
       { timeout: 60000 }
     );
-    return unwrapApiData<InitializeStoryResponse>(response);
+    return normalizeStoryScenePayload(unwrapApiData<InitializeStoryResponse>(response));
   } catch (error: unknown) {
     if (getErrorStatus(error) === 422) {
       const errorData = getErrorData(error);

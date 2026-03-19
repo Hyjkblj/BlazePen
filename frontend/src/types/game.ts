@@ -22,6 +22,20 @@ export interface GameSessionSnapshot {
   shouldUseComposite: boolean;
 }
 
+export interface StorySceneData {
+  sceneId: string | null;
+  sceneImageUrl: string | null;
+  compositeImageUrl: string | null;
+  storyBackground: string | null;
+  characterDialogue: string | null;
+  playerOptions: PlayerOption[];
+  isGameFinished: boolean;
+}
+
+export interface GameTurnResult extends StorySceneData {
+  threadId: string | null;
+}
+
 /** 存档：按 thread 保存的完整消息列表与元信息 */
 export interface GameSave {
   threadId: string;
@@ -84,9 +98,10 @@ export interface CharacterData {
 
 /** 初遇页写入的初始游戏数据（供 Game 页消费） */
 export interface InitialGameData {
-  scene?: string;
-  character_dialogue?: string;
-  player_options?: PlayerOption[];
-  composite_image_url?: string;
-  scene_image_url?: string;
+  sceneId: string | null;
+  storyBackground: string | null;
+  characterDialogue: string | null;
+  playerOptions: PlayerOption[];
+  compositeImageUrl: string | null;
+  sceneImageUrl: string | null;
 }

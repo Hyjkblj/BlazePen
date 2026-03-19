@@ -3,6 +3,7 @@
  * 键名与解析集中在此，避免各页面手写 key 与 JSON 解析
  */
 import type { CharacterData, GameSave, MainGameSave, InitialGameData } from '@/types/game';
+import { normalizeInitialGameData } from '@/utils/storyScene';
 
 const KEYS = {
   CHARACTER_DATA: 'characterData',
@@ -27,6 +28,34 @@ function parseJson<T>(raw: string | null, fallback: T): T {
   }
 }
 
+function normalizeStoredString(raw: string | null | undefined): string | null {
+  if (typeof raw !== 'string') {
+    return null;
+  }
+
+  const normalized = raw.trim();
+  if (normalized === '' || normalized === 'null' || normalized === 'undefined') {
+    return null;
+  }
+
+  return normalized;
+}
+
+function getSessionString(key: string): string | null {
+  return normalizeStoredString(sessionStorage.getItem(key));
+}
+
+function setSessionString(key: string, value: string): void {
+  const normalized = normalizeStoredString(value);
+
+  if (!normalized) {
+    sessionStorage.removeItem(key);
+    return;
+  }
+
+  sessionStorage.setItem(key, normalized);
+}
+
 // ---------- sessionStorage ----------
 
 export function getCharacterData(): CharacterData | null {
@@ -43,11 +72,11 @@ export function removeCharacterData(): void {
 }
 
 export function getCreatedCharacterId(): string | null {
-  return sessionStorage.getItem(KEYS.CREATED_CHARACTER_ID);
+  return getSessionString(KEYS.CREATED_CHARACTER_ID);
 }
 
 export function setCreatedCharacterId(id: string): void {
-  sessionStorage.setItem(KEYS.CREATED_CHARACTER_ID, id);
+  setSessionString(KEYS.CREATED_CHARACTER_ID, id);
 }
 
 export function removeCreatedCharacterId(): void {
@@ -55,19 +84,19 @@ export function removeCreatedCharacterId(): void {
 }
 
 export function getRestoreThreadId(): string | null {
-  return sessionStorage.getItem(KEYS.RESTORE_THREAD_ID);
+  return getSessionString(KEYS.RESTORE_THREAD_ID);
 }
 
 export function setRestoreThreadId(threadId: string): void {
-  sessionStorage.setItem(KEYS.RESTORE_THREAD_ID, threadId);
+  setSessionString(KEYS.RESTORE_THREAD_ID, threadId);
 }
 
 export function getRestoreCharacterId(): string | null {
-  return sessionStorage.getItem(KEYS.RESTORE_CHARACTER_ID);
+  return getSessionString(KEYS.RESTORE_CHARACTER_ID);
 }
 
 export function setRestoreCharacterId(characterId: string): void {
-  sessionStorage.setItem(KEYS.RESTORE_CHARACTER_ID, characterId);
+  setSessionString(KEYS.RESTORE_CHARACTER_ID, characterId);
 }
 
 export function removeRestoreIds(): void {
@@ -76,16 +105,24 @@ export function removeRestoreIds(): void {
 }
 
 export function getGameThreadId(): string | null {
-  return sessionStorage.getItem(KEYS.GAME_THREAD_ID);
+  return getSessionString(KEYS.GAME_THREAD_ID);
 }
 
 export function getGameCharacterId(): string | null {
-  return sessionStorage.getItem(KEYS.GAME_CHARACTER_ID);
+  return getSessionString(KEYS.GAME_CHARACTER_ID);
 }
 
 export function setGameIds(threadId: string, characterId: string): void {
-  sessionStorage.setItem(KEYS.GAME_THREAD_ID, threadId);
-  sessionStorage.setItem(KEYS.GAME_CHARACTER_ID, characterId);
+  const normalizedThreadId = normalizeStoredString(threadId);
+  const normalizedCharacterId = normalizeStoredString(characterId);
+
+  if (!normalizedThreadId || !normalizedCharacterId) {
+    clearGameIds();
+    return;
+  }
+
+  sessionStorage.setItem(KEYS.GAME_THREAD_ID, normalizedThreadId);
+  sessionStorage.setItem(KEYS.GAME_CHARACTER_ID, normalizedCharacterId);
 }
 
 export function clearGameIds(): void {
@@ -98,11 +135,11 @@ export function removeGameThreadId(): void {
 }
 
 export function getCurrentCharacterId(): string | null {
-  return sessionStorage.getItem(KEYS.CURRENT_CHARACTER_ID);
+  return getSessionString(KEYS.CURRENT_CHARACTER_ID);
 }
 
 export function setCurrentCharacterId(characterId: string): void {
-  sessionStorage.setItem(KEYS.CURRENT_CHARACTER_ID, characterId);
+  setSessionString(KEYS.CURRENT_CHARACTER_ID, characterId);
 }
 
 export function clearCurrentCharacterId(): void {
@@ -111,7 +148,7 @@ export function clearCurrentCharacterId(): void {
 
 export function getInitialGameData(): InitialGameData | null {
   const raw = sessionStorage.getItem(KEYS.INITIAL_GAME_DATA);
-  return parseJson<InitialGameData | null>(raw, null);
+  return normalizeInitialGameData(parseJson<InitialGameData | null>(raw, null));
 }
 
 export function clearInitialGameData(): void {
@@ -125,21 +162,75 @@ export function setInitialGameData(data: InitialGameData): void {
 // ---------- localStorage ----------
 
 export function getGameSave(threadId: string): GameSave | null {
-  const raw = localStorage.getItem(gameSaveKey(threadId));
-  return parseJson<GameSave | null>(raw, null);
+  const normalizedThreadId = normalizeStoredString(threadId);
+  if (!normalizedThreadId) {
+    return null;
+  }
+
+  const raw = localStorage.getItem(gameSaveKey(normalizedThreadId));
+  const save = parseJson<GameSave | null>(raw, null);
+
+  if (!save) {
+    return null;
+  }
+
+  return {
+    ...save,
+    threadId: normalizeStoredString(save.threadId) ?? normalizedThreadId,
+    characterId: normalizeStoredString(save.characterId) ?? undefined,
+  };
 }
 
 export function setGameSave(save: GameSave): void {
-  localStorage.setItem(gameSaveKey(save.threadId), JSON.stringify(save));
+  const normalizedThreadId = normalizeStoredString(save.threadId);
+  if (!normalizedThreadId) {
+    return;
+  }
+
+  localStorage.setItem(
+    gameSaveKey(normalizedThreadId),
+    JSON.stringify({
+      ...save,
+      threadId: normalizedThreadId,
+      characterId: normalizeStoredString(save.characterId) ?? undefined,
+    })
+  );
 }
 
 export function getMainGameSave(): MainGameSave | null {
   const raw = localStorage.getItem(KEYS.MAIN_SAVE);
-  return parseJson<MainGameSave | null>(raw, null);
+  const save = parseJson<MainGameSave | null>(raw, null);
+
+  if (!save) {
+    return null;
+  }
+
+  const normalizedThreadId = normalizeStoredString(save.threadId);
+  if (!normalizedThreadId) {
+    return null;
+  }
+
+  return {
+    ...save,
+    threadId: normalizedThreadId,
+    characterId: normalizeStoredString(save.characterId) ?? undefined,
+  };
 }
 
 export function setMainGameSave(save: MainGameSave): void {
-  localStorage.setItem(KEYS.MAIN_SAVE, JSON.stringify(save));
+  const normalizedThreadId = normalizeStoredString(save.threadId);
+  if (!normalizedThreadId) {
+    return;
+  }
+
+  localStorage.setItem(
+    KEYS.MAIN_SAVE,
+    JSON.stringify({
+      ...save,
+      threadId: normalizedThreadId,
+      characterId: normalizeStoredString(save.characterId) ?? undefined,
+    })
+  );
 }
 
 export { KEYS as GAME_STORAGE_KEYS };

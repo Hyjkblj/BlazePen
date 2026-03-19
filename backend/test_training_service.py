@@ -13,9 +13,14 @@ from database.db_manager import DatabaseManager
 from training.constants import DEFAULT_EVAL_MODEL, DEFAULT_K_STATE, DEFAULT_S_STATE, S_STATE_CODES, SKILL_CODES
 from training.config_loader import FlowForcedRoundConfig, ScenarioItemConfig, load_training_runtime_config, model_copy
 from training.exceptions import DuplicateRoundSubmissionError
+from training.output_assembler_policy import TrainingOutputAssemblerPolicy
+from training.report_context_policy import TrainingReportContextPolicy
+from training.round_transition_policy import TrainingRoundTransitionPolicy
 from training.scenario_policy import ScenarioPolicy
 from training.scenario_repository import ScenarioRepository
 from training.session_snapshot_policy import SessionScenarioSnapshotPolicy
+from training.runtime_artifact_policy import TrainingRuntimeArtifactPolicy
+from training.training_outputs import TrainingRoundDecisionContextOutput
 from training.training_store import DatabaseTrainingStore
 
 
@@ -184,6 +189,295 @@ class _SpySessionSnapshotPolicy:
             scenario_id=scenario_id,
             scenario_payload_sequence=scenario_payload_sequence,
             scenario_payload_catalog=scenario_payload_catalog,
+        )
+
+
+class _SpyDecisionContextPolicy:
+    """决策上下文策略桩：验证服务层确实把上下文组装委托给独立策略。"""
+
+    def __init__(self):
+        self.calls = []
+
+    def build_round_decision_context(self, *, training_mode, submitted_scenario_id, next_scenario_bundle):
+        # 这里返回稳定 DTO，确保 submit_round 全链路都走到策略输出，而不是再回退到服务层旧逻辑。
+        self.calls.append(
+            {
+                "training_mode": training_mode,
+                "submitted_scenario_id": submitted_scenario_id,
+                "next_scenario_bundle": next_scenario_bundle,
+            }
+        )
+        return TrainingRoundDecisionContextOutput.from_payload(
+            {
+                "mode": training_mode,
+                "selection_source": "spy_policy",
+                "selected_scenario_id": submitted_scenario_id,
+                "recommended_scenario_id": submitted_scenario_id,
+                "candidate_pool": [
+                    {
+                        "scenario_id": submitted_scenario_id,
+                        "title": "Spy Scenario",
+                        "rank": 1,
+                        "rank_score": 0.99,
+                        "is_selected": True,
+                        "is_recommended": True,
+                    }
+                ],
+            }
+        )
+
+
+class _SpyRuntimeArtifactPolicy:
+    """运行时工件策略桩：验证服务层确实把运行时状态和 user_action 契约委托给独立策略。"""
+
+    def __init__(self, delegate):
+        self.delegate = delegate
+        self.build_default_flags_call_count = 0
+        self.resolve_flags_call_count = 0
+        self.merge_flags_call_count = 0
+        self.build_runtime_state_call_count = 0
+        self.build_round_user_action_call_count = 0
+        self.attach_runtime_artifacts_call_count = 0
+        self.extract_runtime_state_call_count = 0
+        self.extract_runtime_flags_call_count = 0
+        self.extract_consequence_events_call_count = 0
+        self.extract_decision_context_call_count = 0
+
+    def build_default_runtime_flags(self):
+        self.build_default_flags_call_count += 1
+        return self.delegate.build_default_runtime_flags()
+
+    def resolve_session_runtime_flags(self, session):
+        self.resolve_flags_call_count += 1
+        return self.delegate.resolve_session_runtime_flags(session)
+
+    def merge_session_meta_runtime_flags(self, *, session_meta, runtime_flags):
+        self.merge_flags_call_count += 1
+        return self.delegate.merge_session_meta_runtime_flags(
+            session_meta=session_meta,
+            runtime_flags=runtime_flags,
+        )
+
+    def build_runtime_state(
+        self,
+        *,
+        session,
+        player_profile=None,
+        current_round_no=None,
+        current_scene_id=None,
+        k_state=None,
+        s_state=None,
+        runtime_flags=None,
+    ):
+        self.build_runtime_state_call_count += 1
+        return self.delegate.build_runtime_state(
+            session=session,
+            player_profile=player_profile,
+            current_round_no=current_round_no,
+            current_scene_id=current_scene_id,
+            k_state=k_state,
+            s_state=s_state,
+            runtime_flags=runtime_flags,
+        )
+
+    def build_round_user_action(self, *, user_input, selected_option, decision_context):
+        self.build_round_user_action_call_count += 1
+        return self.delegate.build_round_user_action(
+            user_input=user_input,
+            selected_option=selected_option,
+            decision_context=decision_context,
+        )
+
+    def attach_runtime_artifacts_to_user_action(
+        self,
+        *,
+        user_action,
+        runtime_state,
+        consequence_events,
+        branch_hints=None,
+    ):
+        self.attach_runtime_artifacts_call_count += 1
+        return self.delegate.attach_runtime_artifacts_to_user_action(
+            user_action=user_action,
+            runtime_state=runtime_state,
+            consequence_events=consequence_events,
+            branch_hints=branch_hints,
+        )
+
+    def extract_round_runtime_state(self, user_action):
+        self.extract_runtime_state_call_count += 1
+        return self.delegate.extract_round_runtime_state(user_action)
+
+    def extract_round_runtime_flags(self, user_action):
+        self.extract_runtime_flags_call_count += 1
+        return self.delegate.extract_round_runtime_flags(user_action)
+
+    def extract_round_consequence_events(self, user_action):
+        self.extract_consequence_events_call_count += 1
+        return self.delegate.extract_round_consequence_events(user_action)
+
+    def extract_round_decision_context(self, user_action):
+        self.extract_decision_context_call_count += 1
+        return self.delegate.extract_round_decision_context(user_action)
+
+
+class _SpyOutputAssemblerPolicy:
+    """输出装配策略桩：验证服务层确实把 DTO 转换委托给独立策略。"""
+
+    def __init__(self, delegate):
+        self.delegate = delegate
+        self.build_scenario_output_call_count = 0
+        self.build_scenario_output_list_call_count = 0
+        self.build_player_profile_output_call_count = 0
+        self.build_evaluation_output_call_count = 0
+        self.build_runtime_state_output_call_count = 0
+        self.build_consequence_event_outputs_call_count = 0
+        self.build_kt_observation_output_call_count = 0
+        self.build_kt_observation_outputs_call_count = 0
+        self.build_recommendation_log_outputs_call_count = 0
+        self.build_audit_event_outputs_call_count = 0
+
+    def build_scenario_output(self, payload):
+        self.build_scenario_output_call_count += 1
+        return self.delegate.build_scenario_output(payload)
+
+    def build_scenario_output_list(self, payloads):
+        self.build_scenario_output_list_call_count += 1
+        outputs = []
+        for item in payloads or []:
+            output = self.build_scenario_output(item)
+            if output is not None:
+                outputs.append(output)
+        return outputs if payloads is not None else None
+
+    def build_player_profile_output(self, payload):
+        self.build_player_profile_output_call_count += 1
+        return self.delegate.build_player_profile_output(payload)
+
+    def build_evaluation_output(self, payload):
+        self.build_evaluation_output_call_count += 1
+        return self.delegate.build_evaluation_output(payload)
+
+    def build_runtime_state_output(self, runtime_state):
+        self.build_runtime_state_output_call_count += 1
+        return self.delegate.build_runtime_state_output(runtime_state)
+
+    def build_consequence_event_output(self, payload):
+        return self.delegate.build_consequence_event_output(payload)
+
+    def build_consequence_event_outputs(self, payloads):
+        self.build_consequence_event_outputs_call_count += 1
+        return self.delegate.build_consequence_event_outputs(payloads)
+
+    def build_kt_observation_output(self, row):
+        self.build_kt_observation_output_call_count += 1
+        return self.delegate.build_kt_observation_output(row)
+
+    def build_kt_observation_outputs(self, rows):
+        self.build_kt_observation_outputs_call_count += 1
+        outputs = []
+        for row in rows:
+            output = self.build_kt_observation_output(row)
+            if output is not None:
+                outputs.append(output)
+        return outputs
+
+    def build_recommendation_log_output(self, row):
+        return self.delegate.build_recommendation_log_output(row)
+
+    def build_recommendation_log_outputs(self, rows):
+        self.build_recommendation_log_outputs_call_count += 1
+        return self.delegate.build_recommendation_log_outputs(rows)
+
+    def build_audit_event_output(self, row):
+        return self.delegate.build_audit_event_output(row)
+
+    def build_audit_event_outputs(self, rows):
+        self.build_audit_event_outputs_call_count += 1
+        return self.delegate.build_audit_event_outputs(rows)
+
+
+class _SpyRoundTransitionPolicy:
+    """回合推进策略桩：验证服务层确实把状态推进委托给独立策略。"""
+
+    def __init__(self, delegate):
+        self.delegate = delegate
+        self.calls = []
+
+    def build_round_transition_artifacts(
+        self,
+        *,
+        session,
+        evaluator,
+        consequence_engine,
+        round_no,
+        scenario_id,
+        user_input,
+        selected_option,
+        decision_context,
+        k_before,
+        s_before,
+        recent_risk_rounds,
+        scenario_payload,
+    ):
+        self.calls.append(
+            {
+                "round_no": round_no,
+                "scenario_id": scenario_id,
+                "user_input": user_input,
+                "selected_option": selected_option,
+                "decision_context": decision_context,
+            }
+        )
+        return self.delegate.build_round_transition_artifacts(
+            session=session,
+            evaluator=evaluator,
+            consequence_engine=consequence_engine,
+            round_no=round_no,
+            scenario_id=scenario_id,
+            user_input=user_input,
+            selected_option=selected_option,
+            decision_context=decision_context,
+            k_before=k_before,
+            s_before=s_before,
+            recent_risk_rounds=recent_risk_rounds,
+            scenario_payload=scenario_payload,
+        )
+
+
+class _SpyReportContextPolicy:
+    """报告上下文策略桩：验证服务层确实把报告 history/snapshot 装配委托给独立策略。"""
+
+    def __init__(self, delegate):
+        self.delegate = delegate
+        self.resolve_initial_states_call_count = 0
+        self.build_title_map_call_count = 0
+        self.build_history_call_count = 0
+        self.build_round_snapshots_call_count = 0
+
+    def resolve_report_initial_states(self, *, session, rounds):
+        self.resolve_initial_states_call_count += 1
+        return self.delegate.resolve_report_initial_states(session=session, rounds=rounds)
+
+    def build_report_scenario_title_map(self, scenario_payload_sequence):
+        self.build_title_map_call_count += 1
+        return self.delegate.build_report_scenario_title_map(scenario_payload_sequence)
+
+    def build_report_history(self, *, rounds, eval_map, kt_observation_map):
+        self.build_history_call_count += 1
+        return self.delegate.build_report_history(
+            rounds=rounds,
+            eval_map=eval_map,
+            kt_observation_map=kt_observation_map,
+        )
+
+    def build_report_round_snapshots(self, *, rounds, eval_map, kt_observation_map, scenario_title_map):
+        self.build_round_snapshots_call_count += 1
+        return self.delegate.build_report_round_snapshots(
+            rounds=rounds,
+            eval_map=eval_map,
+            kt_observation_map=kt_observation_map,
+            scenario_title_map=scenario_title_map,
         )
 
 
@@ -800,6 +1094,27 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertEqual(report["ability_radar"][0]["code"], "K1")
         self.assertEqual(diagnostics["summary"]["last_event_type"], "spy_event")
 
+    def test_service_should_delegate_report_context_to_injected_policy(self):
+        """获取报告时，history 和 round_snapshots 的装配应委托给独立策略。"""
+        spy_policy = _SpyReportContextPolicy(TrainingReportContextPolicy())
+        service = TrainingService(
+            db_manager=_FakeDbManager(),
+            evaluator=self.evaluator,
+            report_context_policy=spy_policy,
+        )
+        init_result = service.init_training(user_id="u3-report-context-spy")
+        session_id = init_result["session_id"]
+
+        service.submit_round(session_id=session_id, scenario_id="S1", user_input="hello")
+        report = service.get_report(session_id=session_id)
+
+        self.assertEqual(spy_policy.resolve_initial_states_call_count, 1)
+        self.assertEqual(spy_policy.build_title_map_call_count, 1)
+        self.assertEqual(spy_policy.build_history_call_count, 1)
+        self.assertEqual(spy_policy.build_round_snapshots_call_count, 1)
+        self.assertEqual(report["history"][0]["scenario_id"], "S1")
+        self.assertEqual(report["growth_curve"][1]["scenario_id"], "S1")
+
     def test_service_should_delegate_session_snapshot_lifecycle_to_injected_policy(self):
         """注入自定义快照策略后，服务层应通过策略完成冻结、回填与场景解析。"""
         repository = ScenarioRepository()
@@ -830,6 +1145,126 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertGreaterEqual(spy_snapshot_policy.freeze_call_count, 1)
         self.assertGreaterEqual(spy_snapshot_policy.ensure_call_count, 2)
         self.assertGreaterEqual(spy_snapshot_policy.resolve_call_count, 1)
+
+    def test_service_should_delegate_round_decision_context_to_injected_policy(self):
+        """提交回合时，决策上下文应完全由注入策略生成，而不是服务层自行拼装。"""
+        spy_policy = _SpyDecisionContextPolicy()
+        service = TrainingService(
+            db_manager=_FakeDbManager(),
+            evaluator=self.evaluator,
+            decision_context_policy=spy_policy,
+        )
+        init_result = service.init_training(user_id="u3-decision-spy")
+        session_id = init_result["session_id"]
+
+        result = service.submit_round(
+            session_id=session_id,
+            scenario_id="S1",
+            user_input="hello",
+        )
+
+        self.assertEqual(len(spy_policy.calls), 1)
+        self.assertEqual(spy_policy.calls[0]["training_mode"], "guided")
+        self.assertEqual(spy_policy.calls[0]["submitted_scenario_id"], "S1")
+        self.assertEqual(result["decision_context"]["selection_source"], "spy_policy")
+        recommendation_logs = service.db_manager.get_scenario_recommendation_logs(session_id)
+        self.assertEqual(recommendation_logs[0].selection_source, "spy_policy")
+
+    def test_service_should_delegate_runtime_artifacts_to_injected_policy(self):
+        """运行时状态、user_action 工件和回放恢复应通过注入策略统一处理。"""
+        spy_policy = _SpyRuntimeArtifactPolicy(TrainingRuntimeArtifactPolicy())
+        service = TrainingService(
+            db_manager=_FakeDbManager(),
+            evaluator=_RiskFlagEvaluator(),
+            runtime_artifact_policy=spy_policy,
+        )
+        init_result = service.init_training(user_id="u3-runtime-spy")
+        session_id = init_result["session_id"]
+
+        submit_result = service.submit_round(
+            session_id=session_id,
+            scenario_id="S1",
+            user_input="hello",
+        )
+        diagnostics = service.get_diagnostics(session_id)
+        report = service.get_report(session_id)
+
+        self.assertGreaterEqual(spy_policy.build_default_flags_call_count, 1)
+        self.assertGreaterEqual(spy_policy.merge_flags_call_count, 2)
+        self.assertGreaterEqual(spy_policy.resolve_flags_call_count, 2)
+        self.assertGreaterEqual(spy_policy.build_runtime_state_call_count, 4)
+        self.assertGreaterEqual(spy_policy.build_round_user_action_call_count, 1)
+        self.assertGreaterEqual(spy_policy.attach_runtime_artifacts_call_count, 1)
+        self.assertGreaterEqual(spy_policy.extract_runtime_state_call_count, 1)
+        self.assertGreaterEqual(spy_policy.extract_runtime_flags_call_count, 1)
+        self.assertGreaterEqual(spy_policy.extract_consequence_events_call_count, 1)
+        self.assertGreaterEqual(spy_policy.extract_decision_context_call_count, 1)
+        self.assertTrue(submit_result["runtime_state"]["runtime_flags"]["source_exposed"])
+        self.assertEqual(diagnostics["runtime_state"]["runtime_flags"]["source_exposed"], True)
+        self.assertEqual(report["history"][0]["consequence_events"][0]["event_type"], "source_exposed")
+
+    def test_service_should_delegate_output_assembly_to_injected_policy(self):
+        """对外 DTO 转换应统一委托给注入的输出装配策略。"""
+        spy_policy = _SpyOutputAssemblerPolicy(TrainingOutputAssemblerPolicy())
+        service = TrainingService(
+            db_manager=_FakeDbManager(),
+            evaluator=_RiskFlagEvaluator(),
+            output_assembler_policy=spy_policy,
+        )
+        init_result = service.init_training(user_id="u3-output-spy")
+        session_id = init_result["session_id"]
+
+        service.get_next_scenario(session_id)
+        submit_result = service.submit_round(
+            session_id=session_id,
+            scenario_id="S1",
+            user_input="hello",
+        )
+        diagnostics = service.get_diagnostics(session_id)
+        report = service.get_report(session_id)
+
+        self.assertGreaterEqual(spy_policy.build_scenario_output_call_count, 2)
+        self.assertGreaterEqual(spy_policy.build_scenario_output_list_call_count, 2)
+        self.assertGreaterEqual(spy_policy.build_player_profile_output_call_count, 1)
+        self.assertGreaterEqual(spy_policy.build_evaluation_output_call_count, 1)
+        self.assertGreaterEqual(spy_policy.build_runtime_state_output_call_count, 1)
+        self.assertGreaterEqual(spy_policy.build_consequence_event_outputs_call_count, 1)
+        self.assertGreaterEqual(spy_policy.build_recommendation_log_outputs_call_count, 1)
+        self.assertGreaterEqual(spy_policy.build_audit_event_outputs_call_count, 1)
+        self.assertGreaterEqual(spy_policy.build_kt_observation_outputs_call_count, 1)
+        self.assertGreaterEqual(spy_policy.build_kt_observation_output_call_count, 1)
+        self.assertEqual(submit_result["evaluation"]["risk_flags"], ["source_exposure_risk"])
+        self.assertEqual(diagnostics["kt_observations"][0]["scenario_id"], "S1")
+        self.assertEqual(report["history"][0]["evaluation"]["risk_flags"], ["source_exposure_risk"])
+
+    def test_service_should_delegate_round_transition_to_injected_policy(self):
+        """提交回合时，状态推进链路应委托给独立回合推进策略。"""
+        spy_policy = _SpyRoundTransitionPolicy(
+            TrainingRoundTransitionPolicy(
+                runtime_artifact_policy=TrainingRuntimeArtifactPolicy(),
+            )
+        )
+        service = TrainingService(
+            db_manager=_FakeDbManager(),
+            evaluator=_RiskFlagEvaluator(),
+            round_transition_policy=spy_policy,
+        )
+        init_result = service.init_training(user_id="u3-transition-spy")
+        session_id = init_result["session_id"]
+
+        result = service.submit_round(
+            session_id=session_id,
+            scenario_id="S1",
+            user_input="hello",
+            selected_option="A",
+        )
+
+        self.assertEqual(len(spy_policy.calls), 1)
+        self.assertEqual(spy_policy.calls[0]["round_no"], 1)
+        self.assertEqual(spy_policy.calls[0]["scenario_id"], "S1")
+        self.assertEqual(spy_policy.calls[0]["selected_option"], "A")
+        self.assertTrue(result["runtime_state"]["runtime_flags"]["source_exposed"])
+        self.assertEqual(result["consequence_events"][0]["event_type"], "source_exposed")
 
     def test_report_round_snapshots_should_fallback_to_evaluation_risk_flags_when_observation_missing(self):
         """历史数据缺少 KT 观测时，报告快照仍应从评估结果兜底补齐风险字段。"""

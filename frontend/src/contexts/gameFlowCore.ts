@@ -1,6 +1,14 @@
 import { createContext } from 'react';
 import * as gameStorage from '@/storage/gameStorage';
-import type { CharacterData, InitialGameData } from '@/types/game';
+import type {
+  CharacterData,
+  GameMessage,
+  GameSave,
+  GameSessionSnapshot,
+  InitialGameData,
+  MainGameSave,
+} from '@/types/game';
+import { resolvePreferredCharacterId } from '@/utils/gameSession';
 
 export interface RestoreSessionState {
   threadId: string | null;
@@ -31,6 +39,13 @@ export interface SetActiveSessionParams {
   initialGameData?: InitialGameData | null;
 }
 
+export interface PersistGameProgressParams {
+  threadId: string;
+  messages: GameMessage[];
+  characterId?: string;
+  snapshot?: GameSessionSnapshot;
+}
+
 export interface GameFlowContextValue {
   state: GameFlowState;
   setCharacterDraft: (data: CharacterData | null) => void;
@@ -44,6 +59,9 @@ export interface GameFlowContextValue {
   clearActiveSession: () => void;
   clearInitialGameData: () => void;
   setCurrentCharacterId: (characterId: string | null) => void;
+  getResumeSave: () => MainGameSave | null;
+  getThreadSave: (threadId: string) => GameSave | null;
+  persistGameProgress: (params: PersistGameProgressParams) => void;
   hydrateFromStorage: () => void;
 }
 
@@ -65,10 +83,112 @@ export const readStorageState = (): GameFlowState => {
         characterId: activeCharacterId,
         initialGameData: gameStorage.getInitialGameData(),
       },
-      currentCharacterId:
-        gameStorage.getCurrentCharacterId() || activeCharacterId || characterDraft?.characterId || null,
+      currentCharacterId: resolvePreferredCharacterId({
+        currentCharacterId: gameStorage.getCurrentCharacterId(),
+        activeCharacterId,
+        draftCharacterId: characterDraft?.characterId,
+      }),
     },
   };
+};
+
+export const getResumeSave = (): MainGameSave | null => gameStorage.getMainGameSave();
+
+export const getThreadSave = (threadId: string): GameSave | null => gameStorage.getGameSave(threadId);
+
+export const persistCharacterDraft = (data: CharacterData | null): void => {
+  if (data) {
+    gameStorage.setCharacterData(data);
+    return;
+  }
+
+  gameStorage.removeCharacterData();
+};
+
+export const persistCreatedCharacterId = (id: string | null): void => {
+  if (id) {
+    gameStorage.setCreatedCharacterId(id);
+    return;
+  }
+
+  gameStorage.removeCreatedCharacterId();
+};
+
+export const persistRestoreSession = (
+  threadId: string | null,
+  characterId: string | null = null
+): void => {
+  gameStorage.removeRestoreIds();
+
+  if (threadId) {
+    gameStorage.setRestoreThreadId(threadId);
+  }
+
+  if (characterId) {
+    gameStorage.setRestoreCharacterId(characterId);
+  }
+};
+
+export const persistActiveSession = ({
+  threadId,
+  characterId,
+  initialGameData = null,
+}: SetActiveSessionParams): void => {
+  if (threadId && characterId) {
+    gameStorage.setGameIds(threadId, characterId);
+  } else {
+    gameStorage.clearGameIds();
+  }
+
+  if (initialGameData) {
+    gameStorage.setInitialGameData(initialGameData);
+  } else {
+    gameStorage.clearInitialGameData();
+  }
+
+  if (characterId) {
+    gameStorage.setCurrentCharacterId(characterId);
+  }
+};
+
+export const clearPersistedInitialGameData = (): void => {
+  gameStorage.clearInitialGameData();
+};
+
+export const persistCurrentCharacterId = (characterId: string | null): void => {
+  if (characterId) {
+    gameStorage.setCurrentCharacterId(characterId);
+    return;
+  }
+
+  gameStorage.clearCurrentCharacterId();
+};
+
+export const persistGameProgress = ({
+  threadId,
+  messages,
+  characterId,
+  snapshot,
+}: PersistGameProgressParams): void => {
+  const timestamp = Date.now();
+  const lastMessage = messages.length > 0 ? messages[messages.length - 1].content : undefined;
+
+  gameStorage.setGameSave({
+    threadId,
+    characterId,
+    messages,
+    lastMessage,
+    snapshot,
+    timestamp,
+  });
+
+  gameStorage.setMainGameSave({
+    threadId,
+    characterId,
+    lastMessage,
+    snapshot,
+    timestamp,
+  });
 };
 
 export const GameFlowContext = createContext<GameFlowContextValue | null>(null);

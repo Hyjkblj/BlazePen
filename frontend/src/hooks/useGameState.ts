@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
-import type { GameMessage, PlayerOption } from '@/types/game';
+import type { GameMessage, GameSessionSnapshot, PlayerOption } from '@/types/game';
 
 export type SceneTransitionMode = 'silent' | 'reset' | 'advance';
 
@@ -41,6 +41,9 @@ export interface GameSessionActions {
   clearSceneTransition: () => void;
   applyCompositeScene: (imageUrl: string) => void;
   applySceneVisual: (input: SceneVisualStateInput) => void;
+  markCompositeAssetFailed: () => void;
+  markSceneAssetFailed: () => void;
+  markCharacterAssetFailed: () => void;
   prepareOptionSelection: (optionText: string) => void;
   scrollToBottom: () => void;
 }
@@ -58,9 +61,14 @@ export type GameSessionInitActions = Pick<
   | 'applySceneVisual'
 >;
 
+export interface GameSessionDerived {
+  persistenceSnapshot: GameSessionSnapshot;
+}
+
 export interface GameStateBag {
   state: GameSessionState;
   actions: GameSessionActions;
+  derived: GameSessionDerived;
 }
 
 export function useGameState(): GameStateBag {
@@ -160,6 +168,19 @@ export function useGameState(): GameStateBag {
     }
   }, []);
 
+  const markCompositeAssetFailed = useCallback(() => {
+    setShouldUseComposite(false);
+    setCompositeImageUrl(null);
+  }, []);
+
+  const markSceneAssetFailed = useCallback(() => {
+    setSceneImageUrl(null);
+  }, []);
+
+  const markCharacterAssetFailed = useCallback(() => {
+    setCharacterImageUrl(null);
+  }, []);
+
   const prepareOptionSelection = useCallback((optionText: string) => {
     setMessages((prev) => [...prev, { role: 'user', content: optionText }]);
     setCurrentOptions([]);
@@ -202,6 +223,29 @@ export function useGameState(): GameStateBag {
     ]
   );
 
+  const derived = useMemo(
+    () => ({
+      persistenceSnapshot: {
+        currentDialogue,
+        currentOptions,
+        currentScene,
+        sceneImageUrl,
+        characterImageUrl,
+        compositeImageUrl,
+        shouldUseComposite,
+      },
+    }),
+    [
+      characterImageUrl,
+      compositeImageUrl,
+      currentDialogue,
+      currentOptions,
+      currentScene,
+      sceneImageUrl,
+      shouldUseComposite,
+    ]
+  );
+
   const actions = useMemo(
     () => ({
       replaceMessages,
@@ -218,6 +262,9 @@ export function useGameState(): GameStateBag {
       clearSceneTransition,
       applyCompositeScene,
       applySceneVisual,
+      markCompositeAssetFailed,
+      markSceneAssetFailed,
+      markCharacterAssetFailed,
       prepareOptionSelection,
       scrollToBottom,
     }),
@@ -227,6 +274,9 @@ export function useGameState(): GameStateBag {
       applySceneVisual,
       clearSceneTransition,
       enterScene,
+      markCharacterAssetFailed,
+      markCompositeAssetFailed,
+      markSceneAssetFailed,
       prepareOptionSelection,
       replaceMessages,
       rollbackPendingUserMessage,
@@ -241,5 +291,6 @@ export function useGameState(): GameStateBag {
   return {
     state,
     actions,
+    derived,
   };
 }

@@ -1,6 +1,6 @@
 /**
- * 场景配置
- * 前端直接从静态文件服务获取场景图片，不依赖后端API
+ * Scene display catalog.
+ * Keep this file focused on metadata used by the UI and flows.
  */
 
 export interface SceneConfig {
@@ -10,8 +10,6 @@ export interface SceneConfig {
   imageExtensions?: string[]; // 支持的图片扩展名
 }
 
-// 场景配置列表（根据 backend/images/scenes 目录中的文件）
-// 格式：{scene_id}_{场景名称}.{ext}
 export const SCENE_CONFIGS: SceneConfig[] = [
   {
     id: 'cafe_nearby',
@@ -75,25 +73,9 @@ export const SCENE_CONFIGS: SceneConfig[] = [
   },
 ];
 
-/**
- * 构建场景图片URL
- * 格式：/static/images/scenes/{scene_id}_{场景名称}.{ext}
- * 注意：需要对中文进行URL编码
- */
-export function buildSceneImageUrl(sceneId: string, sceneName: string, extension: string = '.jpeg'): string {
-  // 对场景名称进行URL编码，确保中文文件名能正确访问
-  const encodedSceneName = encodeURIComponent(sceneName);
-  return `/static/images/scenes/${sceneId}_${encodedSceneName}${extension}`;
-}
-
-/**
- * 尝试获取场景图片URL（按优先级尝试不同扩展名）
- */
-export function getSceneImageUrl(scene: SceneConfig): string | null {
-  const extensions = scene.imageExtensions || ['.jpeg', '.jpg', '.png', '.webp'];
-  const url = buildSceneImageUrl(scene.id, scene.name, extensions[0]);
-  return url;
-}
+const SCENE_CONFIG_BY_ID: Record<string, SceneConfig> = Object.fromEntries(
+  SCENE_CONFIGS.map((scene) => [scene.id, scene])
+) as Record<string, SceneConfig>;
 
 /** 场景 ID -> 中文名（先查 SCENE_CONFIGS，再查扩展表；小场景等未在 config 中的用扩展表） */
 const SCENE_NAME_MAP: Record<string, string> = {
@@ -123,8 +105,12 @@ const SCENE_NAME_MAP: Record<string, string> = {
 /**
  * 根据场景 ID 返回中文名称，与 SCENE_CONFIGS 及扩展表一致
  */
+export function getSceneConfig(sceneId: string): SceneConfig | null {
+  return SCENE_CONFIG_BY_ID[sceneId] ?? null;
+}
+
 export function getSceneNameById(sceneId: string): string {
-  const fromConfig = SCENE_CONFIGS.find((c) => c.id === sceneId);
+  const fromConfig = getSceneConfig(sceneId);
   if (fromConfig) return fromConfig.name;
   return SCENE_NAME_MAP[sceneId] ?? sceneId;
 }

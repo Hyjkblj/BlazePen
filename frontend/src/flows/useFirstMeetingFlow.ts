@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import type { WheelEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '@/config/routes';
+import { SCENE_CONFIGS } from '@/config/scenes';
 import { useFeedback, useGameFlow } from '@/contexts';
 import { getScenes, initializeStory } from '@/services/characterApi';
 import { initGame } from '@/services/gameApi';
 import { checkServerHealth } from '@/services/healthApi';
-import type { GetScenesResponse, InitializeStoryResponse, SceneApiItem } from '@/types/api';
-import type { PlayerOption, SelectedScene } from '@/types/game';
+import type { GetScenesResponse, SceneApiItem } from '@/types/api';
+import type { InitialGameData, SelectedScene } from '@/types/game';
+import { resolveStaticSceneImageFallback } from '@/utils/sceneAssets';
+import { toInitialGameData } from '@/utils/storyScene';
 
 export interface SceneOption extends SelectedScene {
   name: string;
@@ -27,14 +30,6 @@ export interface UseFirstMeetingFlowResult {
   selectScene: () => Promise<void>;
 }
 
-interface InitialGameDataPayload {
-  character_dialogue?: string;
-  player_options?: PlayerOption[];
-  composite_image_url?: string;
-  scene_image_url?: string;
-  scene?: string;
-}
-
 const normalizeScene = (scene: SceneApiItem | undefined, index: number): SceneOption => {
   const rawImage = scene?.imageUrl;
   const imageUrl =
@@ -49,6 +44,14 @@ const normalizeScene = (scene: SceneApiItem | undefined, index: number): SceneOp
     imageUrl,
   };
 };
+
+const buildFallbackSceneOptions = (): SceneOption[] =>
+  SCENE_CONFIGS.map((scene) => ({
+    id: scene.id,
+    name: scene.name,
+    description: scene.description,
+    imageUrl: resolveStaticSceneImageFallback(scene.id) ?? undefined,
+  }));
 
 export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
   const navigate = useNavigate();
@@ -71,8 +74,8 @@ export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
       try {
         const isHealthy = await checkServerHealth();
         if (!isHealthy) {
-          feedback.error('Backend is unavailable.');
-          setSceneOptions([]);
+          feedback.warning('Backend is unavailable. Showing local scene previews.');
+          setSceneOptions(buildFallbackSceneOptions());
           return;
         }
 
@@ -80,8 +83,8 @@ export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
         const scenes = Array.isArray(response.scenes) ? response.scenes : [];
 
         if (scenes.length === 0) {
-          feedback.warning('No scenes available.');
-          setSceneOptions([]);
+          feedback.warning('No scenes available from backend. Showing local scene previews.');
+          setSceneOptions(buildFallbackSceneOptions());
           return;
         }
 
@@ -89,13 +92,7 @@ export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
       } catch (error: unknown) {
         const err = error as { response?: { data?: { message?: string } }; message?: string };
         feedback.error(err.response?.data?.message || err.message || 'Failed to load scenes.');
-        setSceneOptions([
-          {
-            id: 'school',
-            name: 'School',
-            description: 'A lively campus scene.',
-          },
-        ]);
+        setSceneOptions(buildFallbackSceneOptions());
       } finally {
         setLoading(false);
       }
@@ -186,22 +183,14 @@ export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
       const characterImageUrl =
         characterData.selectedImageUrl || characterData.originalImageUrl || characterData.imageUrl;
 
-      const storyResponse: InitializeStoryResponse = await initializeStory(
+      const storyResponse = await initializeStory(
         threadId,
         characterId,
         selectedScene.id,
         characterImageUrl
       );
 
-      const initialGameData: InitialGameDataPayload = {
-        character_dialogue: storyResponse.character_dialogue,
-        player_options: Array.isArray(storyResponse.player_options)
-          ? storyResponse.player_options
-          : [],
-        composite_image_url: storyResponse.composite_image_url,
-        scene_image_url: storyResponse.scene_image_url,
-        scene: storyResponse.scene,
-      };
+      const initialGameData: InitialGameData = toInitialGameData(storyResponse);
 
       setActiveSession({
         threadId,

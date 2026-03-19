@@ -1,12 +1,11 @@
-﻿import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useFeedback, useGameFlow } from '@/contexts';
 import { useGameInit, useGameState, useGameTts } from '@/hooks';
-import { SCENE_CONFIGS, buildSceneImageUrl, getSceneImageUrl, getSceneNameById } from '@/config/scenes';
 import { initGame, processGameInput } from '@/services/gameApi';
-import type { ProcessGameInputResponse } from '@/types/api';
-import type { GameSessionSnapshot, PlayerOption } from '@/types/game';
-import { getFallbackSceneImageUrls } from '@/utils/game';
+import type { GameTurnResult, PlayerOption } from '@/types/game';
+import { resolvePreferredCharacterId } from '@/utils/gameSession';
 import { logger } from '@/utils/logger';
+import { resolveSceneDisplayName, resolveStorySceneVisual } from '@/utils/storyScene';
 
 export interface UseGameSessionFlowResult {
   actNumber: number;
@@ -20,6 +19,9 @@ export interface UseGameSessionFlowResult {
   currentDialogue: string;
   currentOptions: PlayerOption[];
   dismissTransition: () => void;
+  handleCharacterAssetError: () => void;
+  handleCompositeAssetError: () => void;
+  handleSceneAssetError: () => void;
   selectOption: (optionIndex: number) => Promise<void>;
 }
 
@@ -27,7 +29,7 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
   const feedback = useFeedback();
   const { state: flowState, setActiveSession } = useGameFlow();
   const gameState = useGameState();
-  const { actions } = gameState;
+  const { actions, derived } = gameState;
   const { saveGameProgress, setCharacterImage } = useGameInit(actions);
 
   const {
@@ -47,6 +49,16 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
     threadId,
   } = gameState.state;
 
+  const lastAssetErrorRef = useRef<{
+    composite: string | null;
+    scene: string | null;
+    character: string | null;
+  }>({
+    composite: null,
+    scene: null,
+    character: null,
+  });
+
   useGameTts(currentDialogue, characterId);
 
   useEffect(() => {
@@ -61,94 +73,78 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
       return;
     }
 
-    const snapshot: GameSessionSnapshot = {
-      currentDialogue,
-      currentOptions,
-      currentScene,
-      sceneImageUrl,
-      characterImageUrl,
-      compositeImageUrl,
-      shouldUseComposite,
-    };
-
-    saveGameProgress(threadId, messages, characterId ?? undefined, snapshot);
+    saveGameProgress(threadId, messages, characterId ?? undefined, derived.persistenceSnapshot);
   }, [
     actions,
     characterId,
-    characterImageUrl,
-    compositeImageUrl,
-    currentDialogue,
-    currentOptions,
-    currentScene,
+    derived.persistenceSnapshot,
     messages,
     saveGameProgress,
-    sceneImageUrl,
-    shouldUseComposite,
     threadId,
   ]);
+
+  const preferredCharacterId = resolvePreferredCharacterId({
+    currentCharacterId: characterId,
+    activeCharacterId: flowState.runtimeSession.currentCharacterId,
+    draftCharacterId: flowState.characterDraft?.characterId,
+  });
 
   const ensureCharacterImage = () => {
     if (characterImageUrl) {
       return;
     }
 
-    setCharacterImage(
-      characterId ||
-        flowState.runtimeSession.currentCharacterId ||
-        flowState.characterDraft?.characterId ||
-        null
-    );
+    setCharacterImage(preferredCharacterId);
   };
 
-  const resolveSceneImage = (sceneId: string) => {
-    const sceneConfig = SCENE_CONFIGS.find((scene) => scene.id === sceneId);
-
-    if (!sceneConfig) {
-      return getFallbackSceneImageUrls(sceneId)[0];
+  const notifyAssetError = (
+    kind: 'composite' | 'scene' | 'character',
+    resourceKey: string | null,
+    message: string
+  ) => {
+    const nextKey = resourceKey ?? `${kind}:missing`;
+    if (lastAssetErrorRef.current[kind] === nextKey) {
+      return;
     }
 
-    const sceneUrl = getSceneImageUrl(sceneConfig);
-    if (sceneUrl) {
-      return sceneUrl;
-    }
-
-    const ext = sceneConfig.imageExtensions?.[0] ?? '.jpeg';
-    return buildSceneImageUrl(sceneConfig.id, sceneConfig.name, ext);
+    lastAssetErrorRef.current[kind] = nextKey;
+    feedback.warning(message);
   };
 
-  const applyGameResponse = (responseData: ProcessGameInputResponse) => {
-    if (responseData.scene && responseData.scene !== currentScene) {
-      actions.enterScene(responseData.scene, getSceneNameById(responseData.scene), 'advance');
+  const applyGameResponse = (responseData: GameTurnResult) => {
+    if (responseData.sceneId && responseData.sceneId !== currentScene) {
+      actions.enterScene(
+        responseData.sceneId,
+        resolveSceneDisplayName(responseData.sceneId) ?? responseData.sceneId,
+        'advance'
+      );
     }
 
-    if (responseData.composite_image_url) {
-      actions.applyCompositeScene(responseData.composite_image_url);
-    } else if (responseData.scene_image_url) {
-      actions.applySceneVisual({ sceneImageUrl: responseData.scene_image_url });
-      ensureCharacterImage();
-    } else if (responseData.scene) {
-      actions.applySceneVisual({ sceneImageUrl: resolveSceneImage(responseData.scene) });
+    const visual = resolveStorySceneVisual(responseData);
+    if (visual.kind === 'composite') {
+      actions.applyCompositeScene(visual.imageUrl);
+    } else if (responseData.sceneId || responseData.sceneImageUrl) {
+      actions.applySceneVisual({ sceneImageUrl: visual.imageUrl });
       ensureCharacterImage();
     }
 
-    if (responseData.character_dialogue) {
-      actions.setDialogue(responseData.character_dialogue);
+    if (responseData.characterDialogue) {
+      actions.setDialogue(responseData.characterDialogue);
       actions.appendMessage({
         role: 'assistant',
-        content: responseData.character_dialogue,
+        content: responseData.characterDialogue,
       });
     }
 
-    actions.setOptions(responseData.player_options);
+    actions.setOptions(responseData.playerOptions);
 
-    if (responseData.is_game_finished) {
+    if (responseData.isGameFinished) {
       feedback.info('游戏结束');
     }
   };
 
   const recoverExpiredSession = async (): Promise<boolean> => {
-    const nextCharacterId =
-      characterId || flowState.runtimeSession.currentCharacterId || flowState.characterDraft?.characterId;
+    const nextCharacterId = preferredCharacterId;
 
     if (!nextCharacterId) {
       feedback.error('游戏会话已过期，请返回重新开始游戏');
@@ -184,24 +180,23 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
 
     const selectedOption = currentOptions[optionIndex];
     if (!selectedOption) return;
+    const previousDialogue = currentDialogue;
+    const previousOptions = currentOptions;
 
     actions.prepareOptionSelection(selectedOption.text);
 
     try {
-      const currentCharacterId =
-        characterId || flowState.runtimeSession.currentCharacterId || flowState.characterDraft?.characterId;
-
       const response = await processGameInput({
         thread_id: threadId,
         user_input: `option:${optionIndex + 1}`,
-        character_id: currentCharacterId || undefined,
+        character_id: preferredCharacterId || undefined,
       });
 
-      if (response.thread_id && response.thread_id !== threadId && currentCharacterId) {
-        actions.setThreadId(response.thread_id);
+      if (response.threadId && response.threadId !== threadId && preferredCharacterId) {
+        actions.setThreadId(response.threadId);
         setActiveSession({
-          threadId: response.thread_id,
-          characterId: currentCharacterId,
+          threadId: response.threadId,
+          characterId: preferredCharacterId,
           initialGameData: null,
         });
         feedback.info('游戏会话已恢复');
@@ -227,6 +222,8 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
         feedback.error(errorMessage);
       }
 
+      actions.setDialogue(previousDialogue);
+      actions.setOptions(previousOptions);
       actions.rollbackPendingUserMessage();
     } finally {
       actions.stopLoading();
@@ -235,6 +232,36 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
 
   const dismissTransition = () => {
     actions.clearSceneTransition();
+  };
+
+  const handleCompositeAssetError = () => {
+    const failedCompositeImageUrl = compositeImageUrl;
+    actions.markCompositeAssetFailed();
+    notifyAssetError(
+      'composite',
+      failedCompositeImageUrl,
+      '合成场景加载失败，已切换为占位背景。建议稍后重试或重新进入当前场景。'
+    );
+  };
+
+  const handleSceneAssetError = () => {
+    const failedSceneImageUrl = sceneImageUrl;
+    actions.markSceneAssetFailed();
+    notifyAssetError(
+      'scene',
+      failedSceneImageUrl,
+      '场景背景加载失败，已显示占位背景。你可以继续游戏，也可以稍后重试。'
+    );
+  };
+
+  const handleCharacterAssetError = () => {
+    const failedCharacterImageUrl = characterImageUrl;
+    actions.markCharacterAssetFailed();
+    notifyAssetError(
+      'character',
+      failedCharacterImageUrl,
+      '角色立绘加载失败，当前将隐藏角色图层并继续游戏。'
+    );
   };
 
   return {
@@ -249,7 +276,9 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
     currentDialogue,
     currentOptions,
     dismissTransition,
+    handleCharacterAssetError,
+    handleCompositeAssetError,
+    handleSceneAssetError,
     selectOption,
   };
 }
-

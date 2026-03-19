@@ -1,11 +1,20 @@
-import { useReducer, type ReactNode } from 'react';
-import * as gameStorage from '@/storage/gameStorage';
+import { useCallback, useReducer, type ReactNode } from 'react';
 import type { CharacterData } from '@/types/game';
 import {
+  clearPersistedInitialGameData,
   GameFlowContext,
+  getResumeSave as readResumeSave,
+  getThreadSave as readThreadSave,
+  persistActiveSession as persistSessionState,
+  persistCharacterDraft,
+  persistCreatedCharacterId,
+  persistCurrentCharacterId,
+  persistGameProgress as persistProgress,
+  persistRestoreSession,
   readStorageState,
   type ActiveSessionState,
   type GameFlowState,
+  type PersistGameProgressParams,
   type SetActiveSessionParams,
 } from './gameFlowCore';
 
@@ -65,19 +74,15 @@ export function GameFlowProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, readStorageState);
 
   const setCharacterDraft = (data: CharacterData | null) => {
-    if (data) {
-      gameStorage.setCharacterData(data);
-    } else {
-      gameStorage.removeCharacterData();
-    }
+    persistCharacterDraft(data);
 
     dispatch({ type: 'set-character-draft', payload: data });
 
     if (data?.characterId) {
-      gameStorage.setCurrentCharacterId(data.characterId);
+      persistCurrentCharacterId(data.characterId);
       dispatch({ type: 'set-current-character-id', payload: data.characterId });
     } else if (!state.runtimeSession.activeSession.characterId) {
-      gameStorage.clearCurrentCharacterId();
+      persistCurrentCharacterId(null);
       dispatch({ type: 'set-current-character-id', payload: null });
     }
   };
@@ -90,25 +95,12 @@ export function GameFlowProvider({ children }: { children: ReactNode }) {
   };
 
   const setCreatedCharacterId = (id: string | null) => {
-    if (id) {
-      gameStorage.setCreatedCharacterId(id);
-    } else {
-      gameStorage.removeCreatedCharacterId();
-    }
-
+    persistCreatedCharacterId(id);
     dispatch({ type: 'set-created-character-id', payload: id });
   };
 
   const setRestoreSession = (threadId: string | null, characterId: string | null = null) => {
-    gameStorage.removeRestoreIds();
-
-    if (threadId) {
-      gameStorage.setRestoreThreadId(threadId);
-    }
-
-    if (characterId) {
-      gameStorage.setRestoreCharacterId(characterId);
-    }
+    persistRestoreSession(threadId, characterId);
 
     dispatch({
       type: 'set-restore-session',
@@ -125,21 +117,7 @@ export function GameFlowProvider({ children }: { children: ReactNode }) {
     characterId,
     initialGameData = null,
   }: SetActiveSessionParams) => {
-    if (threadId && characterId) {
-      gameStorage.setGameIds(threadId, characterId);
-    } else {
-      gameStorage.clearGameIds();
-    }
-
-    if (initialGameData) {
-      gameStorage.setInitialGameData(initialGameData);
-    } else {
-      gameStorage.clearInitialGameData();
-    }
-
-    if (characterId) {
-      gameStorage.setCurrentCharacterId(characterId);
-    }
+    persistSessionState({ threadId, characterId, initialGameData });
 
     dispatch({
       type: 'set-active-session',
@@ -156,7 +134,7 @@ export function GameFlowProvider({ children }: { children: ReactNode }) {
   };
 
   const clearInitialGameData = () => {
-    gameStorage.clearInitialGameData();
+    clearPersistedInitialGameData();
     dispatch({
       type: 'set-active-session',
       payload: {
@@ -167,18 +145,21 @@ export function GameFlowProvider({ children }: { children: ReactNode }) {
   };
 
   const setCurrentCharacterId = (characterId: string | null) => {
-    if (characterId) {
-      gameStorage.setCurrentCharacterId(characterId);
-    } else {
-      gameStorage.clearCurrentCharacterId();
-    }
-
+    persistCurrentCharacterId(characterId);
     dispatch({ type: 'set-current-character-id', payload: characterId });
   };
 
-  const hydrateFromStorage = () => {
+  const getResumeSave = useCallback(() => readResumeSave(), []);
+
+  const getThreadSave = useCallback((threadId: string) => readThreadSave(threadId), []);
+
+  const persistGameProgress = useCallback((params: PersistGameProgressParams) => {
+    persistProgress(params);
+  }, []);
+
+  const hydrateFromStorage = useCallback(() => {
     dispatch({ type: 'hydrate', payload: readStorageState() });
-  };
+  }, []);
 
   return (
     <GameFlowContext.Provider
@@ -193,6 +174,9 @@ export function GameFlowProvider({ children }: { children: ReactNode }) {
         clearActiveSession,
         clearInitialGameData,
         setCurrentCharacterId,
+        getResumeSave,
+        getThreadSave,
+        persistGameProgress,
         hydrateFromStorage,
       }}
     >

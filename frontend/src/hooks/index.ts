@@ -2,6 +2,7 @@ export { useGameState } from './useGameState';
 export type {
   GameStateBag,
   GameSessionActions,
+  GameSessionDerived,
   GameSessionInitActions,
   GameSessionState,
 } from './useGameState';

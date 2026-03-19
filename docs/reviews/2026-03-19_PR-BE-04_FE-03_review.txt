@@ -1,0 +1,41 @@
+## 前端 Findings
+- [Major] D:\Develop\Project\BlazePen\frontend\src\hooks\useCharacterVoiceSelection.ts:181
+  问题：音色保存失败被 hook 静默吞掉，选择流程仍会继续进入下一页。
+  原因：ttsApi.ts 已经提供了稳定的 ServiceError，但 persistSelectedVoiceConfig() 在 catch 后直接返回 null；上层 useCharacterSelectionFlow.confirmVoice() 只在 voiceConfig 存在时才写入 draft，然后无条件继续跳转到 FIRST_MEETING。
+  影响：用户已经明确选中的音色可能既没有持久化到服务端，也没有写回本地 draft，刷新或重新进入流程后会出现“已确认但未生效”的状态分叉，后续 TTS 也可能退回默认配置。
+  建议：把 persistSelectedVoiceConfig() 改成显式结果模型或直接向上抛出 ServiceError；confirmVoice() 必须对“已选音色但保存失败”做明确决策，要么阻断跳转并提示重试，要么让用户显式确认“继续但不保存”，不要静默降级。
+
+## 后端 Findings
+- [Blocker] D:\Develop\Project\BlazePen\backend\story\story_session_service.py:61
+  问题：快照恢复路径不会重新解析异步媒体结果，后台生成完成后的场景图/合成图无法在刷新或恢复时升级为 ready。
+  原因：StoryTurnService.initialize_story() 会把 opening 资产按 pending 合同持久化，并把重任务异步下放；StoryAssetService.generate_opening_composite_image_async() 也明确约定“后续 refresh/recovery 会从磁盘重新读取生成结果”。但 get_session_snapshot() 这里只是对旧 response_payload 再做一次 merge_story_assets()，没有重新调用 resolve_scene_image_url() / find_latest_composite_image_url()。
+  影响：PR-BE-04 最核心的“重任务异步化且可恢复”主链路没有闭环。用户在后台任务成功后刷新页面、恢复会话或跨进程重放时，仍会看到陈旧的 pending/failed 资产合同，恢复路径实际失效。
+  建议：把媒体合同从“快照里存死的状态”改成“快照业务字段 + 读取时派生的资产视图”；get_session_snapshot() 需要结合 thread_id、character/session 元数据和当前 scene 重新解析 scene/composite URL，再统一生成 assets。
+
+- [Major] D:\Develop\Project\BlazePen\backend\api\routers\game.py:113
+  问题：/v1/game/input 路由仍然直接持有 session lock、会话恢复和重建逻辑，router 还在穿透 story domain 内部状态。
+  原因：该路由直接访问 game_service.session_manager.get_session() 并对 runtime session 加锁，还自己决定是否 init_game() + initialize_story()；同时它用 "not found" 文本判断是否触发恢复，继续依赖 message 文本承载业务语义，违反 routers / services / policy 边界。
+  影响：恢复策略无法在 story domain 内形成单一事实源，异常文案变化或新的 ValueError 分支都可能误触发重建，导致重复初始化、threadId 切换和并发路径行为不一致。
+  建议：把“提交 + 加锁 + 缺失会话恢复/重建”整体下沉到专门的 story service/policy，router 只做 DTO 映射和稳定异常到错误码的转换；禁止用异常 message 文本分支业务。
+
+- [Major] D:\Develop\Project\BlazePen\backend\api\routers\characters.py:422
+  问题：兼容路由 /v1/characters/initialize-story 仍然在 router 内复制整套初始化实现，没有收敛为 shared handler 的薄包装。
+  原因：story_route_handlers.py 已明确把 legacy route 定义为 thin wrapper，但 characters.py 仍保留了独立的参数校验、错误映射、默认值和 payload 组装；而 canonical route /v1/game/initialize-story 已经走 shared handler。
+  影响：两个入口的初始化契约会继续漂移，后续再调整 story init 的验证、错误码、日志上下文或默认值时需要双点修改，兼容路由会持续成为架构退化源头。
+  建议：把 characters.py 的实现改成直接委托 handle_initialize_story_request(...)，兼容路由只保留 URL 和必要的 route_name 标识，不再复制业务逻辑。
+
+## Open Questions
+- FE-03 里，用户在声音步骤已经明确选中音色后，如果保存失败，产品预期到底是“必须阻断进入 FIRST_MEETING”还是“允许用户显式确认继续但不保存音色”？当前代码是静默继续，这个语义需要定死。
+
+## 测试缺口
+- 前端：当前只有 useCharacterVoiceSelection.test.tsx 和 useCharacterPortraitSelection.test.tsx，没有覆盖 useCharacterSelectionFlow.confirmVoice() 的集成路径。缺少“用户已选音色 + setVoiceConfig() reject + 页面是否阻断跳转/提示重试”的测试。
+- 后端：backend\test_story_domain_services.py 只验证当前快照读取会得到 failed 资产状态，没有覆盖“初始化时 pending，后台任务成功后再次 get_session_snapshot() 返回 ready URL”的恢复链路。这正是 PR-BE-04 最需要被锁住的行为。
+- 后端：backend\test_api_contract_standardization.py 只覆盖两个 initialize-story 路由的 happy path，没有覆盖参数校验、STORY_SESSION_NOT_FOUND、STORY_SESSION_EXPIRED、VALIDATION_ERROR 等错误分支的一致性，无法防止 legacy route 与 canonical route 再次漂移。
+- 现有相关单测可以通过，但没有证明上述失败路径和恢复路径稳定。
+
+## Review Summary
+- 本轮拆分方向是对的，GameService 的职责确实在收缩，前端 FE-03 也开始把角色选择流程拆到更清晰的 hook 上。
+- 但后端还没有把“异步重任务 + 可恢复资产合同”真正闭环，get_session_snapshot() 的恢复链路问题属于当前轮次的实质性阻塞。
+- 同时，/v1/game/input 仍把恢复策略和 session 细节留在 router，/v1/characters/initialize-story 也还在复制实现，说明领域边界还没有稳定下来。
+- 前端最明显的问题是音色保存失败被静默吞掉，这已经造成明确的状态一致性风险。
+- 现有相关单测可通过，但没有覆盖这次改造最容易出事的失败、恢复和契约一致性路径。

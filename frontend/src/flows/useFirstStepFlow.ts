@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '@/config/routes';
 import { useFeedback, useGameFlow } from '@/contexts';
 import { checkServerHealth } from '@/services/healthApi';
+import { readStoryResumeSave } from '@/storage/storySessionCache';
 
 export interface UseFirstStepFlowResult {
   loading: boolean;
@@ -17,12 +18,12 @@ const delay = (ms: number) => new Promise<void>((resolve) => window.setTimeout(r
 export function useFirstStepFlow(): UseFirstStepFlowResult {
   const navigate = useNavigate();
   const feedback = useFeedback();
-  const { setRestoreSession, getResumeSave } = useGameFlow();
+  const { setRestoreSession } = useGameFlow();
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('正在连接服务器...');
 
   const continueGame = async () => {
-    const saveData = getResumeSave();
+    const saveData = readStoryResumeSave();
     if (!saveData?.threadId) {
       feedback.warning('没有找到存档，请先开始新的故事。');
       return;

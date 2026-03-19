@@ -32,8 +32,37 @@ export interface StorySceneData {
   isGameFinished: boolean;
 }
 
+export interface StorySessionInitParams {
+  userId?: string;
+  gameMode?: string;
+  characterId: string;
+}
+
+export interface StorySessionInitResult {
+  threadId: string;
+  userId: string | null;
+  gameMode: string | null;
+}
+
+export interface StoryTurnSubmitParams {
+  threadId: string;
+  userInput: string;
+  userId?: string;
+  characterId?: string;
+}
+
 export interface GameTurnResult extends StorySceneData {
   threadId: string | null;
+  sessionRestored: boolean;
+  needReselectOption: boolean;
+  restoredFromThreadId: string | null;
+}
+
+export interface StorySessionSnapshotResult extends GameTurnResult {
+  roundNo: number;
+  status: string | null;
+  updatedAt: string | null;
+  expiresAt: string | null;
 }
 
 /** 存档：按 thread 保存的完整消息列表与元信息 */
@@ -94,6 +123,13 @@ export interface CharacterData {
   selectedScene?: SelectedScene;
   voiceConfig?: CharacterVoiceConfig;
   timestamp?: number;
+}
+
+export interface CharacterCreationResult {
+  characterId: string;
+  name: string | null;
+  imageUrl: string | null;
+  imageUrls: string[];
 }
 
 /** 初遇页写入的初始游戏数据（供 Game 页消费） */

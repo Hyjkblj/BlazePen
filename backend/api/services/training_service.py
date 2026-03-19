@@ -75,6 +75,47 @@ class TrainingService:
             for item in runtime_config.scenario.default_sequence
         ]
 
+    @staticmethod
+    def _resolve_injected_policy_dependency(
+        *,
+        owner_name: str,
+        policy: Any,
+        attribute_name: str,
+    ) -> Any:
+        if not hasattr(policy, attribute_name):
+            raise ValueError(
+                f"{owner_name} must expose .{attribute_name} to keep the training runtime contract consistent"
+            )
+
+        dependency = getattr(policy, attribute_name)
+        if dependency is None:
+            raise ValueError(
+                f"{owner_name}.{attribute_name} must not be None when injecting training policies"
+            )
+        return dependency
+
+    @staticmethod
+    def _resolve_injected_policy_contract(
+        *,
+        contract_name: str,
+        candidates: List[tuple[str, Any | None]],
+    ) -> Any | None:
+        resolved_source = None
+        resolved_policy = None
+        for source_name, policy in candidates:
+            if policy is None:
+                continue
+            if resolved_policy is None:
+                resolved_source = source_name
+                resolved_policy = policy
+                continue
+            if policy is not resolved_policy:
+                raise ValueError(
+                    f"inconsistent {contract_name} injection: "
+                    f"{resolved_source} and {source_name} must share the same instance"
+                )
+        return resolved_policy
+
     def __init__(
         self,
         db_manager: Any = None,
@@ -158,6 +199,57 @@ class TrainingService:
             runtime_artifact_policy=self.runtime_artifact_policy,
             output_assembler_policy=self.output_assembler_policy,
         )
+        resolved_round_runtime_artifact_policy = (
+            self._resolve_injected_policy_dependency(
+                owner_name="round_transition_policy",
+                policy=round_transition_policy,
+                attribute_name="runtime_artifact_policy",
+            )
+            if round_transition_policy is not None
+            else None
+        )
+        resolved_report_runtime_artifact_policy = (
+            self._resolve_injected_policy_dependency(
+                owner_name="report_context_policy",
+                policy=report_context_policy,
+                attribute_name="runtime_artifact_policy",
+            )
+            if report_context_policy is not None
+            else None
+        )
+        resolved_report_output_assembler_policy = (
+            self._resolve_injected_policy_dependency(
+                owner_name="report_context_policy",
+                policy=report_context_policy,
+                attribute_name="output_assembler_policy",
+            )
+            if report_context_policy is not None
+            else None
+        )
+
+        self.runtime_artifact_policy = self._resolve_injected_policy_contract(
+            contract_name="runtime_artifact_policy",
+            candidates=[
+                ("runtime_artifact_policy", runtime_artifact_policy),
+                ("round_transition_policy.runtime_artifact_policy", resolved_round_runtime_artifact_policy),
+                ("report_context_policy.runtime_artifact_policy", resolved_report_runtime_artifact_policy),
+            ],
+        ) or self.runtime_artifact_policy
+        self.output_assembler_policy = self._resolve_injected_policy_contract(
+            contract_name="output_assembler_policy",
+            candidates=[
+                ("output_assembler_policy", output_assembler_policy),
+                ("report_context_policy.output_assembler_policy", resolved_report_output_assembler_policy),
+            ],
+        ) or self.output_assembler_policy
+
+        if getattr(self.round_transition_policy, "runtime_artifact_policy", None) is not self.runtime_artifact_policy:
+            self.round_transition_policy.runtime_artifact_policy = self.runtime_artifact_policy
+        if getattr(self.report_context_policy, "runtime_artifact_policy", None) is not self.runtime_artifact_policy:
+            self.report_context_policy.runtime_artifact_policy = self.runtime_artifact_policy
+        if getattr(self.report_context_policy, "output_assembler_policy", None) is not self.output_assembler_policy:
+            self.report_context_policy.output_assembler_policy = self.output_assembler_policy
+
         self.flow_policy = flow_policy or TrainingRoundFlowPolicy(
             scenario_policy=self.scenario_policy,
             recommendation_policy=self.recommendation_policy,

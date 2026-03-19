@@ -1,0 +1,26 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+- [Minor] D:\Develop\Project\BlazePen\backend\api\routers\characters.py:430
+  问题：兼容路由已经切到 shared handler，但旧的整段初始化实现仍然作为不可达死代码留在 router 里。
+  原因：`initialize_story()` 在第 430 行已经 `return await handle_initialize_story_request(...)`，其后的 `try/except` 整段逻辑永远不会执行；这意味着 legacy route 虽然运行时已经变成 thin wrapper，但源码层面仍保留重复实现，职责边界没有彻底收口。
+  影响：后续开发者容易误改这段死代码，造成“以为改了兼容路由，实际完全未生效”的维护陷阱；同时也会持续制造兼容路由仍然承担业务逻辑的错误认知。
+  建议：删除第 436 行之后这段不可达实现及相关无用 import，只保留 shared handler 委托，让 `characters.py` 在源码层面也成为真正的兼容薄包装。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：`D:\Develop\Project\BlazePen\frontend\src\flows\useCharacterSelectionFlow.test.tsx` 目前只覆盖“音色保存失败阻断跳转”，没有覆盖 `confirmVoice()` 的成功主路径，以及 `prepareSelectedPortrait()` 失败后回退原图但仍允许继续的路径。这两条都是 FE-03 的实际恢复分支。
+- 后端：`D:\Develop\Project\BlazePen\backend\test_api_contract_standardization.py` 已覆盖路由层恢复 contract，但没有直接覆盖 `D:\Develop\Project\BlazePen\backend\story\story_turn_service.py:46` 的 domain restore 行为，例如 `StorySessionNotFoundError` 后重建新 thread、free-text 输入恢复后写入 `restored_from_thread_id`、以及恢复失败时抛出 `StorySessionRestoreFailedError` 的分支。
+- 后端：`D:\Develop\Project\BlazePen\backend\test_story_domain_services.py` 已补了“pending 升级为 ready”的快照恢复测试，但仍没有覆盖 `D:\Develop\Project\BlazePen\backend\story\story_session_service.py:61` 在“session 存在但尚无 snapshot_record”时的返回合同，尤其是顶层 `updated_at / expires_at` 和资产视图是否稳定。
+
+## Review Summary
+- 上一轮指出的两个实质性问题已经修复：前端音色保存失败现在会阻断跳转，后端快照恢复也会重新解析异步媒体资产。
+- 后端 `/v1/game/input` 的恢复与重建逻辑已经从 router 下沉到 story domain，`GameService` 目前重新回到了较薄的 facade 角色。
+- `/v1/characters/initialize-story` 运行时也已经走 shared handler，路由契约一致性测试已补上。
+- 当前没有新的阻塞性问题。
+- 剩余主要问题是 legacy router 文件里还残留一整段不可达死代码，建议尽快删掉，避免后续继续误导维护。
+- 本次复核执行了前端 8 个单测和后端 17 个单测，当前均通过。

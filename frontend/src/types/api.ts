@@ -1,18 +1,33 @@
 import type { PlayerOption } from '@/types/game';
 
-export interface ApiResponse<T = unknown> {
-  code: number;
-  message: string;
-  data?: T;
+export type GenericApiRecord = Record<string, unknown>;
+
+export interface ApiStructuredError extends GenericApiRecord {
+  code?: string;
+  details?: unknown;
+  traceId?: string;
+  trace_id?: string;
 }
 
-export interface ApiErrorData {
+export interface ApiResponse<T = unknown> extends GenericApiRecord {
+  code?: number;
+  message?: string;
+  data?: T;
+  error?: unknown;
+  details?: unknown;
+  traceId?: string;
+  trace_id?: string;
+}
+
+export interface ApiErrorData extends GenericApiRecord {
+  code?: number;
   message?: string;
   detail?: unknown;
-  [key: string]: unknown;
+  error?: ApiStructuredError | unknown;
+  details?: unknown;
+  traceId?: string;
+  trace_id?: string;
 }
-
-export type GenericApiRecord = Record<string, unknown>;
 
 export interface CreateCharacterRequest {
   name: string;
@@ -45,6 +60,7 @@ export interface StoryResponsePayload extends GenericApiRecord {
   character_dialogue?: string;
   player_options?: PlayerOption[];
   is_game_finished?: boolean;
+  snapshot?: GenericApiRecord | null;
 }
 
 export interface RemoveBackgroundResponse {
@@ -84,10 +100,22 @@ export interface GameInputRequest {
 
 export interface GameInitResponse extends GenericApiRecord {
   thread_id?: string;
+  user_id?: string;
+  game_mode?: string;
 }
 
 export interface ProcessGameInputResponse extends StoryResponsePayload {
   thread_id?: string;
+  round_no?: number;
+  status?: string;
+  session_restored?: boolean;
+  need_reselect_option?: boolean;
+  restored_from_thread_id?: string;
+}
+
+export interface StorySessionSnapshotResponse extends ProcessGameInputResponse {
+  updated_at?: string;
+  expires_at?: string;
 }
 
 export interface PresetVoiceItem {

@@ -2,11 +2,7 @@ import { createContext } from 'react';
 import * as gameStorage from '@/storage/gameStorage';
 import type {
   CharacterData,
-  GameMessage,
-  GameSave,
-  GameSessionSnapshot,
   InitialGameData,
-  MainGameSave,
 } from '@/types/game';
 import { resolvePreferredCharacterId } from '@/utils/gameSession';
 
@@ -39,13 +35,6 @@ export interface SetActiveSessionParams {
   initialGameData?: InitialGameData | null;
 }
 
-export interface PersistGameProgressParams {
-  threadId: string;
-  messages: GameMessage[];
-  characterId?: string;
-  snapshot?: GameSessionSnapshot;
-}
-
 export interface GameFlowContextValue {
   state: GameFlowState;
   setCharacterDraft: (data: CharacterData | null) => void;
@@ -59,10 +48,6 @@ export interface GameFlowContextValue {
   clearActiveSession: () => void;
   clearInitialGameData: () => void;
   setCurrentCharacterId: (characterId: string | null) => void;
-  getResumeSave: () => MainGameSave | null;
-  getThreadSave: (threadId: string) => GameSave | null;
-  persistGameProgress: (params: PersistGameProgressParams) => void;
-  hydrateFromStorage: () => void;
 }
 
 export const readStorageState = (): GameFlowState => {
@@ -91,10 +76,6 @@ export const readStorageState = (): GameFlowState => {
     },
   };
 };
-
-export const getResumeSave = (): MainGameSave | null => gameStorage.getMainGameSave();
-
-export const getThreadSave = (threadId: string): GameSave | null => gameStorage.getGameSave(threadId);
 
 export const persistCharacterDraft = (data: CharacterData | null): void => {
   if (data) {
@@ -162,33 +143,6 @@ export const persistCurrentCharacterId = (characterId: string | null): void => {
   }
 
   gameStorage.clearCurrentCharacterId();
-};
-
-export const persistGameProgress = ({
-  threadId,
-  messages,
-  characterId,
-  snapshot,
-}: PersistGameProgressParams): void => {
-  const timestamp = Date.now();
-  const lastMessage = messages.length > 0 ? messages[messages.length - 1].content : undefined;
-
-  gameStorage.setGameSave({
-    threadId,
-    characterId,
-    messages,
-    lastMessage,
-    snapshot,
-    timestamp,
-  });
-
-  gameStorage.setMainGameSave({
-    threadId,
-    characterId,
-    lastMessage,
-    snapshot,
-    timestamp,
-  });
 };
 
 export const GameFlowContext = createContext<GameFlowContextValue | null>(null);

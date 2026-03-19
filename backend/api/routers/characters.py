@@ -1,5 +1,5 @@
 """角色管理API路由"""
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 from typing import List
 from api.schemas import (
     CreateCharacterRequest,
@@ -13,6 +13,8 @@ from api.services.character_service import CharacterService
 from api.services.game_service import GameService
 from api.dependencies import get_character_service, get_game_service, get_image_service
 from api.services.image_service import ImageService
+from api.story_route_handlers import handle_initialize_story_request
+from api.story_schemas import StoryTurnApiResponse
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -409,40 +411,16 @@ async def remove_character_background(
         return error_response(code=500, message=f"选择图片失败: {str(e)}", error={"traceback": error_trace})
 
 
-@router.post("/initialize-story", response_model=dict)
+@router.post("/initialize-story", response_model=StoryTurnApiResponse)
 async def initialize_story(
     request: InitializeStoryRequest,
     game_service: GameService = Depends(get_game_service)
 ):
     """初始化故事（触发初遇场景）"""
-    try:
-        # 验证必填参数
-        if not request.thread_id:
-            logger.error("thread_id 为空")
-            return error_response(code=422, message="thread_id 是必填参数")
-        if not request.character_id:
-            logger.error("character_id 为空")
-            return error_response(code=422, message="character_id 是必填参数")
-        
-        try:
-            character_id = int(request.character_id)
-        except (ValueError, TypeError) as e:
-            logger.error(f"character_id 格式错误: {request.character_id}, 错误: {e}")
-            return error_response(code=422, message=f"character_id 必须是有效的整数: {request.character_id}")
-        
-        scene_id = request.scene_id or 'school'  # 默认使用school场景
-        opening_event_id = request.opening_event_id  # 用户选择的初遇事件ID（可选）
-        character_image_url = request.character_image_url  # 用户选择的角色图片URL
-        logger.info(f"初始化故事请求: thread_id={request.thread_id}, character_id={character_id}, scene_id={scene_id}, opening_event_id={opening_event_id}, character_image_url={character_image_url}")
-        result = game_service.initialize_story(request.thread_id, character_id, scene_id, character_image_url, opening_event_id)
-        logger.info("初始化故事成功")
-        return success_response(data=result)
-    except ValueError as e:
-        logger.error(f"参数错误: {str(e)}", exc_info=True)
-        return error_response(code=400, message=f"参数错误: {str(e)}")
-    except Exception as e:
-        logger.error(f"初始化故事失败: {str(e)}", exc_info=True)
-        import traceback
-        error_trace = traceback.format_exc()
-        return error_response(code=500, message=f"初始化故事失败: {str(e)}", error={"traceback": error_trace})
+
+    return await handle_initialize_story_request(
+        request=request,
+        game_service=game_service,
+        route_name="story.initialize.legacy",
+    )
 

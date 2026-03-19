@@ -1,18 +1,14 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useFeedback, useGameFlow } from '@/contexts';
-import { getCharacterImages, initializeStory } from '@/services/characterApi';
-import { initGame } from '@/services/gameApi';
-import type { GameMessage, GameSessionSnapshot, InitialGameData, StorySceneData } from '@/types/game';
+import { initGame, initializeStory } from '@/services/gameApi';
+import { readStoryThreadSave } from '@/storage/storySessionCache';
+import type { GameMessage, GameSessionSnapshot } from '@/types/game';
 import { resolveCharacterImageUrl } from '@/utils/game';
-import {
-  buildInitialAssistantMessages,
-  hasStorySceneVisual,
-  resolvePreferredCharacterId,
-  resolveSelectedSceneTransition,
-} from '@/utils/gameSession';
+import { buildInitialAssistantMessages, resolveGameInitializationPlan } from '@/utils/gameSession';
 import { logger } from '@/utils/logger';
-import { resolveSceneDisplayName, resolveStorySceneVisual } from '@/utils/storyScene';
+import { resolveSceneDisplayName } from '@/utils/storyScene';
 import type { GameSessionInitActions } from './useGameState';
+import { useStorySessionRestore } from './useStorySessionRestore';
 
 export interface UseGameInitResult {
   loadGameSave: (threadId: string) => boolean;
@@ -31,301 +27,243 @@ export function useGameInit(actions: GameSessionInitActions): UseGameInitResult 
     state: flowState,
     clearInitialGameData,
     clearRestoreSession,
-    getThreadSave,
-    persistGameProgress,
+    clearActiveSession,
     setActiveSession,
     setCurrentCharacterId,
   } = useGameFlow();
 
-  const loadCharacterImageFromAPI = useCallback(
-    (characterId: string | null) => {
-      if (!characterId || ['undefined', 'null', ''].includes(String(characterId).trim())) {
-        return;
-      }
+  const {
+    loadGameSave,
+    saveGameProgress,
+    setCharacterImage,
+    applyStoryData,
+    applyInitialEntryData,
+    restoreFromServerSnapshot,
+    notifyLocalRestoreFallback,
+    notifyRestoreFailure,
+  } = useStorySessionRestore({
+    actions,
+    feedback,
+    characterDraft: flowState.characterDraft,
+  });
 
-      getCharacterImages(String(characterId))
-        .then((data) => {
-          if (data.images?.length) {
-            actions.setCharacterImageUrl(data.images[0]);
-          }
-        })
-        .catch((error: unknown) => {
-          const err = error as { message?: string };
-          logger.warn('[game] failed to fetch character images:', err.message || error);
-        });
-    },
-    [actions]
-  );
-
-  const setCharacterImage = useCallback(
-    (characterId: string | null) => {
-      const imageUrl = resolveCharacterImageUrl(flowState.characterDraft);
-      if (imageUrl) {
-        actions.setCharacterImageUrl(imageUrl);
-        return;
-      }
-
-      loadCharacterImageFromAPI(characterId);
-    },
-    [actions, flowState.characterDraft, loadCharacterImageFromAPI]
-  );
-
-  const restoreSavedSnapshot = useCallback(
-    (snapshot: GameSessionSnapshot | undefined, characterId?: string) => {
-      if (!snapshot) {
-        if (characterId) {
-          setCharacterImage(characterId);
-        }
-        return;
-      }
-
-      actions.setDialogue(snapshot.currentDialogue);
-      actions.setOptions(snapshot.currentOptions);
-
-      if (snapshot.currentScene) {
-        actions.enterScene(
-          snapshot.currentScene,
-          resolveSceneDisplayName(snapshot.currentScene) ?? snapshot.currentScene
-        );
-      }
-
-      if (snapshot.shouldUseComposite && snapshot.compositeImageUrl) {
-        actions.applyCompositeScene(snapshot.compositeImageUrl);
-        return;
-      }
-
-      actions.applySceneVisual({
-        sceneImageUrl: snapshot.sceneImageUrl ?? null,
-        characterImageUrl: snapshot.characterImageUrl,
-        clearCharacterImage: !snapshot.characterImageUrl,
-      });
-
-      if (snapshot.characterImageUrl) {
-        return;
-      }
+  const hydrateSessionIdentity = useCallback(
+    (threadId: string, characterId: string | null) => {
+      actions.setThreadId(threadId);
+      actions.setCharacterId(characterId);
 
       if (characterId) {
-        setCharacterImage(characterId);
-      } else {
-        actions.setCharacterImageUrl(null);
+        setCurrentCharacterId(characterId);
       }
     },
-    [actions, setCharacterImage]
+    [actions, setCurrentCharacterId]
   );
 
-  const loadGameSave = useCallback(
-    (threadId: string) => {
-      try {
-        const save = getThreadSave(threadId);
-        if (save?.messages?.length) {
-          actions.replaceMessages(save.messages);
-          restoreSavedSnapshot(save.snapshot, save.characterId);
-          feedback.success('Save loaded.');
-          return true;
-        }
-      } catch (error: unknown) {
-        logger.error('failed to load save:', error);
-        feedback.error('Failed to load save.');
-      }
+  const enterReadonlySnapshotMode = useCallback(
+    (characterId: string | null) => {
+      clearActiveSession();
+      actions.setThreadId(null);
+      actions.setCharacterId(characterId);
 
-      return false;
+      if (characterId) {
+        setCurrentCharacterId(characterId);
+      }
     },
-    [actions, feedback, getThreadSave, restoreSavedSnapshot]
+    [actions, clearActiveSession, setCurrentCharacterId]
   );
 
-  const saveGameProgress = useCallback(
-    (
-      threadId: string,
-      messages: GameMessage[],
-      characterId?: string,
-      snapshot?: GameSessionSnapshot
-    ) => {
-      try {
-        persistGameProgress({
-          threadId,
-          characterId,
-          messages,
-          snapshot,
-        });
-      } catch (error: unknown) {
-        logger.error('failed to save progress:', error);
-      }
+  const clearInvalidSessionState = useCallback(
+    (characterId: string | null) => {
+      clearActiveSession();
+      actions.setThreadId(null);
+      actions.setCharacterId(characterId);
     },
-    [persistGameProgress]
-  );
-
-  const applyStoryData = useCallback(
-    (storyData: InitialGameData | StorySceneData, characterId: string) => {
-      if (storyData.sceneId) {
-        actions.enterScene(
-          storyData.sceneId,
-          resolveSceneDisplayName(storyData.sceneId) ?? storyData.sceneId,
-          'reset'
-        );
-      }
-
-      const visual = resolveStorySceneVisual(storyData);
-      if (visual.kind === 'composite') {
-        actions.applyCompositeScene(visual.imageUrl);
-      } else if (hasStorySceneVisual(storyData)) {
-        actions.applySceneVisual({ sceneImageUrl: visual.imageUrl });
-        setCharacterImage(characterId);
-      } else {
-        actions.applySceneVisual({ sceneImageUrl: null });
-      }
-
-      actions.setDialogue(storyData.characterDialogue);
-      actions.setOptions(storyData.playerOptions);
-    },
-    [actions, setCharacterImage]
+    [actions, clearActiveSession]
   );
 
   const initializeGame = useCallback(async () => {
     const characterDraft = flowState.characterDraft;
     const { restoreSession, activeSession, currentCharacterId } = flowState.runtimeSession;
-    const fallbackCharacterId = resolvePreferredCharacterId({
-      currentCharacterId,
+    const initializationPlan = resolveGameInitializationPlan({
+      restoreThreadId: restoreSession.threadId,
+      restoreCharacterId: restoreSession.characterId,
+      activeThreadId: activeSession.threadId,
       activeCharacterId: activeSession.characterId,
+      currentCharacterId,
       draftCharacterId: characterDraft?.characterId,
+      initialGameData: activeSession.initialGameData,
+      selectedScene: characterDraft?.selectedScene,
+      resolveSceneName: resolveSceneDisplayName,
     });
-    const selectedSceneTransition = resolveSelectedSceneTransition(
-      characterDraft?.selectedScene,
-      resolveSceneDisplayName
-    );
 
-    if (restoreSession.threadId) {
-      const restoreCharacterId = resolvePreferredCharacterId({
-        currentCharacterId: restoreSession.characterId,
-        activeCharacterId: fallbackCharacterId,
-      });
-
-      if (restoreCharacterId) {
-        actions.setCharacterId(restoreCharacterId);
-        setCurrentCharacterId(restoreCharacterId);
-      }
-
-      actions.setThreadId(restoreSession.threadId);
-      setActiveSession({
-        threadId: restoreSession.threadId,
-        characterId: restoreCharacterId,
-        initialGameData: null,
-      });
-
-      const restored = loadGameSave(restoreSession.threadId);
-      clearRestoreSession();
-
-      if (!restored) {
-        logger.warn('[game] restore session found but no saved messages were loaded.');
-      }
-      return;
-    }
-
-    if (activeSession.threadId && activeSession.characterId) {
-      actions.setThreadId(activeSession.threadId);
-      actions.setCharacterId(activeSession.characterId);
-      setCurrentCharacterId(activeSession.characterId);
-
-      if (loadGameSave(activeSession.threadId)) {
-        return;
-      }
-
-      if (activeSession.initialGameData) {
-        try {
-          const hasInitialVisual = hasStorySceneVisual(activeSession.initialGameData);
-
-          if (hasInitialVisual) {
-            applyStoryData(activeSession.initialGameData, activeSession.characterId);
-          } else if (selectedSceneTransition) {
-            actions.enterScene(
-              selectedSceneTransition.sceneId,
-              selectedSceneTransition.sceneName,
-              'reset'
-            );
-          }
-
-          const initialMessages = buildInitialAssistantMessages(activeSession.initialGameData);
-
-          if (initialMessages.length > 0) {
-            actions.replaceMessages(initialMessages);
-          }
-
-          if (!hasInitialVisual) {
-            setCharacterImage(activeSession.characterId);
-          }
-
-          clearInitialGameData();
-        } catch (error: unknown) {
-          logger.error('failed to parse initial game data', error);
-        }
-      } else if (selectedSceneTransition) {
-        try {
-          actions.enterScene(
-            selectedSceneTransition.sceneId,
-            selectedSceneTransition.sceneName,
-            'reset'
-          );
-
-          const imageUrl = resolveCharacterImageUrl(characterDraft);
-          const storyData = await initializeStory(
-            activeSession.threadId,
-            activeSession.characterId,
-            selectedSceneTransition.sceneId,
-            imageUrl
-          );
-
-          applyStoryData(storyData, activeSession.characterId);
-        } catch (error: unknown) {
-          logger.error('failed to fetch initial story data', error);
-        }
-      }
-
-      return;
-    }
-
-    if (!fallbackCharacterId) {
-      return;
-    }
-
-    actions.setCharacterId(fallbackCharacterId);
-    setCurrentCharacterId(fallbackCharacterId);
+    actions.startLoading();
 
     try {
-      const initRes = await initGame({ game_mode: 'solo', character_id: fallbackCharacterId });
-      const newThreadId = initRes.thread_id;
+      switch (initializationPlan.kind) {
+        case 'restore-session': {
+          const restoreResult = await restoreFromServerSnapshot(
+            initializationPlan.threadId,
+            initializationPlan.characterId
+          );
+          clearRestoreSession();
 
-      if (!newThreadId) {
-        feedback.error('Missing thread id, cannot initialize game.');
-        return;
+          if (restoreResult.source === 'server' && restoreResult.restored) {
+            hydrateSessionIdentity(initializationPlan.threadId, initializationPlan.characterId);
+            setActiveSession({
+              threadId: initializationPlan.threadId,
+              characterId: initializationPlan.characterId,
+              initialGameData: null,
+            });
+            return;
+          }
+
+          if (restoreResult.source === 'local' && restoreResult.error) {
+            enterReadonlySnapshotMode(initializationPlan.characterId);
+            notifyLocalRestoreFallback(restoreResult.error);
+            return;
+          }
+
+          if (!restoreResult.restored) {
+            clearInvalidSessionState(initializationPlan.characterId);
+            notifyRestoreFailure(restoreResult.error, 'Failed to restore story session.');
+          }
+          return;
+        }
+        case 'resume-session': {
+          const hasLocalSave = Boolean(readStoryThreadSave(initializationPlan.threadId));
+          if (initializationPlan.initialGameData && !hasLocalSave) {
+            hydrateSessionIdentity(initializationPlan.threadId, initializationPlan.characterId);
+            applyInitialEntryData(initializationPlan.initialGameData, {
+              characterId: initializationPlan.characterId,
+              selectedSceneTransition: initializationPlan.selectedSceneTransition,
+            });
+            clearInitialGameData();
+            return;
+          }
+
+          const restoreResult = await restoreFromServerSnapshot(
+            initializationPlan.threadId,
+            initializationPlan.characterId
+          );
+
+          if (restoreResult.source === 'server' && restoreResult.restored) {
+            hydrateSessionIdentity(initializationPlan.threadId, initializationPlan.characterId);
+            clearInitialGameData();
+            return;
+          }
+
+          if (restoreResult.source === 'local' && restoreResult.error) {
+            enterReadonlySnapshotMode(initializationPlan.characterId);
+            notifyLocalRestoreFallback(restoreResult.error);
+            return;
+          }
+
+          if (initializationPlan.initialGameData) {
+            hydrateSessionIdentity(initializationPlan.threadId, initializationPlan.characterId);
+            applyInitialEntryData(initializationPlan.initialGameData, {
+              characterId: initializationPlan.characterId,
+              selectedSceneTransition: initializationPlan.selectedSceneTransition,
+            });
+            clearInitialGameData();
+            return;
+          }
+
+          if (
+            initializationPlan.selectedSceneTransition &&
+            initializationPlan.characterId
+          ) {
+            try {
+              hydrateSessionIdentity(initializationPlan.threadId, initializationPlan.characterId);
+              actions.enterScene(
+                initializationPlan.selectedSceneTransition.sceneId,
+                initializationPlan.selectedSceneTransition.sceneName,
+                'reset'
+              );
+
+              const imageUrl = resolveCharacterImageUrl(characterDraft);
+              const storyData = await initializeStory(
+                initializationPlan.threadId,
+                initializationPlan.characterId,
+                initializationPlan.selectedSceneTransition.sceneId,
+                imageUrl
+              );
+
+              applyStoryData(storyData, {
+                characterId: initializationPlan.characterId,
+                sceneMode: 'silent',
+              });
+              actions.replaceMessages(buildInitialAssistantMessages(storyData));
+              return;
+            } catch (error: unknown) {
+              logger.error('failed to fetch initial story data', error);
+            }
+          }
+
+          clearInvalidSessionState(initializationPlan.characterId);
+          notifyRestoreFailure(restoreResult.error, 'Failed to resume the story session.');
+          return;
+        }
+        case 'fresh-session': {
+          actions.setCharacterId(initializationPlan.characterId);
+          setCurrentCharacterId(initializationPlan.characterId);
+
+          try {
+            const initRes = await initGame({
+              gameMode: 'solo',
+              characterId: initializationPlan.characterId,
+            });
+            const newThreadId = initRes.threadId;
+
+            hydrateSessionIdentity(newThreadId, initializationPlan.characterId);
+            setActiveSession({
+              threadId: newThreadId,
+              characterId: initializationPlan.characterId,
+              initialGameData: null,
+            });
+
+            const imageUrl = resolveCharacterImageUrl(characterDraft);
+            const storyData = await initializeStory(
+              newThreadId,
+              initializationPlan.characterId,
+              initializationPlan.selectedSceneTransition?.sceneId,
+              imageUrl
+            );
+
+            applyStoryData(storyData, {
+              characterId: initializationPlan.characterId,
+              sceneMode: initializationPlan.selectedSceneTransition ? 'reset' : 'silent',
+            });
+            actions.replaceMessages(buildInitialAssistantMessages(storyData));
+          } catch (error: unknown) {
+            logger.error('failed to initialize game', error);
+            feedback.error('Failed to initialize game.');
+          }
+          return;
+        }
+        case 'idle':
+        default:
+          return;
       }
-
-      actions.setThreadId(newThreadId);
-      setActiveSession({
-        threadId: newThreadId,
-        characterId: fallbackCharacterId,
-        initialGameData: null,
-      });
-
-      const imageUrl = resolveCharacterImageUrl(characterDraft);
-      const storyData = await initializeStory(newThreadId, fallbackCharacterId, undefined, imageUrl);
-
-      applyStoryData(storyData, fallbackCharacterId);
-      actions.replaceMessages(buildInitialAssistantMessages(storyData));
-    } catch (error: unknown) {
-      logger.error('failed to initialize game', error);
-      feedback.error('Failed to initialize game.');
+    } finally {
+      actions.stopLoading();
     }
   }, [
     actions,
+    applyInitialEntryData,
     applyStoryData,
     clearInitialGameData,
     clearRestoreSession,
+    clearInvalidSessionState,
+    clearActiveSession,
+    enterReadonlySnapshotMode,
     feedback,
     flowState.characterDraft,
     flowState.runtimeSession,
-    loadGameSave,
+    hydrateSessionIdentity,
+    notifyLocalRestoreFallback,
+    notifyRestoreFailure,
+    restoreFromServerSnapshot,
     setActiveSession,
-    setCharacterImage,
-    setCurrentCharacterId,
   ]);
 
   const initializedRef = useRef(false);

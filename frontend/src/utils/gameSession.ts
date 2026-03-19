@@ -16,6 +16,42 @@ export interface SelectedSceneTransition {
   sceneName: string;
 }
 
+export interface GameInitializationPlanInput {
+  restoreThreadId?: string | null;
+  restoreCharacterId?: string | null;
+  activeThreadId?: string | null;
+  activeCharacterId?: string | null;
+  currentCharacterId?: string | null;
+  draftCharacterId?: string | null;
+  initialGameData?: InitialGameData | null;
+  selectedScene?: SelectedScene | null;
+  resolveSceneName: (sceneId: string) => string | null;
+}
+
+export type GameInitializationPlan =
+  | {
+      kind: 'restore-session';
+      threadId: string;
+      characterId: string | null;
+      selectedSceneTransition: SelectedSceneTransition | null;
+    }
+  | {
+      kind: 'resume-session';
+      threadId: string;
+      characterId: string | null;
+      initialGameData: InitialGameData | null;
+      selectedSceneTransition: SelectedSceneTransition | null;
+    }
+  | {
+      kind: 'fresh-session';
+      characterId: string;
+      selectedSceneTransition: SelectedSceneTransition | null;
+    }
+  | {
+      kind: 'idle';
+      selectedSceneTransition: SelectedSceneTransition | null;
+    };
+
 const normalizeSessionString = (value: string | null | undefined): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -92,5 +128,65 @@ export const resolveSelectedSceneTransition = (
   return {
     sceneId,
     sceneName,
+  };
+};
+
+export const resolveGameInitializationPlan = ({
+  restoreThreadId,
+  restoreCharacterId,
+  activeThreadId,
+  activeCharacterId,
+  currentCharacterId,
+  draftCharacterId,
+  initialGameData = null,
+  selectedScene,
+  resolveSceneName,
+}: GameInitializationPlanInput): GameInitializationPlan => {
+  const selectedSceneTransition = resolveSelectedSceneTransition(selectedScene, resolveSceneName);
+  const fallbackCharacterId = resolvePreferredCharacterId({
+    currentCharacterId,
+    activeCharacterId,
+    draftCharacterId,
+  });
+  const normalizedRestoreThreadId = normalizeSessionString(restoreThreadId);
+  const normalizedActiveThreadId = normalizeSessionString(activeThreadId);
+
+  if (normalizedRestoreThreadId) {
+    return {
+      kind: 'restore-session',
+      threadId: normalizedRestoreThreadId,
+      characterId: resolvePreferredCharacterId({
+        currentCharacterId: restoreCharacterId,
+        activeCharacterId: fallbackCharacterId,
+      }),
+      selectedSceneTransition,
+    };
+  }
+
+  if (normalizedActiveThreadId) {
+    return {
+      kind: 'resume-session',
+      threadId: normalizedActiveThreadId,
+      characterId: resolvePreferredCharacterId({
+        currentCharacterId: activeCharacterId,
+        activeCharacterId: currentCharacterId,
+        draftCharacterId,
+      }),
+      initialGameData,
+      selectedSceneTransition,
+    };
+  }
+
+  if (fallbackCharacterId) {
+    return {
+      kind: 'fresh-session',
+      characterId: fallbackCharacterId,
+      selectedSceneTransition,
+    };
+  }
+
+  return {
+    kind: 'idle',
+    selectedSceneTransition,
   };
 };

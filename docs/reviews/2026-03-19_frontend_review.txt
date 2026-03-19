@@ -1,0 +1,37 @@
+## 前端 Findings
+- [Blocker] D:\Develop\Project\BlazePen\frontend\src\hooks\useStoryTurnSubmission.ts:152
+  问题：收到 `needReselectOption` 后，代码先切换到新 `threadId`，再把界面恢复成旧会话的对白和选项。
+  原因：`syncActiveSession(response.threadId)` 之后，`restorePreviousTurnState()` 仍然把 `currentDialogue/currentOptions` 回滚为旧线程状态，直接丢弃了后端返回的新 `characterDialogue/playerOptions`。这让 UI 看到的是旧会话选项，但请求已经会发往新会话。
+  影响：用户以为自己在重选旧会话的选项，实际提交的是新会话里同索引的选项；一旦新旧 option 列表不完全一致，就会出现语义错配，直接走错剧情分支。
+  建议：`needReselectOption` 分支必须以后端返回的新对白、选项和快照作为唯一事实源；如果要提示“上一次选择已失效”，单独保留旧选择文案，不要继续复用旧 `currentOptions`。
+
+- [Blocker] D:\Develop\Project\BlazePen\frontend\src\hooks\useStoryTurnSubmission.ts:104
+  问题：`SESSION_EXPIRED` 的前端恢复只重新 `initGame()` 拿新 `threadId`，没有为新会话重新初始化故事。
+  原因：`recoverExpiredSession()` 只调用 `initGame()`，随后提示用户“请重新选择选项”，但没有调用 `initializeStory()` 或拉取新的 server snapshot；前端保留的仍是旧对白和旧选项。
+  影响：下一次点击会把旧选项投递给一个尚未完成故事初始化的新会话，恢复路径本身不可用，用户很容易陷入再次报错或重复恢复的循环。
+  建议：删掉这条前端私有恢复分支，统一依赖后端 `submit_turn` 返回的 `session_restored/need_reselect_option` contract；如果保留前端兜底，也必须在 `initGame()` 后立即 `initializeStory()` 或拉取新 snapshot，再用新 opening state 覆盖 UI。
+
+- [Major] D:\Develop\Project\BlazePen\frontend\src\hooks\useGameInit.ts:82
+  问题：恢复流程在服务端校验成功前就把 `threadId` 持久化为 active session，且在服务端明确返回 session 无效时仍允许 local snapshot 继续充当“可继续游戏”的状态。
+  原因：`useGameInit` 在 restore 分支一开始就 `setActiveSession(...)`；随后 `useStorySessionRestore.ts` 对 server restore 失败直接回退本地快照，还把 `SESSION_EXPIRED` 视为可接受的 local fallback；同时 `gameApi.ts` 又把 `STORY_SESSION_NOT_FOUND / EXPIRED / RESTORE_FAILED` 折叠成同一个前端错误码。
+  影响：`sessionStorage/localStorage` 实际上开始替代服务端成为“当前会话”的事实源。死掉的 `threadId` 会持续污染后续进入 Game 的初始化计划，用户会反复进入一个看似恢复、实际已失效的故事会话。
+  建议：只有在超时或临时服务不可用时，才允许 local snapshot 作为临时展示 fallback；当服务端明确返回 session 不存在、已过期或恢复失败时，必须清理 active/restore session，并引导用户重新开始。若仍要展示本地快照，也应明确标记为只读，禁止继续提交。
+
+## 后端 Findings
+- 本次未审查后端。
+
+## Open Questions
+- 当服务端明确返回 `STORY_SESSION_EXPIRED` / `STORY_SESSION_NOT_FOUND` 时，产品预期是允许以前端本地快照继续展示并尝试继续提交，还是应直接终止当前故事并要求重新开始？这个策略需要定死。
+
+## 测试缺口
+- 前端：`frontend/src/hooks/useStoryTurnSubmission.test.tsx:42` 和 `frontend/src/pages/Game.integration.test.tsx:151` 当前把“恢复后继续显示旧 option 列表”锁成了正确行为，但没有测试“前端应采用后端返回的新 `characterDialogue/playerOptions` 作为 reselect 事实源”。
+- 前端：`frontend/src/hooks/useStoryTurnSubmission.test.tsx:95` 只验证 `SESSION_EXPIRED` 后会调用 `initGame()` 并更新 `threadId`，没有验证恢复后的下一步是否已经完成 `initializeStory()` 或拉到新的 opening snapshot。
+- 前端：`frontend/src/hooks/useStorySessionRestore.test.tsx` 只覆盖了 timeout 到 local fallback，没有覆盖“服务端明确判定 session 无效时必须清理 active session、不得继续把 local snapshot 当 live session”的路径。
+- 后端：本次未审查后端。
+
+## Review Summary
+- 这轮前端拆分后的结构比之前清晰，`flow / hook / service / storage` 的边界整体在变好。
+- 但故事恢复主链路还有两处阻塞问题：一处把新 `threadId` 和旧 option 列表混用，另一处在 `SESSION_EXPIRED` 时只新建会话却不重新初始化故事。
+- 同时，当前 restore 设计仍允许 local snapshot 在服务端明确判定会话失效后继续充当可提交状态，这违反了单一事实源要求。
+- 相关单测目前能通过，但其中一部分实际上把错误行为固化进了测试预期。
+- 本次我额外跑了前端恢复链路相关单测，当前是 `5` 个文件、`25` 个测试通过；这不改变上面的风险判断。

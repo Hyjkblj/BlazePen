@@ -7,10 +7,12 @@ from api.routers import characters, game, vector_db_admin, tts, training
 from database.db_manager import DatabaseManager
 from api.exceptions import ServiceException
 from api.middleware.error_handler import service_exception_handler, general_exception_handler
+from api.request_context import reset_trace_id, set_trace_id
 from utils.logger import setup_logger
 import uvicorn
 import os
 import config
+from uuid import uuid4
 
 # 配置日志
 logger = setup_logger(__name__)
@@ -25,6 +27,22 @@ app = FastAPI(
 # 注册异常处理器
 app.add_exception_handler(ServiceException, service_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
+
+
+@app.middleware("http")
+async def bind_trace_id(request: Request, call_next):
+    """Attach a trace id to every request/response pair."""
+
+    trace_id = request.headers.get("X-Trace-Id") or str(uuid4())
+    token = set_trace_id(trace_id)
+    request.state.trace_id = trace_id
+    try:
+        response = await call_next(request)
+    finally:
+        reset_trace_id(token)
+
+    response.headers["X-Trace-Id"] = trace_id
+    return response
 
 # 应用启动时只检查数据库连接，不再隐式补表。
 # 数据库 schema 的创建和升级统一交给显式脚本处理，避免不同环境启动时出现“偷偷改库”。

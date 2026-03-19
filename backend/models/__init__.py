@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from .character import Character, CharacterAttribute, CharacterState
+from .story import StoryRound, StorySession, StorySnapshot
 from .training import (
     EndingResult,
     KtObservation,
@@ -23,6 +24,9 @@ __all__ = [
     "Character",
     "CharacterAttribute",
     "CharacterState",
+    "StorySession",
+    "StoryRound",
+    "StorySnapshot",
     "TrainingSession",
     "TrainingRound",
     "RoundEvaluation",

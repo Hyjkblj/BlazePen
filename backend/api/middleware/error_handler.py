@@ -1,50 +1,69 @@
-"""统一异常处理中间件"""
+"""Global API exception handlers."""
+
+from __future__ import annotations
+
+import logging
+
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
+
+from api.error_codes import INTERNAL_ERROR
 from api.exceptions import ServiceException
-import logging
+from api.request_context import ensure_trace_id
+from api.response import build_error_payload
 
 logger = logging.getLogger(__name__)
 
 
 async def service_exception_handler(request: Request, exc: ServiceException):
-    """处理ServiceException异常"""
+    """Handle service-layer exceptions with the common error contract."""
+
+    trace_id = ensure_trace_id()
     logger.error(
-        f"Service异常: {exc.message}",
+        "service exception: %s",
+        exc.message,
         extra={
-            "code": exc.code,
+            "http_code": exc.code,
+            "error_code": exc.error_code,
             "details": exc.details,
             "path": request.url.path,
-            "method": request.method
-        }
+            "method": request.method,
+            "trace_id": trace_id,
+        },
     )
-    
     return JSONResponse(
         status_code=exc.code,
-        content={
-            "error": exc.message,
-            "code": exc.code,
-            "details": exc.details
-        }
+        content=build_error_payload(
+            code=exc.code,
+            message=exc.message,
+            error_code=exc.error_code,
+            details=exc.details,
+            trace_id=trace_id,
+        ),
     )
 
 
 async def general_exception_handler(request: Request, exc: Exception):
-    """处理通用异常"""
+    """Handle uncaught exceptions with the common error contract."""
+
+    trace_id = ensure_trace_id()
     logger.exception(
-        f"未处理的异常: {str(exc)}",
+        "unhandled exception: %s",
+        str(exc),
         extra={
             "path": request.url.path,
             "method": request.method,
-            "exception_type": type(exc).__name__
-        }
+            "exception_type": type(exc).__name__,
+            "trace_id": trace_id,
+        },
     )
-    
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "error": "服务器内部错误",
-            "code": 500,
-            "message": str(exc) if logger.level == logging.DEBUG else "请联系管理员"
-        }
+        content=build_error_payload(
+            code=500,
+            message="internal server error",
+            error_code=INTERNAL_ERROR,
+            details={"exception_type": type(exc).__name__},
+            trace_id=trace_id,
+        ),
     )

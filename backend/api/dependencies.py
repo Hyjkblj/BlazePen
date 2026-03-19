@@ -58,9 +58,11 @@ def get_game_service() -> GameService:
 
         image_service = get_image_service()
         character_service = get_character_service()
+        session_manager = get_session_manager()
         _game_service = GameService(
             character_service=character_service,
-            image_service=image_service
+            image_service=image_service,
+            session_manager=session_manager,
         )
     return _game_service
 

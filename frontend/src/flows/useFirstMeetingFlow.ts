@@ -4,10 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '@/config/routes';
 import { SCENE_CONFIGS } from '@/config/scenes';
 import { useFeedback, useGameFlow } from '@/contexts';
-import { getScenes, initializeStory } from '@/services/characterApi';
-import { initGame } from '@/services/gameApi';
+import { initGame, getScenes, initializeStory } from '@/services/gameApi';
 import { checkServerHealth } from '@/services/healthApi';
-import type { GetScenesResponse, SceneApiItem } from '@/types/api';
+import { getServiceErrorMessage, isServiceError } from '@/services/serviceError';
+import type { SceneApiItem } from '@/types/api';
 import type { InitialGameData, SelectedScene } from '@/types/game';
 import { resolveStaticSceneImageFallback } from '@/utils/sceneAssets';
 import { toInitialGameData } from '@/utils/storyScene';
@@ -79,8 +79,7 @@ export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
           return;
         }
 
-        const response: GetScenesResponse = await getScenes();
-        const scenes = Array.isArray(response.scenes) ? response.scenes : [];
+        const scenes = await getScenes();
 
         if (scenes.length === 0) {
           feedback.warning('No scenes available from backend. Showing local scene previews.');
@@ -90,8 +89,7 @@ export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
 
         setSceneOptions(scenes.map((scene, index) => normalizeScene(scene, index)));
       } catch (error: unknown) {
-        const err = error as { response?: { data?: { message?: string } }; message?: string };
-        feedback.error(err.response?.data?.message || err.message || 'Failed to load scenes.');
+        feedback.error(getServiceErrorMessage(error, 'Failed to load scenes.'));
         setSceneOptions(buildFallbackSceneOptions());
       } finally {
         setLoading(false);
@@ -169,14 +167,10 @@ export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
       setLoadingMessage('Initializing game...');
 
       const initResponse = await initGame({
-        game_mode: 'solo',
-        character_id: characterId,
+        gameMode: 'solo',
+        characterId,
       });
-
-      const threadId = initResponse.thread_id;
-      if (!threadId) {
-        throw new Error('Missing thread_id from initGame response.');
-      }
+      const threadId = initResponse.threadId;
 
       setLoadingMessage('Preparing first scene...');
 
@@ -199,15 +193,10 @@ export function useFirstMeetingFlow(): UseFirstMeetingFlowResult {
       });
       navigate(ROUTES.GAME);
     } catch (error: unknown) {
-      const err = error as { message?: string; response?: { data?: { message?: string } } };
-      let errorMessage = 'Failed to select scene, please try again.';
-
-      if (err.message?.includes('timeout')) {
-        errorMessage = 'Initialization timed out, please try again shortly.';
-      } else if (err.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      }
-
+      const errorMessage =
+        isServiceError(error) && error.code === 'REQUEST_TIMEOUT'
+          ? 'Initialization timed out, please try again shortly.'
+          : getServiceErrorMessage(error, 'Failed to select scene, please try again.');
       feedback.error(errorMessage);
       setLoading(false);
     }

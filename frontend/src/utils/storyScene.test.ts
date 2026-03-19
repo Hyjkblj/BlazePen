@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   normalizeInitialGameData,
   normalizeStoryScenePayload,
+  normalizeStorySessionSnapshotPayload,
+  normalizeStoryTurnPayload,
   resolveSceneImageAsset,
   resolveStorySceneVisual,
   toInitialGameData,
@@ -50,6 +52,71 @@ describe('toInitialGameData', () => {
       storyBackground: 'Intro',
       characterDialogue: 'Hello there',
       playerOptions: [{ id: 1, text: 'Continue', type: 'action' }],
+    });
+  });
+});
+
+describe('normalizeStoryTurnPayload', () => {
+  it('normalizes session recovery metadata together with story scene fields', () => {
+    expect(
+      normalizeStoryTurnPayload({
+        thread_id: ' thread-next ',
+        session_restored: true,
+        need_reselect_option: true,
+        restored_from_thread_id: ' thread-old ',
+        scene: 'study_room',
+        character_dialogue: 'Please choose again.',
+        player_options: [{ id: 1, text: 'Retry', type: 'action' }],
+      })
+    ).toEqual({
+      threadId: 'thread-next',
+      sessionRestored: true,
+      needReselectOption: true,
+      restoredFromThreadId: 'thread-old',
+      sceneId: 'study_room',
+      sceneImageUrl: null,
+      compositeImageUrl: null,
+      storyBackground: null,
+      characterDialogue: 'Please choose again.',
+      playerOptions: [{ id: 1, text: 'Retry', type: 'action' }],
+      isGameFinished: false,
+    });
+  });
+});
+
+describe('normalizeStorySessionSnapshotPayload', () => {
+  it('restores story state from nested snapshot fields when the top-level payload is summary-only', () => {
+    expect(
+      normalizeStorySessionSnapshotPayload({
+        thread_id: 'thread-live',
+        status: 'in_progress',
+        round_no: 3,
+        snapshot: {
+          scene: 'study_room',
+          story_background: 'Recovered background',
+          character_dialogue: 'Recovered dialogue',
+          player_options: [{ id: 2, text: 'Keep going', type: 'action' }],
+          composite_image_url: '/restored-composite.png',
+          updated_at: '2026-03-19T12:00:00Z',
+          expires_at: '2026-03-19T12:30:00Z',
+        },
+      })
+    ).toEqual({
+      threadId: 'thread-live',
+      sessionRestored: false,
+      needReselectOption: false,
+      restoredFromThreadId: null,
+      sceneId: 'study_room',
+      sceneImageUrl: null,
+      compositeImageUrl: '/restored-composite.png',
+      storyBackground: 'Recovered background',
+      characterDialogue: 'Recovered dialogue',
+      playerOptions: [{ id: 2, text: 'Keep going', type: 'action' }],
+      isGameFinished: false,
+      roundNo: 3,
+      status: 'in_progress',
+      updatedAt: '2026-03-19T12:00:00Z',
+      expiresAt: '2026-03-19T12:30:00Z',
     });
   });
 });

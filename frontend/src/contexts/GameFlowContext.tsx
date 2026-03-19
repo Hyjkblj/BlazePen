@@ -1,25 +1,20 @@
-import { useCallback, useReducer, type ReactNode } from 'react';
+import { useReducer, type ReactNode } from 'react';
 import type { CharacterData } from '@/types/game';
 import {
   clearPersistedInitialGameData,
   GameFlowContext,
-  getResumeSave as readResumeSave,
-  getThreadSave as readThreadSave,
   persistActiveSession as persistSessionState,
   persistCharacterDraft,
   persistCreatedCharacterId,
   persistCurrentCharacterId,
-  persistGameProgress as persistProgress,
   persistRestoreSession,
   readStorageState,
   type ActiveSessionState,
   type GameFlowState,
-  type PersistGameProgressParams,
   type SetActiveSessionParams,
 } from './gameFlowCore';
 
 type GameFlowAction =
-  | { type: 'hydrate'; payload: GameFlowState }
   | { type: 'set-character-draft'; payload: CharacterData | null }
   | { type: 'set-created-character-id'; payload: string | null }
   | { type: 'set-restore-session'; payload: GameFlowState['runtimeSession']['restoreSession'] }
@@ -28,8 +23,6 @@ type GameFlowAction =
 
 const reducer = (state: GameFlowState, action: GameFlowAction): GameFlowState => {
   switch (action.type) {
-    case 'hydrate':
-      return action.payload;
     case 'set-character-draft':
       return {
         ...state,
@@ -149,18 +142,6 @@ export function GameFlowProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'set-current-character-id', payload: characterId });
   };
 
-  const getResumeSave = useCallback(() => readResumeSave(), []);
-
-  const getThreadSave = useCallback((threadId: string) => readThreadSave(threadId), []);
-
-  const persistGameProgress = useCallback((params: PersistGameProgressParams) => {
-    persistProgress(params);
-  }, []);
-
-  const hydrateFromStorage = useCallback(() => {
-    dispatch({ type: 'hydrate', payload: readStorageState() });
-  }, []);
-
   return (
     <GameFlowContext.Provider
       value={{
@@ -174,10 +155,6 @@ export function GameFlowProvider({ children }: { children: ReactNode }) {
         clearActiveSession,
         clearInitialGameData,
         setCurrentCharacterId,
-        getResumeSave,
-        getThreadSave,
-        persistGameProgress,
-        hydrateFromStorage,
       }}
     >
       {children}

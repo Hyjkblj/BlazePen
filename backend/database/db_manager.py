@@ -30,6 +30,7 @@ class DatabaseManager:
 
     def _register_managed_models(self):
         """确保当前项目托管的 ORM 模型都已注册到 `Base.metadata`。"""
+        import models.story  # noqa: F401
         import models.training  # noqa: F401
 
     def check_connection(self):

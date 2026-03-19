@@ -20,7 +20,11 @@ from training.scenario_policy import ScenarioPolicy
 from training.scenario_repository import ScenarioRepository
 from training.session_snapshot_policy import SessionScenarioSnapshotPolicy
 from training.runtime_artifact_policy import TrainingRuntimeArtifactPolicy
-from training.training_outputs import TrainingRoundDecisionContextOutput
+from training.training_outputs import (
+    TrainingConsequenceEventOutput,
+    TrainingRoundDecisionContextOutput,
+    TrainingRuntimeStateOutput,
+)
 from training.training_store import DatabaseTrainingStore
 
 
@@ -321,6 +325,61 @@ class _SpyRuntimeArtifactPolicy:
         return self.delegate.extract_round_decision_context(user_action)
 
 
+class _CustomContractRuntimeArtifactPolicy(TrainingRuntimeArtifactPolicy):
+    """Use custom storage keys so replay/report must reuse the same runtime contract."""
+
+    _DECISION_CONTEXT_KEY = "custom_decision_context"
+    _RUNTIME_STATE_KEY = "custom_runtime_state"
+    _CONSEQUENCE_EVENTS_KEY = "custom_consequence_events"
+
+    def build_round_user_action(self, *, user_input, selected_option, decision_context):
+        payload = {
+            "text": user_input,
+            "selected_option": selected_option,
+        }
+        if decision_context is not None:
+            payload[self._DECISION_CONTEXT_KEY] = decision_context.to_dict()
+        return payload
+
+    def attach_runtime_artifacts_to_user_action(
+        self,
+        *,
+        user_action,
+        runtime_state,
+        consequence_events,
+        branch_hints=None,
+    ):
+        payload = dict(user_action or {})
+        payload[self._RUNTIME_STATE_KEY] = runtime_state.to_dict()
+        payload[self._CONSEQUENCE_EVENTS_KEY] = [item.to_dict() for item in consequence_events or []]
+        if branch_hints:
+            payload["custom_branch_hints"] = [
+                str(item) for item in branch_hints if str(item or "").strip()
+            ]
+        return payload
+
+    def extract_round_decision_context(self, user_action):
+        if not isinstance(user_action, dict):
+            return None
+        return TrainingRoundDecisionContextOutput.from_payload(user_action.get(self._DECISION_CONTEXT_KEY))
+
+    def extract_round_runtime_state(self, user_action):
+        if not isinstance(user_action, dict):
+            return None
+        return TrainingRuntimeStateOutput.from_payload(user_action.get(self._RUNTIME_STATE_KEY))
+
+    def extract_round_consequence_events(self, user_action):
+        if not isinstance(user_action, dict):
+            return []
+
+        outputs = []
+        for item in user_action.get(self._CONSEQUENCE_EVENTS_KEY) or []:
+            output = TrainingConsequenceEventOutput.from_payload(item)
+            if output is not None:
+                outputs.append(output)
+        return outputs
+
+
 class _SpyOutputAssemblerPolicy:
     """输出装配策略桩：验证服务层确实把 DTO 转换委托给独立策略。"""
 
@@ -402,6 +461,7 @@ class _SpyRoundTransitionPolicy:
 
     def __init__(self, delegate):
         self.delegate = delegate
+        self.runtime_artifact_policy = delegate.runtime_artifact_policy
         self.calls = []
 
     def build_round_transition_artifacts(
@@ -450,6 +510,8 @@ class _SpyReportContextPolicy:
 
     def __init__(self, delegate):
         self.delegate = delegate
+        self.runtime_artifact_policy = delegate.runtime_artifact_policy
+        self.output_assembler_policy = delegate.output_assembler_policy
         self.resolve_initial_states_call_count = 0
         self.build_title_map_call_count = 0
         self.build_history_call_count = 0
@@ -1265,6 +1327,70 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertEqual(spy_policy.calls[0]["selected_option"], "A")
         self.assertTrue(result["runtime_state"]["runtime_flags"]["source_exposed"])
         self.assertEqual(result["consequence_events"][0]["event_type"], "source_exposed")
+
+    def test_service_should_reuse_round_transition_runtime_contract_for_report_and_duplicate_replay(self):
+        custom_runtime_artifact_policy = _CustomContractRuntimeArtifactPolicy()
+        service = TrainingService(
+            db_manager=_IdempotentDuplicateDbManager(),
+            evaluator=_RiskFlagEvaluator(),
+            round_transition_policy=TrainingRoundTransitionPolicy(
+                runtime_artifact_policy=custom_runtime_artifact_policy,
+            ),
+        )
+        init_result = service.init_training(user_id="u3-transition-contract")
+        session_id = init_result["session_id"]
+
+        first = service.submit_round(
+            session_id=session_id,
+            scenario_id="S1",
+            user_input="hello",
+        )
+        second = service.submit_round(
+            session_id=session_id,
+            scenario_id="S1",
+            user_input="hello",
+        )
+        report = service.get_report(session_id)
+
+        self.assertIs(service.runtime_artifact_policy, custom_runtime_artifact_policy)
+        self.assertIs(service.round_transition_policy.runtime_artifact_policy, custom_runtime_artifact_policy)
+        self.assertIs(service.report_context_policy.runtime_artifact_policy, custom_runtime_artifact_policy)
+        self.assertEqual(first["decision_context"]["selected_scenario_id"], "S1")
+        self.assertEqual(second["decision_context"]["selected_scenario_id"], "S1")
+        self.assertEqual(report["history"][0]["decision_context"]["selected_scenario_id"], "S1")
+        self.assertEqual(second["runtime_state"], first["runtime_state"])
+        self.assertEqual(report["history"][0]["runtime_state"], first["runtime_state"])
+        self.assertEqual(report["history"][0]["consequence_events"], first["consequence_events"])
+
+    def test_service_should_reject_conflicting_runtime_artifact_policy_injections(self):
+        with self.assertRaises(ValueError) as cm:
+            TrainingService(
+                db_manager=_FakeDbManager(),
+                evaluator=self.evaluator,
+                round_transition_policy=TrainingRoundTransitionPolicy(
+                    runtime_artifact_policy=_CustomContractRuntimeArtifactPolicy(),
+                ),
+                report_context_policy=TrainingReportContextPolicy(
+                    runtime_artifact_policy=TrainingRuntimeArtifactPolicy(),
+                    output_assembler_policy=TrainingOutputAssemblerPolicy(),
+                ),
+            )
+
+        self.assertIn("inconsistent runtime_artifact_policy injection", str(cm.exception))
+
+    def test_service_should_reject_conflicting_output_assembler_policy_injections(self):
+        with self.assertRaises(ValueError) as cm:
+            TrainingService(
+                db_manager=_FakeDbManager(),
+                evaluator=self.evaluator,
+                output_assembler_policy=TrainingOutputAssemblerPolicy(),
+                report_context_policy=TrainingReportContextPolicy(
+                    runtime_artifact_policy=TrainingRuntimeArtifactPolicy(),
+                    output_assembler_policy=TrainingOutputAssemblerPolicy(),
+                ),
+            )
+
+        self.assertIn("inconsistent output_assembler_policy injection", str(cm.exception))
 
     def test_report_round_snapshots_should_fallback_to_evaluation_risk_flags_when_observation_missing(self):
         """历史数据缺少 KT 观测时，报告快照仍应从评估结果兜底补齐风险字段。"""

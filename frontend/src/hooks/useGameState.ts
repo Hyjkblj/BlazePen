@@ -51,6 +51,8 @@ export interface GameSessionActions {
 export type GameSessionInitActions = Pick<
   GameSessionActions,
   | 'replaceMessages'
+  | 'startLoading'
+  | 'stopLoading'
   | 'setThreadId'
   | 'setCharacterId'
   | 'setCharacterImageUrl'

@@ -1,6 +1,16 @@
 import { getSceneNameById } from '@/config/scenes';
-import type { StoryResponsePayload } from '@/types/api';
-import type { InitialGameData, PlayerOption, StorySceneData } from '@/types/game';
+import type {
+  ProcessGameInputResponse,
+  StoryResponsePayload,
+  StorySessionSnapshotResponse,
+} from '@/types/api';
+import type {
+  GameTurnResult,
+  InitialGameData,
+  PlayerOption,
+  StorySceneData,
+  StorySessionSnapshotResult,
+} from '@/types/game';
 import { resolveStaticSceneImageFallback } from './sceneAssets';
 
 interface LegacyInitialGameData {
@@ -30,16 +40,68 @@ const normalizeOptionalString = (value: unknown): string | null => {
 const normalizePlayerOptions = (value: unknown): PlayerOption[] =>
   Array.isArray(value) ? value : [];
 
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+
+const readStoryPayloadField = (payload: unknown, field: string): unknown => {
+  const record = asRecord(payload);
+  if (record && record[field] !== undefined && record[field] !== null) {
+    return record[field];
+  }
+
+  const snapshotRecord = asRecord(record?.snapshot);
+  if (snapshotRecord && snapshotRecord[field] !== undefined && snapshotRecord[field] !== null) {
+    return snapshotRecord[field];
+  }
+
+  return undefined;
+};
+
+const normalizeOptionalNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number.parseInt(value.trim(), 10);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+};
+
 export const normalizeStoryScenePayload = (
   payload: Partial<StoryResponsePayload> | null | undefined
 ): StorySceneData => ({
-  sceneId: normalizeOptionalString(payload?.scene),
-  sceneImageUrl: normalizeOptionalString(payload?.scene_image_url),
-  compositeImageUrl: normalizeOptionalString(payload?.composite_image_url),
-  storyBackground: normalizeOptionalString(payload?.story_background),
-  characterDialogue: normalizeOptionalString(payload?.character_dialogue),
-  playerOptions: normalizePlayerOptions(payload?.player_options),
-  isGameFinished: payload?.is_game_finished === true,
+  sceneId: normalizeOptionalString(readStoryPayloadField(payload, 'scene')),
+  sceneImageUrl: normalizeOptionalString(readStoryPayloadField(payload, 'scene_image_url')),
+  compositeImageUrl: normalizeOptionalString(readStoryPayloadField(payload, 'composite_image_url')),
+  storyBackground: normalizeOptionalString(readStoryPayloadField(payload, 'story_background')),
+  characterDialogue: normalizeOptionalString(readStoryPayloadField(payload, 'character_dialogue')),
+  playerOptions: normalizePlayerOptions(readStoryPayloadField(payload, 'player_options')),
+  isGameFinished: readStoryPayloadField(payload, 'is_game_finished') === true,
+});
+
+export const normalizeStoryTurnPayload = (
+  payload: Partial<ProcessGameInputResponse> | null | undefined
+): GameTurnResult => ({
+  threadId: normalizeOptionalString(payload?.thread_id),
+  sessionRestored: payload?.session_restored === true,
+  needReselectOption: payload?.need_reselect_option === true,
+  restoredFromThreadId: normalizeOptionalString(payload?.restored_from_thread_id),
+  ...normalizeStoryScenePayload(payload),
+});
+
+export const normalizeStorySessionSnapshotPayload = (
+  payload: Partial<StorySessionSnapshotResponse> | null | undefined
+): StorySessionSnapshotResult => ({
+  ...normalizeStoryTurnPayload(payload),
+  roundNo: normalizeOptionalNumber(readStoryPayloadField(payload, 'round_no')),
+  status: normalizeOptionalString(readStoryPayloadField(payload, 'status')),
+  updatedAt: normalizeOptionalString(readStoryPayloadField(payload, 'updated_at')),
+  expiresAt: normalizeOptionalString(readStoryPayloadField(payload, 'expires_at')),
 });
 
 export const toInitialGameData = (

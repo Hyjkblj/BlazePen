@@ -1,40 +1,69 @@
-import httpClient, {
-  getErrorData,
-  getErrorMessage,
-  getErrorStatus,
-  isTimeoutError,
-  unwrapApiData,
-} from '@/services/httpClient';
+import httpClient, { unwrapApiData } from '@/services/httpClient';
+import { toServiceError } from '@/services/serviceError';
 import type {
   CharacterImagesResponse,
   CreateCharacterRequest,
   CreateCharacterResponse,
   GenericApiRecord,
-  GetScenesResponse,
-  InitializeStoryResponse,
   RemoveBackgroundResponse,
 } from '@/types/api';
-import type { StorySceneData } from '@/types/game';
-import { normalizeStoryScenePayload } from '@/utils/storyScene';
+import type { CharacterCreationResult } from '@/types/game';
 import { logger } from '@/utils/logger';
+
+const normalizeOptionalString = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim();
+  if (normalized === '' || normalized === 'null' || normalized === 'undefined') {
+    return null;
+  }
+
+  return normalized;
+};
+
+const normalizeCharacterCreationResult = (
+  payload: CreateCharacterResponse | null | undefined
+): CharacterCreationResult => ({
+  characterId:
+    normalizeOptionalString(
+      typeof payload?.character_id === 'string' || typeof payload?.character_id === 'number'
+        ? String(payload.character_id)
+        : null
+    ) ?? '',
+  name: normalizeOptionalString(payload?.name),
+  imageUrl: normalizeOptionalString(payload?.image_url),
+  imageUrls: Array.isArray(payload?.image_urls)
+    ? payload.image_urls.filter(
+        (item): item is string => typeof item === 'string' && item.trim() !== ''
+      )
+    : [],
+});
 
 export const createCharacter = async (
   data: CreateCharacterRequest
-): Promise<CreateCharacterResponse> => {
+): Promise<CharacterCreationResult> => {
   try {
     const response = await httpClient.post('/v1/characters/create', data, { timeout: 180000 });
-    return unwrapApiData<CreateCharacterResponse>(response);
+    return normalizeCharacterCreationResult(unwrapApiData<CreateCharacterResponse>(response));
   } catch (error: unknown) {
-    if (isTimeoutError(error)) {
-      throw new Error('Character creation timed out. Please retry in a moment.');
-    }
-    throw error;
+    throw toServiceError(error, {
+      fallbackMessage: 'Failed to create character.',
+      timeoutMessage: 'Character creation timed out. Please retry in a moment.',
+    });
   }
 };
 
 export const getCharacter = async (characterId: string): Promise<GenericApiRecord> => {
-  const response = await httpClient.get(`/v1/characters/${characterId}`);
-  return unwrapApiData<GenericApiRecord>(response);
+  try {
+    const response = await httpClient.get(`/v1/characters/${characterId}`);
+    return unwrapApiData<GenericApiRecord>(response);
+  } catch (error: unknown) {
+    throw toServiceError(error, {
+      fallbackMessage: 'Failed to load character details.',
+    });
+  }
 };
 
 export const getCharacterImages = async (
@@ -46,10 +75,12 @@ export const getCharacterImages = async (
     });
     return unwrapApiData<CharacterImagesResponse>(response);
   } catch (error: unknown) {
-    if (isTimeoutError(error)) {
-      logger.warn('Character image fetch timed out.');
-    }
-    throw error;
+    const serviceError = toServiceError(error, {
+      fallbackMessage: 'Failed to load character images.',
+      timeoutMessage: 'Character image fetch timed out. Please retry.',
+    });
+    logger.warn('[character-api] character image request failed', serviceError);
+    throw serviceError;
   }
 };
 
@@ -71,58 +102,9 @@ export const removeCharacterBackground = async (
     );
     return unwrapApiData<RemoveBackgroundResponse>(response);
   } catch (error: unknown) {
-    if (isTimeoutError(error)) {
-      throw new Error('Background removal timed out. Please retry.');
-    }
-    throw error;
-  }
-};
-
-export const initializeStory = async (
-  threadId: string,
-  characterId: string,
-  sceneId?: string,
-  characterImageUrl?: string
-): Promise<StorySceneData> => {
-  try {
-    if (!threadId || !characterId) {
-      throw new Error(`Missing required params: threadId=${threadId}, characterId=${characterId}`);
-    }
-
-    const response = await httpClient.post(
-      '/v1/characters/initialize-story',
-      {
-        thread_id: threadId,
-        character_id: String(characterId),
-        scene_id: sceneId || 'school',
-        character_image_url: characterImageUrl || undefined,
-      },
-      { timeout: 60000 }
-    );
-    return normalizeStoryScenePayload(unwrapApiData<InitializeStoryResponse>(response));
-  } catch (error: unknown) {
-    if (getErrorStatus(error) === 422) {
-      const errorData = getErrorData(error);
-      const detail = errorData?.detail || errorData?.message || 'Invalid request parameters.';
-      throw new Error(`Request validation failed: ${JSON.stringify(detail)}`);
-    }
-    if (isTimeoutError(error)) {
-      throw new Error('Story initialization timed out. Please retry.');
-    }
-    throw error;
-  }
-};
-
-export const getScenes = async (): Promise<GetScenesResponse> => {
-  try {
-    const response = await httpClient.get('/v1/characters/scenes');
-    return unwrapApiData<GetScenesResponse>(response);
-  } catch (error: unknown) {
-    logger.error('Failed to fetch scenes:', {
-      status: getErrorStatus(error),
-      data: getErrorData(error),
-      message: getErrorMessage(error),
+    throw toServiceError(error, {
+      fallbackMessage: 'Failed to remove character background.',
+      timeoutMessage: 'Background removal timed out. Please retry.',
     });
-    throw error;
   }
 };

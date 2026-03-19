@@ -1,4 +1,5 @@
 import httpClient, { getErrorMessage, isTimeoutError, unwrapApiData } from '@/services/httpClient';
+import { toServiceError } from '@/services/serviceError';
 import type {
   GenerateSpeechOptions,
   GenerateSpeechResponse,
@@ -29,8 +30,12 @@ export const getPresetVoices = async (gender?: string): Promise<PresetVoiceItem[
 
     return [];
   } catch (error: unknown) {
-    logger.error('Failed to fetch preset voices:', error);
-    throw error;
+    const serviceError = toServiceError(error, {
+      fallbackMessage: 'Failed to load preset voices.',
+      timeoutMessage: 'Preset voice list request timed out. Please retry.',
+    });
+    logger.error('Failed to fetch preset voices:', serviceError);
+    throw serviceError;
   }
 };
 
@@ -84,6 +89,13 @@ export const getVoicePreviewAudio = async (
 export const setVoiceConfig = async (
   params: SetVoiceConfigRequest
 ): Promise<GenericApiRecord> => {
-  const response = await httpClient.post('/v1/tts/voice/config', params);
-  return unwrapApiData<GenericApiRecord>(response);
+  try {
+    const response = await httpClient.post('/v1/tts/voice/config', params);
+    return unwrapApiData<GenericApiRecord>(response);
+  } catch (error: unknown) {
+    throw toServiceError(error, {
+      fallbackMessage: 'Failed to save voice config.',
+      timeoutMessage: 'Voice config save timed out. Please retry.',
+    });
+  }
 };

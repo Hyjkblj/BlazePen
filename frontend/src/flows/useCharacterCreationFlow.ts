@@ -205,7 +205,7 @@ export function useCharacterCreationFlow(): UseCharacterCreationFlowResult {
         age,
       });
 
-      const characterId = response.character_id;
+      const characterId = response.characterId;
       if (!isValidCharacterId(characterId)) {
         feedback.error('创建角色失败：未获取到有效角色 ID');
         return;
@@ -221,12 +221,8 @@ export function useCharacterCreationFlow(): UseCharacterCreationFlowResult {
         appearance,
         personality,
         style,
-        imageUrl: typeof response.image_url === 'string' ? response.image_url : undefined,
-        image_urls: Array.isArray(response.image_urls)
-          ? response.image_urls.filter(
-              (url): url is string => typeof url === 'string' && url.trim() !== ''
-            )
-          : [],
+        imageUrl: response.imageUrl ?? undefined,
+        image_urls: response.imageUrls,
       };
 
       setCharacterDraft(characterData);

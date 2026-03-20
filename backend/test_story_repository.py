@@ -135,6 +135,48 @@ class StoryRepositoryTestCase(unittest.TestCase):
         with self.assertRaises(DuplicateStoryRoundSubmissionError):
             self.repo.save_story_round_artifacts(**payload)
 
+    def test_get_latest_story_snapshot_should_follow_session_fact_source(self):
+        self.repo.create_story_session(
+            thread_id="thread-latest",
+            user_id="user-001",
+            character_id=self.character_id,
+            game_mode="solo",
+            status="initialized",
+            expires_at=None,
+        )
+        self.repo.save_story_snapshot(
+            thread_id="thread-latest",
+            round_no=0,
+            snapshot_payload={"current_states": {"trust": 5}},
+            response_payload={"event_title": "Opening", "scene": "school"},
+            status="in_progress",
+            current_scene_id="school",
+            is_initialized=True,
+            expires_at=None,
+        )
+        self.repo.save_story_snapshot(
+            thread_id="thread-latest",
+            round_no=2,
+            snapshot_payload={"current_states": {"trust": 25}},
+            response_payload={"event_title": "Latest", "scene": "library"},
+            status="in_progress",
+            current_scene_id="library",
+            is_initialized=True,
+            expires_at=None,
+        )
+        self.repo.update_story_session(
+            "thread-latest",
+            {
+                "latest_snapshot_round_no": 0,
+            },
+        )
+
+        snapshot_row = self.repo.get_latest_story_snapshot("thread-latest")
+
+        self.assertIsNotNone(snapshot_row)
+        self.assertEqual(snapshot_row.round_no, 0)
+        self.assertEqual(snapshot_row.response_payload["event_title"], "Opening")
+
     @patch("api.services.game_session.VectorDatabase", _FakeVectorDatabase)
     @patch("api.services.game_session.EventGenerator", _FakeEventGenerator)
     @patch("api.services.game_session.StoryEngine", _FakeStoryEngine)

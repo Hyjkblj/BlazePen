@@ -4,4 +4,5 @@ export * from '@/services/characterApi';
 export * from '@/services/gameApi';
 export * from '@/services/healthApi';
 export * from '@/services/httpClient';
+export * from '@/services/trainingApi';
 export * from '@/services/ttsApi';

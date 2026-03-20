@@ -4,8 +4,10 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 import unittest
 
+from story.exceptions import StorySessionAccessDeniedError
 from story.story_ending_service import StoryEndingService
 from story.story_history_service import StoryHistoryService
+from story.story_session_query_policy import StorySessionQueryPolicy
 from story.story_session_service import StorySessionService
 
 
@@ -107,6 +109,8 @@ class _QuerySessionManager:
         self._session_record = session_record
         self._latest_snapshots = dict(latest_snapshots or {})
         self._rounds = list(rounds or [])
+        self.single_snapshot_calls = []
+        self.batch_snapshot_calls = []
 
     def list_story_sessions(self, *, user_id: str, limit: int = 10):
         return list(self._sessions)[:limit]
@@ -120,7 +124,16 @@ class _QuerySessionManager:
         return None
 
     def get_latest_snapshot(self, thread_id: str):
+        self.single_snapshot_calls.append(thread_id)
         return self._latest_snapshots.get(thread_id)
+
+    def get_latest_snapshots(self, thread_ids: list[str]):
+        self.batch_snapshot_calls.append(list(thread_ids))
+        return {
+            thread_id: self._latest_snapshots[thread_id]
+            for thread_id in thread_ids
+            if thread_id in self._latest_snapshots
+        }
 
     def get_story_rounds(self, thread_id: str):
         return list(self._rounds)
@@ -130,6 +143,32 @@ class _QuerySessionManager:
 
 
 class StoryQueryServicesTestCase(unittest.TestCase):
+    def test_story_session_service_should_use_strict_actor_policy_by_default(self):
+        active_record = _SessionRecord(
+            thread_id="thread-active",
+            current_round_no=1,
+            current_scene_id="library",
+            status="in_progress",
+            expires_at=datetime.utcnow() + timedelta(hours=2),
+        )
+        session_manager = _QuerySessionManager(
+            sessions=[active_record],
+            latest_snapshots={},
+        )
+        service = StorySessionService(
+            session_manager=session_manager,
+        )
+
+        with self.assertRaises(StorySessionAccessDeniedError) as context:
+            service.list_recent_sessions(
+                user_id="user-001",
+                limit=10,
+            )
+
+        self.assertEqual(service.session_query_policy.mode, StorySessionQueryPolicy.MODE_ACTOR_HEADER_MATCH)
+        self.assertEqual(context.exception.policy_mode, StorySessionQueryPolicy.MODE_ACTOR_HEADER_MATCH)
+        self.assertEqual(session_manager.batch_snapshot_calls, [])
+
     def test_story_session_service_should_list_recent_sessions_from_persisted_facts(self):
         active_record = _SessionRecord(
             thread_id="thread-active",
@@ -172,7 +211,12 @@ class StoryQueryServicesTestCase(unittest.TestCase):
                 ),
             },
         )
-        service = StorySessionService(session_manager=session_manager)
+        service = StorySessionService(
+            session_manager=session_manager,
+            session_query_policy=StorySessionQueryPolicy(
+                mode=StorySessionQueryPolicy.MODE_TRUSTED_QUERY_USER_ID
+            ),
+        )
 
         result = service.list_recent_sessions(user_id="user-001", limit=10)
 
@@ -182,6 +226,68 @@ class StoryQueryServicesTestCase(unittest.TestCase):
         self.assertEqual(result["sessions"][0]["event_title"], "Library Scene")
         self.assertEqual(result["sessions"][1]["status"], "expired")
         self.assertFalse(result["sessions"][1]["can_resume"])
+        self.assertEqual(session_manager.single_snapshot_calls, [])
+        self.assertEqual(
+            session_manager.batch_snapshot_calls,
+            [["thread-active", "thread-expired"]],
+        )
+
+    def test_story_session_service_should_require_matching_actor_when_policy_is_strict(self):
+        active_record = _SessionRecord(
+            thread_id="thread-active",
+            current_round_no=1,
+            current_scene_id="library",
+            status="in_progress",
+            expires_at=datetime.utcnow() + timedelta(hours=2),
+        )
+        session_manager = _QuerySessionManager(
+            sessions=[active_record],
+            latest_snapshots={},
+        )
+        service = StorySessionService(
+            session_manager=session_manager,
+            session_query_policy=StorySessionQueryPolicy(
+                mode=StorySessionQueryPolicy.MODE_ACTOR_HEADER_MATCH
+            ),
+        )
+
+        result = service.list_recent_sessions(
+            user_id="user-001",
+            actor_user_id="user-001",
+            limit=10,
+        )
+
+        self.assertEqual(result["user_id"], "user-001")
+        self.assertEqual(session_manager.batch_snapshot_calls, [["thread-active"]])
+
+    def test_story_session_service_should_reject_recent_sessions_when_actor_mismatches(self):
+        active_record = _SessionRecord(
+            thread_id="thread-active",
+            current_round_no=1,
+            current_scene_id="library",
+            status="in_progress",
+            expires_at=datetime.utcnow() + timedelta(hours=2),
+        )
+        session_manager = _QuerySessionManager(
+            sessions=[active_record],
+            latest_snapshots={},
+        )
+        service = StorySessionService(
+            session_manager=session_manager,
+            session_query_policy=StorySessionQueryPolicy(
+                mode=StorySessionQueryPolicy.MODE_ACTOR_HEADER_MATCH
+            ),
+        )
+
+        with self.assertRaises(StorySessionAccessDeniedError) as context:
+            service.list_recent_sessions(
+                user_id="user-001",
+                actor_user_id="user-002",
+                limit=10,
+            )
+
+        self.assertEqual(context.exception.policy_mode, "actor_header_match")
+        self.assertEqual(session_manager.batch_snapshot_calls, [])
 
     def test_story_history_service_should_build_history_without_runtime_restore(self):
         session_record = _SessionRecord(

@@ -6,6 +6,7 @@ export const ROUTES = {
   CHARACTER_SELECTION: '/characterselection',
   FIRST_MEETING: '/firstmeeting',
   GAME: '/game',
+  TRAINING: '/training',
 } as const;
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];

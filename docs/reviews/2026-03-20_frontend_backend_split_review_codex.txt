@@ -1,0 +1,32 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+- [Major] frontend/src/services/storyTurnService.ts:45
+  问题：`submitStoryTurnWithRecovery()` 在提交返回 `STORY_SESSION_EXPIRED / STORY_SESSION_NOT_FOUND / SESSION_EXPIRED` 后，直接执行 `initGame -> initializeStory` 新建 thread，把“恢复”实现成了“前端发起的重开”。
+  原因：这让客户端当前 `sceneId`、角色图等运行态参与会话重建，恢复链路不再以服务端持久化 snapshot 为单一事实源；同时 story 提交流程继续依赖 legacy 的角色域初始化契约。
+  影响：用户一次故事会被静默拆成多条 `threadId`，原会话的历史、结局、recent sessions 与当前继续游玩的新 thread 会出现事实分叉，恢复语义也会因客户端实现差异而漂移。
+  建议：不要在 submit 热路径里自动新建 thread；改为显式进入服务端快照恢复/重开流程，或由后端返回结构化 `restore/restart` 决策，前端只消费结果并明确提示用户这是重开而不是恢复。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+- [Major] backend/story/story_repository.py:157
+  问题：`get_latest_story_snapshots()` 为获取“每个 thread 的最新快照”，直接把这些 thread 的全部 snapshot 查出后在 Python 侧去重。
+  原因：仓库层没有利用 `story_sessions.latest_snapshot_round_no` 这个已持久化的事实源，而是在 query path 重新推导 latest snapshot；这既没有真正收口 recent sessions read model，也把“最新快照是谁”重新变成了推断逻辑。
+  影响：`/api/v1/game/sessions` 的成本仍然随用户快照历史长度增长；历史一旦变长，recent sessions 列表会重新落回高延迟、高内存路径，后续也更难稳定承诺这个查询契约。
+  建议：改为按 `story_sessions(thread_id, latest_snapshot_round_no)` 直接 join `story_snapshots`，或用窗口函数/子查询只返回每个 thread 一条最新记录；同时补真实仓储层测试，锁住“单次查询只取每 thread 最新快照”这个约束。
+
+## Open Questions
+- `/api/v1/game/sessions?user_id=` 的 ownership/policy 最终定义是什么？当前路由仍直接信任 caller-supplied `user_id`，如果后续要作为稳定外部契约给前端全面接入，这个边界必须先明确。
+- 当故事提交返回 `STORY_SESSION_EXPIRED / STORY_SESSION_NOT_FOUND` 时，产品预期到底是“提示会话失效并让用户恢复/重开”，还是“自动新建新 thread 并跳回当前场景的 fresh opening”？这会直接决定前端恢复链路的收口方式。
+
+## 测试缺口
+- 前端：`frontend/src/pages/Game.integration.test.tsx` 还缺少“已完成会话恢复后，`/sessions/{thread_id}/ending` 返回 404/410/500”时的页面级回归；当前只有 hook 级重试覆盖，没有验证真实弹窗错误态和重试交互。
+- 前端：`frontend/src/services/storyTurnService.test.ts` 与 `frontend/src/pages/Game.integration.test.tsx` 目前只锁定了 `fresh-recovery` 成功路径，没有覆盖“服务端仍可基于 snapshot 恢复时，不应自动切换到新 thread”的保护用例。
+- 后端：`backend/test_story_query_routes.py` 没有覆盖 `/api/v1/game/sessions?user_id=` 的 ownership/policy 拒绝路径；当前只有 happy path，无法阻止这个接口继续被当成无边界的枚举入口。
+- 后端：`backend/test_story_repository_queries.py` 只验证了返回结果正确，没有约束 `backend/story/story_repository.py` 不去扫描整段 snapshot 历史；这类性能和事实源回退目前没有测试护栏。
+
+## Review Summary
+- 这批改动把 ending 查询切到了 canonical route，也把 recent sessions 从 N+1 调整成了批量查询，方向是对的。
+- 当前没有看到阻塞合并的前后端问题，但恢复模型和 recent sessions read model 仍未完全收口。
+- 前端的主要风险是把“恢复”继续定义成客户端自建新 thread 的重开流程，这和服务端 snapshot 事实源存在冲突。
+- 后端的主要风险是仓库层仍在扫描 snapshot 历史重新推导 latest snapshot，查询模型还没有真正落到单一事实源。
+- 这意味着故事主线的恢复、历史、结局链路还不能算完全稳定，不适合过早宣称已经完成解耦收口。

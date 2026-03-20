@@ -8,8 +8,9 @@ import Layout from '@/components/Layout';
 import { ROUTES } from '@/config/routes';
 import { FeedbackProvider, GameFlowProvider } from '@/contexts';
 import {
-  checkEnding,
+  getStorySessionHistory,
   getStorySessionSnapshot,
+  getStoryEndingSummary,
   initGame,
   initializeStory,
   processGameInput,
@@ -23,8 +24,9 @@ vi.mock('@/services/gameApi', () => ({
   initGame: vi.fn(),
   initializeStory: vi.fn(),
   getStorySessionSnapshot: vi.fn(),
+  getStorySessionHistory: vi.fn(),
+  getStoryEndingSummary: vi.fn(),
   processGameInput: vi.fn(),
-  checkEnding: vi.fn(),
   triggerEnding: vi.fn(),
 }));
 
@@ -140,11 +142,8 @@ describe('FirstStep page integration', () => {
     vi.mocked(initializeStory).mockReset();
     vi.mocked(processGameInput).mockReset();
     vi.mocked(getStorySessionSnapshot).mockReset();
-    vi.mocked(checkEnding).mockReset();
-    vi.mocked(checkEnding).mockResolvedValue({
-      hasEnding: false,
-      ending: null,
-    });
+    vi.mocked(getStorySessionHistory).mockReset();
+    vi.mocked(getStoryEndingSummary).mockReset();
   });
 
   afterEach(() => {
@@ -190,7 +189,8 @@ describe('FirstStep page integration', () => {
     expect(processGameInput).not.toHaveBeenCalled();
     expect(initGame).not.toHaveBeenCalled();
     expect(initializeStory).not.toHaveBeenCalled();
-    expect(checkEnding).not.toHaveBeenCalled();
+    expect(getStorySessionHistory).not.toHaveBeenCalled();
+    expect(getStoryEndingSummary).not.toHaveBeenCalled();
 
     expect(
       screen.getByText(

@@ -301,6 +301,9 @@ class GameSessionManager:
             snapshot.expires_at = session_record.expires_at
         return snapshot
 
+    def get_latest_snapshots(self, thread_ids: list[str]) -> dict[str, StorySnapshotRecord]:
+        return self.story_store.get_latest_story_snapshots(thread_ids)
+
     def save_story_snapshot(
         self,
         *,

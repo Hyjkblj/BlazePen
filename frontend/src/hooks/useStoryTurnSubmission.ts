@@ -1,14 +1,14 @@
 import { useCallback } from 'react';
 import type { FeedbackContextValue } from '@/contexts/feedbackCore';
-import { initGame, initializeStory, processGameInput } from '@/services/gameApi';
+import { submitStoryTurn } from '@/services/storyTurnService';
 import { getServiceErrorMessage, isServiceError } from '@/services/serviceError';
-import type { GameTurnResult, PlayerOption } from '@/types/game';
-import { buildInitialAssistantMessages } from '@/utils/gameSession';
+import type { GameMessage, GameTurnResult, PlayerOption } from '@/types/game';
 import { logger } from '@/utils/logger';
 import { resolveSceneDisplayName, resolveStorySceneVisual } from '@/utils/storyScene';
 import type { GameSessionActions } from './useGameState';
 
 interface StoryTurnSubmissionState {
+  messages: GameMessage[];
   loading: boolean;
   threadId: string | null;
   currentOptions: PlayerOption[];
@@ -24,11 +24,9 @@ interface UseStoryTurnSubmissionParams {
   actions: Pick<
     GameSessionActions,
     | 'prepareOptionSelection'
-    | 'setThreadId'
     | 'setDialogue'
     | 'setOptions'
     | 'setGameFinished'
-    | 'replaceMessages'
     | 'rollbackPendingUserMessage'
     | 'stopLoading'
     | 'enterScene'
@@ -39,6 +37,7 @@ interface UseStoryTurnSubmissionParams {
   preferredCharacterId: string | null;
   setCharacterImage: (characterId: string | null) => void;
   syncActiveSession: (nextThreadId: string | null) => void;
+  persistReadOnlySnapshot: (threadId: string, messages: GameMessage[]) => void;
 }
 
 export interface UseStoryTurnSubmissionResult {
@@ -52,8 +51,10 @@ export function useStoryTurnSubmission({
   preferredCharacterId,
   setCharacterImage,
   syncActiveSession,
+  persistReadOnlySnapshot,
 }: UseStoryTurnSubmissionParams): UseStoryTurnSubmissionResult {
   const {
+    messages,
     loading,
     threadId,
     currentOptions,
@@ -114,55 +115,6 @@ export function useStoryTurnSubmission({
     [actions, applyResponseVisual, feedback]
   );
 
-  const recoverExpiredSession = useCallback(async (): Promise<boolean> => {
-    if (!preferredCharacterId) {
-      feedback.error('Story session expired. Please restart the story.');
-      return false;
-    }
-
-    try {
-      const initResponse = await initGame({
-        gameMode: 'solo',
-        characterId: preferredCharacterId,
-      });
-
-      const openingState = await initializeStory(
-        initResponse.threadId,
-        preferredCharacterId,
-        currentScene ?? undefined,
-        characterImageUrl ?? undefined
-      );
-
-      applyResponseVisual({
-        threadId: initResponse.threadId,
-        sessionRestored: true,
-        needReselectOption: false,
-        restoredFromThreadId: threadId,
-        ...openingState,
-      });
-      actions.replaceMessages(buildInitialAssistantMessages(openingState));
-      actions.setDialogue(openingState.characterDialogue);
-      actions.setOptions(openingState.playerOptions);
-      actions.setGameFinished(openingState.isGameFinished);
-      syncActiveSession(initResponse.threadId);
-      feedback.success('Game session restored with a fresh story state.');
-      return true;
-    } catch (error: unknown) {
-      logger.error('[game] failed to recover session', error);
-      feedback.error('Game session could not be recovered. Please restart the story.');
-      return false;
-    }
-  }, [
-    actions,
-    applyResponseVisual,
-    characterImageUrl,
-    currentScene,
-    feedback,
-    preferredCharacterId,
-    syncActiveSession,
-    threadId,
-  ]);
-
   const restorePreviousTurnState = useCallback(() => {
     actions.setDialogue(currentDialogue);
     actions.setOptions(currentOptions);
@@ -195,10 +147,10 @@ export function useStoryTurnSubmission({
       actions.prepareOptionSelection(selectedOption.text);
 
       try {
-        const response = await processGameInput({
+        const response = await submitStoryTurn({
           threadId,
           userInput: `option:${optionIndex + 1}`,
-          characterId: preferredCharacterId || undefined,
+          characterId: preferredCharacterId,
         });
 
         if (response.threadId && response.threadId !== threadId) {
@@ -219,21 +171,20 @@ export function useStoryTurnSubmission({
       } catch (error: unknown) {
         logger.error('Failed to process game option:', error);
 
-        if (
+        if (isServiceError(error) && error.code === 'STORY_SESSION_RESTORE_FAILED') {
+          feedback.error('Game session could not be recovered. Please restart the story.');
+          persistReadOnlySnapshot(threadId, messages);
+          restorePreviousTurnState();
+          syncActiveSession(null);
+          actions.setOptions([]);
+        } else if (
           isServiceError(error) &&
           (error.code === 'STORY_SESSION_EXPIRED' ||
             error.code === 'STORY_SESSION_NOT_FOUND' ||
             error.code === 'SESSION_EXPIRED')
         ) {
-          feedback.warning('Game session expired. Trying to recover...');
-          const recovered = await recoverExpiredSession();
-          if (!recovered) {
-            restorePreviousTurnState();
-            syncActiveSession(null);
-            actions.setOptions([]);
-          }
-        } else if (isServiceError(error) && error.code === 'STORY_SESSION_RESTORE_FAILED') {
-          feedback.error('Game session could not be recovered. Please restart the story.');
+          feedback.error('Story session expired. Please restart the story.');
+          persistReadOnlySnapshot(threadId, messages);
           restorePreviousTurnState();
           syncActiveSession(null);
           actions.setOptions([]);
@@ -255,8 +206,9 @@ export function useStoryTurnSubmission({
       currentOptions,
       feedback,
       loading,
+      messages,
+      persistReadOnlySnapshot,
       preferredCharacterId,
-      recoverExpiredSession,
       restorePreviousTurnState,
       syncActiveSession,
       threadId,

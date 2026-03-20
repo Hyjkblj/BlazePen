@@ -6,11 +6,12 @@ import {
   useGameState,
   useGameTts,
   useStoryEnding,
+  useStorySessionHistory,
   useStorySessionTranscript,
   useStoryTurnSubmission,
 } from '@/hooks';
-import type { StoryEndingStatus, StoryTranscriptEntry } from '@/hooks';
-import type { PlayerOption, StoryEndingSummary } from '@/types/game';
+import type { StoryEndingStatus, StoryHistoryStatus, StoryTranscriptEntry } from '@/hooks';
+import type { PlayerOption, StoryEndingSummary, StorySessionHistoryResult } from '@/types/game';
 import { resolvePreferredCharacterId } from '@/utils/gameSession';
 import { logger } from '@/utils/logger';
 
@@ -29,6 +30,11 @@ export interface UseGameSessionFlowResult {
   hasTranscript: boolean;
   transcriptEntries: StoryTranscriptEntry[];
   isTranscriptDialogOpen: boolean;
+  canViewHistory: boolean;
+  isHistoryDialogOpen: boolean;
+  historyStatus: StoryHistoryStatus;
+  historyError: string | null;
+  historySession: StorySessionHistoryResult | null;
   isGameFinished: boolean;
   canViewEnding: boolean;
   isEndingDialogOpen: boolean;
@@ -41,8 +47,11 @@ export interface UseGameSessionFlowResult {
   handleSceneAssetError: () => void;
   openTranscriptDialog: () => void;
   closeTranscriptDialog: () => void;
+  openHistoryDialog: () => void;
+  closeHistoryDialog: () => void;
   openEndingDialog: () => void;
   closeEndingDialog: () => void;
+  retryHistoryLoad: () => void;
   retryEndingSummary: () => void;
   selectOption: (optionIndex: number) => Promise<void>;
 }
@@ -129,9 +138,22 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
     [actions, clearActiveSession, preferredCharacterId, setActiveSession]
   );
 
+  const persistReadOnlySnapshot = useCallback(
+    (targetThreadId: string, persistedMessages: typeof messages) => {
+      saveGameProgress(
+        targetThreadId,
+        persistedMessages,
+        characterId ?? undefined,
+        derived.persistenceSnapshot
+      );
+    },
+    [characterId, derived.persistenceSnapshot, messages, saveGameProgress]
+  );
+
   const { selectOption } = useStoryTurnSubmission({
     feedback,
     state: {
+      messages,
       loading,
       threadId,
       currentOptions,
@@ -144,6 +166,7 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
     preferredCharacterId,
     setCharacterImage,
     syncActiveSession,
+    persistReadOnlySnapshot,
   });
 
   const {
@@ -154,6 +177,19 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
     closeTranscriptDialog,
   } = useStorySessionTranscript({
     messages,
+  });
+
+  const {
+    isHistoryDialogOpen,
+    historySession,
+    historyStatus,
+    historyError,
+    canViewHistory,
+    openHistoryDialog,
+    closeHistoryDialog,
+    retryHistoryLoad,
+  } = useStorySessionHistory({
+    threadId,
   });
 
   const {
@@ -201,6 +237,11 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
     hasTranscript,
     transcriptEntries,
     isTranscriptDialogOpen,
+    canViewHistory,
+    isHistoryDialogOpen,
+    historyStatus,
+    historyError,
+    historySession,
     isGameFinished,
     canViewEnding,
     isEndingDialogOpen,
@@ -213,8 +254,11 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
     handleSceneAssetError,
     openTranscriptDialog,
     closeTranscriptDialog,
+    openHistoryDialog,
+    closeHistoryDialog,
     openEndingDialog,
     closeEndingDialog,
+    retryHistoryLoad,
     retryEndingSummary,
     selectOption,
   };

@@ -2,12 +2,13 @@
 
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { checkEnding } from '@/services/gameApi';
+import { getStoryEndingSummary } from '@/services/gameApi';
 import { ServiceError } from '@/services/serviceError';
+import type { StoryEndingSummaryResult } from '@/types/game';
 import { useStoryEnding } from './useStoryEnding';
 
 vi.mock('@/services/gameApi', () => ({
-  checkEnding: vi.fn(),
+  getStoryEndingSummary: vi.fn(),
 }));
 
 const createDeferred = <T,>() => {
@@ -27,19 +28,29 @@ const createDeferred = <T,>() => {
 
 describe('useStoryEnding', () => {
   beforeEach(() => {
-    vi.mocked(checkEnding).mockReset();
+    vi.mocked(getStoryEndingSummary).mockReset();
   });
 
   it('auto-loads and opens the ending dialog when a finished story session is present', async () => {
-    vi.mocked(checkEnding).mockResolvedValueOnce({
+    vi.mocked(getStoryEndingSummary).mockResolvedValueOnce({
+      threadId: 'thread-finished',
+      status: 'completed',
+      roundNo: 6,
       hasEnding: true,
       ending: {
         type: 'good_ending',
         description: 'A warm ending.',
-        favorability: 90,
-        trust: 70,
-        hostility: 10,
+        sceneId: 'study_room',
+        eventTitle: 'Final Promise',
+        keyStates: {
+          favorability: 90,
+          trust: 70,
+          hostility: 10,
+          dependence: null,
+        },
       },
+      updatedAt: '2026-03-20T10:00:00Z',
+      expiresAt: '2026-03-20T10:30:00Z',
     });
 
     const { result } = renderHook(() =>
@@ -57,7 +68,7 @@ describe('useStoryEnding', () => {
   });
 
   it('allows retrying after the ending summary request fails', async () => {
-    vi.mocked(checkEnding)
+    vi.mocked(getStoryEndingSummary)
       .mockRejectedValueOnce(
         new ServiceError({
           code: 'SERVICE_UNAVAILABLE',
@@ -65,14 +76,24 @@ describe('useStoryEnding', () => {
         })
       )
       .mockResolvedValueOnce({
+        threadId: 'thread-finished',
+        status: 'completed',
+        roundNo: 6,
         hasEnding: true,
         ending: {
           type: 'neutral_ending',
           description: 'A steady ending.',
-          favorability: 55,
-          trust: 58,
-          hostility: 20,
+          sceneId: 'cafe_nearby',
+          eventTitle: 'Quiet Resolution',
+          keyStates: {
+            favorability: 55,
+            trust: 58,
+            hostility: 20,
+            dependence: null,
+          },
         },
+        updatedAt: '2026-03-20T10:00:00Z',
+        expiresAt: '2026-03-20T10:30:00Z',
       });
 
     const { result } = renderHook(() =>
@@ -98,28 +119,10 @@ describe('useStoryEnding', () => {
   });
 
   it('ignores a delayed ending result from the previous thread after the thread switches', async () => {
-    const firstRequest = createDeferred<{
-      hasEnding: boolean;
-      ending: {
-        type: string;
-        description: string;
-        favorability: number;
-        trust: number;
-        hostility: number;
-      } | null;
-    }>();
-    const secondRequest = createDeferred<{
-      hasEnding: boolean;
-      ending: {
-        type: string;
-        description: string;
-        favorability: number;
-        trust: number;
-        hostility: number;
-      } | null;
-    }>();
+    const firstRequest = createDeferred<StoryEndingSummaryResult>();
+    const secondRequest = createDeferred<StoryEndingSummaryResult>();
 
-    vi.mocked(checkEnding)
+    vi.mocked(getStoryEndingSummary)
       .mockImplementationOnce(() => firstRequest.promise)
       .mockImplementationOnce(() => secondRequest.promise);
 
@@ -135,7 +138,7 @@ describe('useStoryEnding', () => {
     );
 
     await waitFor(() => {
-      expect(checkEnding).toHaveBeenCalledWith('thread-old');
+      expect(getStoryEndingSummary).toHaveBeenCalledWith('thread-old');
     });
 
     rerender({
@@ -144,19 +147,29 @@ describe('useStoryEnding', () => {
     });
 
     await waitFor(() => {
-      expect(checkEnding).toHaveBeenCalledWith('thread-new');
+      expect(getStoryEndingSummary).toHaveBeenCalledWith('thread-new');
     });
 
     await act(async () => {
       secondRequest.resolve({
+        threadId: 'thread-new',
+        status: 'completed',
+        roundNo: 7,
         hasEnding: true,
         ending: {
           type: 'neutral_ending',
           description: 'New thread ending.',
-          favorability: 50,
-          trust: 45,
-          hostility: 18,
+          sceneId: 'cafe_nearby',
+          eventTitle: 'Second Chance',
+          keyStates: {
+            favorability: 50,
+            trust: 45,
+            hostility: 18,
+            dependence: null,
+          },
         },
+        updatedAt: '2026-03-20T11:00:00Z',
+        expiresAt: '2026-03-20T11:30:00Z',
       });
       await secondRequest.promise;
     });
@@ -168,14 +181,24 @@ describe('useStoryEnding', () => {
 
     await act(async () => {
       firstRequest.resolve({
+        threadId: 'thread-old',
+        status: 'completed',
+        roundNo: 5,
         hasEnding: true,
         ending: {
           type: 'bad_ending',
           description: 'Old thread ending.',
-          favorability: 10,
-          trust: 8,
-          hostility: 80,
+          sceneId: 'study_room',
+          eventTitle: 'Missed Moment',
+          keyStates: {
+            favorability: 10,
+            trust: 8,
+            hostility: 80,
+            dependence: null,
+          },
         },
+        updatedAt: '2026-03-20T09:00:00Z',
+        expiresAt: '2026-03-20T09:30:00Z',
       });
       await firstRequest.promise;
     });

@@ -3,17 +3,20 @@ import type { ServiceErrorCode } from '@/services/serviceError';
 import { ServiceError, toServiceError } from '@/services/serviceError';
 import type {
   ApiErrorData,
-  CheckEndingResponse,
   GameInitResponse,
   GetScenesResponse,
   InitializeStoryResponse,
   ProcessGameInputResponse,
   SceneApiItem,
+  StorySessionHistoryResponse,
+  StoryEndingSummaryResponse,
   StorySessionSnapshotResponse,
 } from '@/types/api';
 import type {
   GameTurnResult,
   StoryEndingCheckResult,
+  StoryEndingSummaryResult,
+  StorySessionHistoryResult,
   StorySceneData,
   StorySessionInitParams,
   StorySessionInitResult,
@@ -21,10 +24,12 @@ import type {
   StoryTurnSubmitParams,
 } from '@/types/game';
 import {
-  normalizeStoryEndingCheckPayload,
+  normalizeStoryEndingSummaryPayload,
   normalizeStoryScenePayload,
+  normalizeStorySessionHistoryPayload,
   normalizeStorySessionSnapshotPayload,
   normalizeStoryTurnPayload,
+  toStoryEndingCheckResult,
 } from '@/utils/storyScene';
 import { logger } from '@/utils/logger';
 
@@ -267,13 +272,81 @@ export const getStorySessionSnapshot = async (
   }
 };
 
-export const checkEnding = async (threadId: string): Promise<StoryEndingCheckResult> => {
-  try {
-    const response = await httpClient.get(`/v1/game/check-ending/${threadId}`);
-    return normalizeStoryEndingCheckPayload(unwrapApiData<CheckEndingResponse>(response));
-  } catch (error: unknown) {
-    throw toStoryServiceError(error, 'Failed to check story ending.', 'Ending check timed out.');
+export const getStoryEndingSummary = async (
+  threadId: string
+): Promise<StoryEndingSummaryResult> => {
+  const normalizedThreadId = normalizeOptionalString(threadId);
+  if (!normalizedThreadId) {
+    throw new ServiceError({
+      code: 'VALIDATION_ERROR',
+      message: 'Missing threadId for story ending summary request.',
+    });
   }
+
+  try {
+    const response = await httpClient.get(`/v1/game/sessions/${normalizedThreadId}/ending`, {
+      timeout: 30000,
+    });
+    const endingSummary = normalizeStoryEndingSummaryPayload(
+      unwrapApiData<StoryEndingSummaryResponse>(response)
+    );
+
+    if (!endingSummary.threadId) {
+      throw new ServiceError({
+        code: 'INVALID_RESPONSE',
+        message: 'Missing threadId in story ending summary response.',
+      });
+    }
+
+    return endingSummary;
+  } catch (error: unknown) {
+    throw toStoryServiceError(
+      error,
+      'Failed to load story ending summary.',
+      'Ending summary timed out.'
+    );
+  }
+};
+
+export const getStorySessionHistory = async (
+  threadId: string
+): Promise<StorySessionHistoryResult> => {
+  const normalizedThreadId = normalizeOptionalString(threadId);
+  if (!normalizedThreadId) {
+    throw new ServiceError({
+      code: 'VALIDATION_ERROR',
+      message: 'Missing threadId for story history request.',
+    });
+  }
+
+  try {
+    const response = await httpClient.get(`/v1/game/sessions/${normalizedThreadId}/history`, {
+      timeout: 30000,
+    });
+    const historyResult = normalizeStorySessionHistoryPayload(
+      unwrapApiData<StorySessionHistoryResponse>(response)
+    );
+
+    if (!historyResult.threadId) {
+      throw new ServiceError({
+        code: 'INVALID_RESPONSE',
+        message: 'Missing threadId in story history response.',
+      });
+    }
+
+    return historyResult;
+  } catch (error: unknown) {
+    throw toStoryServiceError(
+      error,
+      'Failed to load story history.',
+      'Story history request timed out.'
+    );
+  }
+};
+
+export const checkEnding = async (threadId: string): Promise<StoryEndingCheckResult> => {
+  const endingSummary = await getStoryEndingSummary(threadId);
+  return toStoryEndingCheckResult(endingSummary);
 };
 
 export const triggerEnding = async (threadId: string): Promise<GameTurnResult> => {

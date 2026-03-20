@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { checkEnding } from '@/services/gameApi';
+import { getStoryEndingSummary } from '@/services/gameApi';
 import { getServiceErrorMessage } from '@/services/serviceError';
 import type { StoryEndingSummary } from '@/types/game';
 import { logger } from '@/utils/logger';
@@ -51,7 +51,7 @@ export function useStoryEnding({
       setEndingError(null);
 
       try {
-        const endingResult = await checkEnding(requestThreadId);
+        const endingResult = await getStoryEndingSummary(requestThreadId);
         if (loadingThreadIdRef.current !== requestThreadId) {
           return;
         }

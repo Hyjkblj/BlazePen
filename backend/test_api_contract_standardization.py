@@ -9,8 +9,13 @@ from fastapi.testclient import TestClient
 
 from api.dependencies import get_game_service, get_training_service
 from api.routers import characters, game, training
-from story.exceptions import StorySessionExpiredError, StorySessionNotFoundError
+from story.exceptions import (
+    StorySessionAccessDeniedError,
+    StorySessionExpiredError,
+    StorySessionNotFoundError,
+)
 from story.story_asset_service import StoryAssetService
+from training.exceptions import TrainingSessionNotFoundError, TrainingSessionRecoveryStateError
 
 
 class _FakeGameService:
@@ -107,6 +112,34 @@ class _FakeGameService:
             },
             "updated_at": "2026-03-19T12:00:00",
             "expires_at": "2026-03-20T12:00:00",
+        }
+
+    def list_story_sessions(
+        self,
+        *,
+        user_id: str,
+        limit: int = 10,
+        actor_user_id: str | None = None,
+    ):
+        return {
+            "user_id": user_id,
+            "sessions": [
+                {
+                    "thread_id": "thread-001",
+                    "user_id": user_id,
+                    "character_id": 7,
+                    "game_mode": "solo",
+                    "status": "in_progress",
+                    "round_no": 2,
+                    "scene": "library",
+                    "event_title": "Snapshot Event",
+                    "is_initialized": True,
+                    "has_ending": False,
+                    "can_resume": True,
+                    "updated_at": "2026-03-19T12:00:00",
+                    "expires_at": "2026-03-20T12:00:00",
+                }
+            ][:limit],
         }
 
     def submit_story_turn(
@@ -210,6 +243,21 @@ class _ExpiredCheckEndingGameService(_FakeGameService):
         raise StorySessionExpiredError(thread_id=thread_id)
 
 
+class _DeniedSessionsGameService(_FakeGameService):
+    def list_story_sessions(
+        self,
+        *,
+        user_id: str,
+        limit: int = 10,
+        actor_user_id: str | None = None,
+    ):
+        raise StorySessionAccessDeniedError(
+            requested_user_id=user_id,
+            actor_user_id=actor_user_id,
+            policy_mode="actor_header_match",
+        )
+
+
 class _FakeTrainingService:
     def init_training(self, user_id, character_id=None, training_mode="guided", player_profile=None):
         if training_mode == "sandbox":
@@ -243,7 +291,7 @@ class _FakeTrainingService:
         }
 
     def get_next_scenario(self, session_id):
-        raise ValueError(f"session not found: {session_id}")
+        raise TrainingSessionNotFoundError(session_id=session_id)
 
     def submit_round(self, session_id, scenario_id, user_input, selected_option=None):
         return {
@@ -270,6 +318,36 @@ class _FakeTrainingService:
                 },
             },
             "consequence_events": [],
+            "is_completed": False,
+        }
+
+    def get_session_summary(self, session_id):
+        if session_id == "missing":
+            raise TrainingSessionNotFoundError(session_id=session_id)
+        if session_id == "corrupted":
+            raise TrainingSessionRecoveryStateError(
+                session_id=session_id,
+                reason="scenario_sequence_empty",
+            )
+        return {
+            "session_id": session_id,
+            "status": "in_progress",
+            "training_mode": "self-paced",
+            "current_round_no": 1,
+            "total_rounds": 6,
+            "k_state": {"K1": 0.5},
+            "s_state": {"credibility": 0.7},
+            "progress_anchor": {
+                "current_round_no": 1,
+                "total_rounds": 6,
+                "completed_rounds": 1,
+                "remaining_rounds": 5,
+                "progress_percent": 0.1667,
+                "next_round_no": 2,
+            },
+            "resumable_scenario": {"id": "S2", "title": "Resume Scenario"},
+            "scenario_candidates": [{"id": "S2", "title": "Resume Scenario"}],
+            "can_resume": True,
             "is_completed": False,
         }
 
@@ -452,6 +530,21 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["scene"], "library")
         self.assertEqual(payload["data"]["updated_at"], "2026-03-19T12:00:00")
 
+    def test_story_sessions_route_returns_stable_forbidden_error_code(self):
+        self.app.dependency_overrides[get_game_service] = lambda: _DeniedSessionsGameService()
+
+        response = self.client.get(
+            "/api/v1/game/sessions",
+            params={"user_id": "u-001"},
+            headers={"X-Story-Actor-Id": "u-999"},
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(payload["error"]["code"], "STORY_SESSION_ACCESS_DENIED")
+        self.assertEqual(payload["error"]["details"]["route"], "story.sessions_list")
+        self.assertTrue(payload["error"]["traceId"])
+
     def test_story_check_ending_route_returns_stable_not_found_error_code(self):
         self.app.dependency_overrides[get_game_service] = lambda: _NotFoundCheckEndingGameService()
 
@@ -470,6 +563,26 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         payload = response.json()
         self.assertEqual(response.status_code, 410)
         self.assertEqual(payload["error"]["code"], "STORY_SESSION_EXPIRED")
+        self.assertTrue(payload["error"]["traceId"])
+
+    def test_training_session_summary_route_returns_stable_envelope(self):
+        response = self.client.get("/api/v1/training/sessions/s-001")
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["data"]["session_id"], "s-001")
+        self.assertEqual(payload["data"]["training_mode"], "self-paced")
+        self.assertEqual(payload["data"]["progress_anchor"]["next_round_no"], 2)
+        self.assertEqual(payload["data"]["resumable_scenario"]["id"], "S2")
+
+    def test_training_session_summary_route_returns_stable_recovery_conflict(self):
+        response = self.client.get("/api/v1/training/sessions/corrupted")
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(payload["error"]["code"], "TRAINING_SESSION_RECOVERY_STATE_CORRUPTED")
+        self.assertEqual(payload["error"]["details"]["route"], "training.session_summary")
+        self.assertEqual(payload["error"]["details"]["recovery_reason"], "scenario_sequence_empty")
         self.assertTrue(payload["error"]["traceId"])
 
     def test_training_init_invalid_mode_returns_validation_error(self):

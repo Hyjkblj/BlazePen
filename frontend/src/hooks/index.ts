@@ -31,6 +31,12 @@ export type {
   UseStorySessionTranscriptOptions,
   UseStorySessionTranscriptResult,
 } from './useStorySessionTranscript';
+export { useStorySessionHistory } from './useStorySessionHistory';
+export type {
+  StoryHistoryStatus,
+  UseStorySessionHistoryOptions,
+  UseStorySessionHistoryResult,
+} from './useStorySessionHistory';
 export { useCharacterPortraitSelection } from './useCharacterPortraitSelection';
 export type {
   CharacterOption,

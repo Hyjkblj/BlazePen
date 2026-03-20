@@ -167,8 +167,18 @@ class GameService:
     def get_story_session_snapshot(self, thread_id: str) -> Dict[str, Any]:
         return self.story_session_service.get_session_snapshot(thread_id)
 
-    def list_story_sessions(self, *, user_id: str, limit: int = 10) -> Dict[str, Any]:
-        return self.story_session_service.list_recent_sessions(user_id=user_id, limit=limit)
+    def list_story_sessions(
+        self,
+        *,
+        user_id: str,
+        limit: int = 10,
+        actor_user_id: str | None = None,
+    ) -> Dict[str, Any]:
+        return self.story_session_service.list_recent_sessions(
+            user_id=user_id,
+            limit=limit,
+            actor_user_id=actor_user_id,
+        )
 
     def get_story_history(self, thread_id: str) -> Dict[str, Any]:
         return self.story_history_service.get_story_history(thread_id)

@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from story.story_asset_service import StoryAssetService
     from story.story_ending_service import StoryEndingService
     from story.story_history_service import StoryHistoryService
+    from story.story_session_query_policy import StorySessionQueryPolicy
     from story.story_session_service import StorySessionService
     from story.story_turn_service import StoryTurnService
 
@@ -32,6 +33,7 @@ class _StoryServiceBundle:
 
     image_executor: Executor
     story_asset_service: StoryAssetService
+    story_session_query_policy: StorySessionQueryPolicy
     story_session_service: StorySessionService
     story_turn_service: StoryTurnService
     story_ending_service: StoryEndingService
@@ -45,6 +47,7 @@ _tts_service: Optional[TTSService] = None
 _session_manager: Optional[GameSessionManager] = None
 _training_service: Optional[TrainingService] = None
 _story_image_executor: Optional[Executor] = None
+_story_session_query_policy: Optional[StorySessionQueryPolicy] = None
 _story_service_bundle: Optional[_StoryServiceBundle] = None
 
 
@@ -76,6 +79,15 @@ def get_story_image_executor() -> Executor:
     return _story_image_executor
 
 
+def get_story_session_query_policy() -> StorySessionQueryPolicy:
+    global _story_session_query_policy
+    if _story_session_query_policy is None:
+        from story.story_session_query_policy import StorySessionQueryPolicy
+
+        _story_session_query_policy = StorySessionQueryPolicy.from_environment()
+    return _story_session_query_policy
+
+
 def get_story_service_bundle() -> _StoryServiceBundle:
     global _story_service_bundle
     if _story_service_bundle is None:
@@ -89,11 +101,13 @@ def get_story_service_bundle() -> _StoryServiceBundle:
         image_service = get_image_service()
         character_service = get_character_service()
         image_executor = get_story_image_executor()
+        story_session_query_policy = get_story_session_query_policy()
 
         story_asset_service = StoryAssetService(image_service=image_service)
         story_session_service = StorySessionService(
             session_manager=session_manager,
             story_asset_service=story_asset_service,
+            session_query_policy=story_session_query_policy,
         )
         story_turn_service = StoryTurnService(
             session_manager=session_manager,
@@ -112,6 +126,7 @@ def get_story_service_bundle() -> _StoryServiceBundle:
         _story_service_bundle = _StoryServiceBundle(
             image_executor=image_executor,
             story_asset_service=story_asset_service,
+            story_session_query_policy=story_session_query_policy,
             story_session_service=story_session_service,
             story_turn_service=story_turn_service,
             story_ending_service=story_ending_service,

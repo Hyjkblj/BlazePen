@@ -567,6 +567,49 @@
   background: rgba(139, 69, 19, 0.12);
 }
 
+.story-history-item {
+  gap: 12px;
+}
+
+.story-history-status-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(95, 68, 34, 0.12);
+  color: #6d4c28;
+  font-size: 12px;
+}
+
+.story-history-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.story-history-label {
+  margin: 0;
+  color: #7c5a2d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.story-history-state-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.story-history-state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(139, 69, 19, 0.12);
+  color: #5f4422;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .story-ending-loading,
 .story-ending-error,
 .story-ending-summary {

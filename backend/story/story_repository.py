@@ -148,10 +148,21 @@ class SqlAlchemyStoryRepository:
     def get_latest_story_snapshot(self, thread_id: str) -> StorySnapshot | None:
         with self.get_session() as session:
             return (
-                session.query(StorySnapshot)
-                .filter(StorySnapshot.thread_id == thread_id)
-                .order_by(StorySnapshot.round_no.desc(), StorySnapshot.updated_at.desc())
+                self._latest_story_snapshot_query(session)
+                .filter(StorySession.thread_id == thread_id)
                 .first()
+            )
+
+    def get_latest_story_snapshots(self, thread_ids: list[str]) -> list[StorySnapshot]:
+        if not thread_ids:
+            return []
+
+        with self.get_session() as session:
+            return (
+                self._latest_story_snapshot_query(session)
+                .filter(StorySession.thread_id.in_(thread_ids))
+                .order_by(StorySession.thread_id.asc())
+                .all()
             )
 
     def save_story_round_artifacts(
@@ -287,3 +298,22 @@ class SqlAlchemyStoryRepository:
         row.updated_at = datetime.utcnow()
         session.flush()
         return row
+
+    @staticmethod
+    def _latest_story_snapshot_query(session):
+        """Return the authoritative latest snapshot query.
+
+        The single fact source for "latest snapshot" is
+        `story_sessions.latest_snapshot_round_no`. Query code should not
+        rescan snapshot history and infer latest rows from max(round_no).
+        """
+
+        return (
+            session.query(StorySnapshot)
+            .join(
+                StorySession,
+                (StorySession.thread_id == StorySnapshot.thread_id)
+                & (StorySession.latest_snapshot_round_no == StorySnapshot.round_no),
+            )
+            .filter(StorySession.latest_snapshot_round_no.isnot(None))
+        )

@@ -439,6 +439,39 @@ class TrainingProgressResponse(BaseModel):
     runtime_state: Optional[TrainingRuntimeStateResponse] = None
 
 
+class TrainingSessionProgressAnchorResponse(BaseModel):
+    """Stable progress anchor for training session recovery reads."""
+
+    current_round_no: int
+    total_rounds: int
+    completed_rounds: int
+    remaining_rounds: int
+    progress_percent: float = 0.0
+    next_round_no: Optional[int] = None
+
+
+class TrainingSessionSummaryResponse(BaseModel):
+    """Stable training session recovery summary."""
+
+    session_id: str
+    status: str
+    training_mode: str
+    current_round_no: int
+    total_rounds: int
+    k_state: Dict[str, float]
+    s_state: Dict[str, float]
+    progress_anchor: TrainingSessionProgressAnchorResponse
+    player_profile: Optional[TrainingPlayerProfileResponse] = None
+    runtime_state: Optional[TrainingRuntimeStateResponse] = None
+    resumable_scenario: Optional[TrainingScenarioResponse] = None
+    scenario_candidates: List[TrainingScenarioResponse] = Field(default_factory=list)
+    can_resume: bool
+    is_completed: bool
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    end_time: Optional[str] = None
+
+
 class TrainingReportHistoryItemResponse(BaseModel):
     """训练报告中的单回合历史项"""
     round_no: int
@@ -555,6 +588,12 @@ class TrainingRoundSubmitApiResponse(ApiResponse):
 class TrainingProgressApiResponse(ApiResponse):
     """训练进度接口响应包装"""
     data: Optional[TrainingProgressResponse] = None
+
+
+class TrainingSessionSummaryApiResponse(ApiResponse):
+    """Training session summary API response envelope."""
+
+    data: Optional[TrainingSessionSummaryResponse] = None
 
 
 class TrainingReportApiResponse(ApiResponse):

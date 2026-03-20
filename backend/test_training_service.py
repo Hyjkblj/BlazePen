@@ -12,7 +12,10 @@ from api.services.training_service import TrainingService
 from database.db_manager import DatabaseManager
 from training.constants import DEFAULT_EVAL_MODEL, DEFAULT_K_STATE, DEFAULT_S_STATE, S_STATE_CODES, SKILL_CODES
 from training.config_loader import FlowForcedRoundConfig, ScenarioItemConfig, load_training_runtime_config, model_copy
-from training.exceptions import DuplicateRoundSubmissionError
+from training.exceptions import (
+    DuplicateRoundSubmissionError,
+    TrainingSessionRecoveryStateError,
+)
 from training.output_assembler_policy import TrainingOutputAssemblerPolicy
 from training.report_context_policy import TrainingReportContextPolicy
 from training.round_transition_policy import TrainingRoundTransitionPolicy
@@ -1426,12 +1429,12 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertEqual(report["growth_curve"][0]["scenario_title"], "初始状态")
         self.assertEqual(report["summary"]["completed_scenario_ids"], [])
 
-    def test_duplicate_round_submission_should_raise_value_error(self):
+    def test_duplicate_round_submission_should_raise_typed_domain_error(self):
         duplicate_service = TrainingService(db_manager=_DuplicateRoundDbManager(), evaluator=self.evaluator)
         init_result = duplicate_service.init_training(user_id="u4")
         session_id = init_result["session_id"]
 
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(DuplicateRoundSubmissionError) as cm:
             duplicate_service.submit_round(
                 session_id=session_id,
                 scenario_id="S1",
@@ -1763,6 +1766,83 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertEqual(set(result["k_state"].keys()), set(DEFAULT_K_STATE.keys()))
         self.assertEqual(set(result["s_state"].keys()), set(DEFAULT_S_STATE.keys()))
         self.assertIsNotNone(result["ending"])
+
+    def test_get_session_summary_should_return_recovery_anchor_and_resumable_scenario(self):
+        service = TrainingService(
+            db_manager=_FakeDbManager(),
+            evaluator=self.evaluator,
+            scenario_sequence=[
+                {"id": "S1", "title": "Intro"},
+                {"id": "S2", "title": "Follow Up"},
+            ],
+        )
+        init_result = service.init_training(user_id="u17-summary", training_mode="self-paced")
+        session_id = init_result["session_id"]
+
+        summary = service.get_session_summary(session_id)
+
+        self.assertEqual(summary["session_id"], session_id)
+        self.assertEqual(summary["training_mode"], "self-paced")
+        self.assertEqual(summary["current_round_no"], 0)
+        self.assertEqual(summary["progress_anchor"]["next_round_no"], 1)
+        self.assertEqual(summary["progress_anchor"]["remaining_rounds"], 2)
+        self.assertEqual(summary["resumable_scenario"]["id"], init_result["next_scenario"]["id"])
+        self.assertEqual(summary["scenario_candidates"][0]["id"], init_result["scenario_candidates"][0]["id"])
+        self.assertTrue(summary["can_resume"])
+        self.assertFalse(summary["is_completed"])
+        self.assertEqual(summary["runtime_state"]["current_scene_id"], init_result["next_scenario"]["id"])
+
+    def test_get_session_summary_should_return_completed_session_without_resumable_scenario(self):
+        service = TrainingService(
+            db_manager=_FakeDbManager(),
+            evaluator=self.evaluator,
+            scenario_sequence=[{"id": "S1", "title": "Only"}],
+        )
+        init_result = service.init_training(user_id="u17-summary-completed")
+        session_id = init_result["session_id"]
+
+        service.submit_round(session_id=session_id, scenario_id="S1", user_input="done")
+        summary = service.get_session_summary(session_id)
+
+        self.assertEqual(summary["status"], "completed")
+        self.assertTrue(summary["is_completed"])
+        self.assertFalse(summary["can_resume"])
+        self.assertIsNone(summary["resumable_scenario"])
+        self.assertEqual(summary["scenario_candidates"], [])
+        self.assertNotIn("next_round_no", summary["progress_anchor"])
+        self.assertIsNotNone(summary["end_time"])
+
+    def test_get_session_summary_should_surface_branch_resumable_scenario(self):
+        service = TrainingService(db_manager=_FakeDbManager(), evaluator=_PublicPanicEvaluator())
+        init_result = service.init_training(user_id="u17-branch-summary")
+        session_id = init_result["session_id"]
+
+        service.submit_round(
+            session_id=session_id,
+            scenario_id="S1",
+            user_input="trigger-branch",
+        )
+
+        summary = service.get_session_summary(session_id)
+
+        self.assertEqual(summary["resumable_scenario"]["id"], "S2B")
+        self.assertEqual(summary["runtime_state"]["current_scene_id"], "S2B")
+        self.assertTrue(summary["runtime_state"]["runtime_flags"]["panic_triggered"])
+        self.assertEqual(summary["progress_anchor"]["next_round_no"], 2)
+
+    def test_get_session_summary_should_raise_typed_error_when_recovery_state_is_corrupted(self):
+        service = TrainingService(db_manager=_FakeDbManager(), evaluator=self.evaluator)
+        init_result = service.init_training(user_id="u17-corrupted-summary")
+        session_id = init_result["session_id"]
+
+        service.scenario_policy._default_sequence = []
+        service.db_manager.sessions[session_id].session_meta["scenario_sequence"] = []
+
+        with self.assertRaises(TrainingSessionRecoveryStateError) as cm:
+            service.get_session_summary(session_id)
+
+        self.assertEqual(cm.exception.reason, "scenario_sequence_empty")
+        self.assertEqual(cm.exception.session_id, session_id)
 
     def test_service_should_support_training_store_adapter_injection(self):
         """服务层应依赖训练存储接口，而不是硬绑具体 DBManager。"""

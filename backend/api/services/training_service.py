@@ -13,7 +13,12 @@ from training.contracts import RoundEvaluationPayload
 from training.decision_context_policy import TrainingDecisionContextPolicy
 from training.ending_policy import EndingPolicy
 from training.evaluator import TrainingRoundEvaluator
-from training.exceptions import DuplicateRoundSubmissionError, TrainingSessionNotFoundError
+from training.exceptions import (
+    DuplicateRoundSubmissionError,
+    TrainingSessionCompletedError,
+    TrainingSessionNotFoundError,
+    TrainingSessionRecoveryStateError,
+)
 from training.output_assembler_policy import TrainingOutputAssemblerPolicy
 from training.phase_policy import TrainingPhasePolicy, TrainingPhaseSnapshot
 from training.report_context_policy import TrainingReportContextPolicy
@@ -43,6 +48,8 @@ from training.training_outputs import (
     TrainingRoundDecisionContextOutput,
     TrainingRoundSubmitOutput,
     TrainingScenarioOutput,
+    TrainingSessionProgressAnchorOutput,
+    TrainingSessionSummaryOutput,
 )
 from training.scenario_repository import ScenarioRepository
 from training.telemetry_policy import TrainingTelemetryPolicy
@@ -363,30 +370,7 @@ class TrainingService:
                 ending=ending.report_payload if ending else None,
             ).to_dict()
 
-        snapshot_bundle = self.session_snapshot_policy.ensure_session_snapshots(
-            session=session,
-            training_store=self.training_store,
-        )
-        session = snapshot_bundle.session or session
-        scenario_payload_sequence = snapshot_bundle.scenario_payload_sequence
-        scenario_payload_catalog = snapshot_bundle.scenario_payload_catalog
-        session_sequence = self._resolve_session_scenario_sequence(session)
-        if not session_sequence:
-            raise ValueError("scenario sequence is empty")
-
-        next_scenario_bundle = self.flow_policy.build_next_scenario_bundle(
-            training_mode=self._normalize_session_training_mode(session),
-            current_round_no=session.current_round_no,
-            session_sequence=session_sequence,
-            scenario_payload_sequence=scenario_payload_sequence,
-            scenario_payload_catalog=scenario_payload_catalog,
-            completed_scenario_ids=self._get_completed_scenario_ids(session_id),
-            k_state=self._normalize_k_state(session.k_state),
-            s_state=self._normalize_s_state(session.s_state),
-            recent_risk_rounds=self._get_recent_risk_rounds(session_id),
-            runtime_flags=self._resolve_session_runtime_flags(session),
-            current_scenario_id=getattr(session, "current_scenario_id", None),
-        )
+        session, _, next_scenario_bundle = self._build_session_resume_bundle(session_id=session_id, session=session)
         return TrainingNextScenarioOutput(
             session_id=session_id,
             status=session.status,
@@ -417,7 +401,7 @@ class TrainingService:
         """提交单回合，并原子化保存本回合所有工件。"""
         session = self._get_session_or_raise(session_id)
         if session.status == "completed":
-            raise ValueError("training session already completed")
+            raise TrainingSessionCompletedError(session_id=session_id)
 
         snapshot_bundle = self.session_snapshot_policy.ensure_session_snapshots(
             session=session,
@@ -586,9 +570,7 @@ class TrainingService:
                     round_no,
                 )
                 return existing
-            raise ValueError(f"duplicate round submission: session_id={session_id}, round_no={round_no}")
-        except TrainingSessionNotFoundError as exc:
-            raise ValueError(str(exc)) from exc
+            raise DuplicateRoundSubmissionError(session_id=session_id, round_no=round_no)
 
         return TrainingRoundSubmitOutput(
             session_id=session_id,
@@ -604,6 +586,58 @@ class TrainingService:
             is_completed=is_completed,
             ending=ending_payload,
             decision_context=decision_context,
+        ).to_dict()
+
+    def get_session_summary(self, session_id: str) -> Dict[str, Any]:
+        """Get the stable recovery summary for a training session."""
+        session = self._get_session_or_raise(session_id)
+        session, _, _ = self._ensure_session_snapshot_state(session)
+        is_completed = session.status == "completed"
+        total_rounds = len(self._resolve_session_scenario_sequence(session))
+        resumable_scenario = None
+        scenario_candidates: List[TrainingScenarioOutput] = []
+        runtime_scene_id = getattr(session, "current_scenario_id", None)
+
+        if not is_completed:
+            session, session_sequence, next_scenario_bundle = self._build_session_resume_bundle(
+                session_id=session_id,
+                session=session,
+            )
+            total_rounds = len(session_sequence)
+            resumable_scenario = self._build_training_scenario_output(next_scenario_bundle.scenario)
+            scenario_candidates = self._build_training_scenario_output_list(
+                next_scenario_bundle.scenario_candidates
+            ) or []
+            runtime_scene_id = (getattr(next_scenario_bundle, "scenario", {}) or {}).get("id")
+
+        return TrainingSessionSummaryOutput(
+            session_id=session_id,
+            status=session.status,
+            training_mode=self._normalize_session_training_mode(session),
+            current_round_no=session.current_round_no,
+            total_rounds=total_rounds,
+            k_state=self._normalize_k_state(session.k_state),
+            s_state=self._normalize_s_state(session.s_state),
+            progress_anchor=self._build_training_session_progress_anchor(
+                current_round_no=session.current_round_no,
+                total_rounds=total_rounds,
+                is_completed=is_completed,
+            ),
+            player_profile=self._resolve_session_player_profile(session),
+            runtime_state=self._build_training_runtime_state_output(
+                self._build_runtime_state(
+                    session=session,
+                    current_round_no=session.current_round_no,
+                    current_scene_id=runtime_scene_id,
+                )
+            ),
+            resumable_scenario=resumable_scenario,
+            scenario_candidates=scenario_candidates,
+            can_resume=not is_completed and resumable_scenario is not None,
+            is_completed=is_completed,
+            created_at=self._serialize_optional_datetime(getattr(session, "created_at", None)),
+            updated_at=self._serialize_optional_datetime(getattr(session, "updated_at", None)),
+            end_time=self._serialize_optional_datetime(getattr(session, "end_time", None)),
         ).to_dict()
 
     def get_progress(self, session_id: str) -> Dict[str, Any]:
@@ -723,6 +757,83 @@ class TrainingService:
             kt_observations=kt_observation_outputs,
         ).to_dict()
 
+    def _ensure_session_snapshot_state(
+        self,
+        session: Any,
+    ) -> tuple[Any, List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Load the persisted snapshot-backed scenario payloads for a session."""
+        snapshot_bundle = self.session_snapshot_policy.ensure_session_snapshots(
+            session=session,
+            training_store=self.training_store,
+        )
+        return (
+            snapshot_bundle.session or session,
+            snapshot_bundle.scenario_payload_sequence,
+            snapshot_bundle.scenario_payload_catalog,
+        )
+
+    def _build_session_resume_bundle(
+        self,
+        *,
+        session_id: str,
+        session: Any,
+    ) -> tuple[Any, List[Dict[str, str]], Any]:
+        """Build the resumable scenario bundle from the session fact source."""
+        session, scenario_payload_sequence, scenario_payload_catalog = self._ensure_session_snapshot_state(session)
+        session_sequence = self._resolve_session_scenario_sequence(session)
+        if not session_sequence:
+            raise TrainingSessionRecoveryStateError(
+                session_id=session_id,
+                reason="scenario_sequence_empty",
+                details={
+                    "current_round_no": int(getattr(session, "current_round_no", 0) or 0),
+                },
+            )
+
+        next_scenario_bundle = self.flow_policy.build_next_scenario_bundle(
+            training_mode=self._normalize_session_training_mode(session),
+            current_round_no=session.current_round_no,
+            session_sequence=session_sequence,
+            scenario_payload_sequence=scenario_payload_sequence,
+            scenario_payload_catalog=scenario_payload_catalog,
+            completed_scenario_ids=self._get_completed_scenario_ids(session_id),
+            k_state=self._normalize_k_state(session.k_state),
+            s_state=self._normalize_s_state(session.s_state),
+            recent_risk_rounds=self._get_recent_risk_rounds(session_id),
+            runtime_flags=self._resolve_session_runtime_flags(session),
+            current_scenario_id=getattr(session, "current_scenario_id", None),
+        )
+        return session, session_sequence, next_scenario_bundle
+
+    def _build_training_session_progress_anchor(
+        self,
+        *,
+        current_round_no: int,
+        total_rounds: int,
+        is_completed: bool,
+    ) -> TrainingSessionProgressAnchorOutput:
+        """Build a stable progress anchor for recovery and resume flows."""
+        completed_rounds = max(int(current_round_no), 0)
+        normalized_total_rounds = max(int(total_rounds), 0)
+        remaining_rounds = max(normalized_total_rounds - completed_rounds, 0)
+        next_round_no = None if is_completed or remaining_rounds == 0 else completed_rounds + 1
+        progress_percent = (
+            round(completed_rounds / normalized_total_rounds, 4) if normalized_total_rounds > 0 else 0.0
+        )
+        return TrainingSessionProgressAnchorOutput(
+            current_round_no=completed_rounds,
+            total_rounds=normalized_total_rounds,
+            completed_rounds=completed_rounds,
+            remaining_rounds=remaining_rounds,
+            progress_percent=progress_percent,
+            next_round_no=next_round_no,
+        )
+
+    @staticmethod
+    def _serialize_optional_datetime(value: datetime | None) -> str | None:
+        """Serialize optional datetimes into ISO-8601 strings for DTO output."""
+        return value.isoformat() if value is not None else None
+
     def _resolve_report_initial_states(
         self,
         session: Any,
@@ -833,7 +944,7 @@ class TrainingService:
     def _get_session_or_raise(self, session_id: str) -> Any:
         session = self.training_store.get_training_session(session_id)
         if not session:
-            raise ValueError(f"session not found: {session_id}")
+            raise TrainingSessionNotFoundError(session_id=session_id)
         return session
 
     def _get_completed_scenario_ids(self, session_id: str) -> List[str]:

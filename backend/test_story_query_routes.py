@@ -7,14 +7,21 @@ from fastapi.testclient import TestClient
 
 from api.dependencies import get_game_service
 from api.routers import game
-from story.exceptions import StorySessionNotFoundError
+from story.exceptions import StorySessionAccessDeniedError, StorySessionNotFoundError
 from story.story_asset_service import StoryAssetService
+from story.story_session_query_policy import StorySessionQueryPolicy
 
 
 class _FakeStoryQueryGameService:
     story_asset_service = StoryAssetService()
 
-    def list_story_sessions(self, *, user_id: str, limit: int = 10):
+    def list_story_sessions(
+        self,
+        *,
+        user_id: str,
+        limit: int = 10,
+        actor_user_id: str | None = None,
+    ):
         return {
             "user_id": user_id,
             "sessions": [
@@ -114,6 +121,43 @@ class _FakeStoryQueryGameService:
         }
 
 
+class _DeniedStoryQueryGameService(_FakeStoryQueryGameService):
+    def list_story_sessions(
+        self,
+        *,
+        user_id: str,
+        limit: int = 10,
+        actor_user_id: str | None = None,
+    ):
+        raise StorySessionAccessDeniedError(
+            requested_user_id=user_id,
+            actor_user_id=actor_user_id,
+            policy_mode="actor_header_match",
+        )
+
+
+class _DefaultSecureStoryQueryGameService(_FakeStoryQueryGameService):
+    def __init__(self):
+        self.policy = StorySessionQueryPolicy()
+
+    def list_story_sessions(
+        self,
+        *,
+        user_id: str,
+        limit: int = 10,
+        actor_user_id: str | None = None,
+    ):
+        authorized_user_id = self.policy.authorize_recent_sessions_query(
+            requested_user_id=user_id,
+            actor_user_id=actor_user_id,
+        )
+        return super().list_story_sessions(
+            user_id=authorized_user_id,
+            limit=limit,
+            actor_user_id=actor_user_id,
+        )
+
+
 class StoryQueryRoutesTestCase(unittest.TestCase):
     def setUp(self):
         app = FastAPI()
@@ -133,6 +177,34 @@ class StoryQueryRoutesTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["user_id"], "user-001")
         self.assertEqual(payload["data"]["sessions"][0]["thread_id"], "thread-001")
         self.assertTrue(payload["data"]["sessions"][0]["can_resume"])
+
+    def test_recent_sessions_route_should_return_stable_forbidden_contract(self):
+        self.app.dependency_overrides[get_game_service] = lambda: _DeniedStoryQueryGameService()
+
+        response = self.client.get(
+            "/api/v1/game/sessions",
+            params={"user_id": "user-001"},
+            headers={"X-Story-Actor-Id": "user-002"},
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(payload["error"]["code"], "STORY_SESSION_ACCESS_DENIED")
+        self.assertEqual(payload["error"]["details"]["policy_mode"], "actor_header_match")
+        self.assertTrue(payload["error"]["traceId"])
+
+    def test_recent_sessions_route_should_deny_missing_actor_under_default_policy(self):
+        self.app.dependency_overrides[get_game_service] = lambda: _DefaultSecureStoryQueryGameService()
+
+        response = self.client.get("/api/v1/game/sessions", params={"user_id": "user-001"})
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(payload["error"]["code"], "STORY_SESSION_ACCESS_DENIED")
+        self.assertEqual(
+            payload["error"]["details"]["policy_mode"],
+            StorySessionQueryPolicy.MODE_ACTOR_HEADER_MATCH,
+        )
 
     def test_story_history_route_should_return_persisted_history_contract(self):
         response = self.client.get("/api/v1/game/sessions/thread-001/history")

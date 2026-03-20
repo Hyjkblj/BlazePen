@@ -5,7 +5,12 @@ from training.contracts import KtObservationPayload, RoundEvaluationPayload, Sce
 from training.decision_context_policy import TrainingDecisionContextPolicy
 from training.ending_policy import EndingPolicy
 from training.evaluator import TrainingRoundEvaluator
-from training.exceptions import DuplicateRoundSubmissionError, TrainingSessionNotFoundError
+from training.exceptions import (
+    DuplicateRoundSubmissionError,
+    TrainingSessionCompletedError,
+    TrainingSessionNotFoundError,
+    TrainingSessionRecoveryStateError,
+)
 from training.output_assembler_policy import TrainingOutputAssemblerPolicy
 from training.report_context_policy import TrainingReportContextPolicy
 from training.recommendation_policy import RecommendationPolicy
@@ -39,5 +44,7 @@ __all__ = [
     "EndingPolicy",
     "TrainingTelemetryPolicy",
     "DuplicateRoundSubmissionError",
+    "TrainingSessionCompletedError",
     "TrainingSessionNotFoundError",
+    "TrainingSessionRecoveryStateError",
 ]

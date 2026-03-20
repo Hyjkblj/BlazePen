@@ -386,6 +386,20 @@ def _serialize_report_summary(
     return None
 
 
+def _serialize_progress_anchor(
+    anchor: "TrainingSessionProgressAnchorOutput | Dict[str, Any] | None",
+) -> Dict[str, Any] | None:
+    """Serialize the stable session progress anchor used by recovery reads."""
+    if anchor is None:
+        return None
+    if isinstance(anchor, TrainingSessionProgressAnchorOutput):
+        return anchor.to_dict()
+    if isinstance(anchor, dict):
+        normalized = TrainingSessionProgressAnchorOutput.from_payload(anchor)
+        return normalized.to_dict() if normalized is not None else None
+    return None
+
+
 @dataclass(slots=True)
 class TrainingPlayerProfileOutput:
     """玩家档案输出。"""
@@ -1662,6 +1676,102 @@ class TrainingProgressOutput:
             "total_rounds": self.total_rounds,
             "k_state": _copy_dict(self.k_state),
             "s_state": _copy_dict(self.s_state),
+        }
+        if self.player_profile is not None:
+            payload["player_profile"] = _serialize_player_profile(self.player_profile)
+        if self.runtime_state is not None:
+            payload["runtime_state"] = _serialize_runtime_state(self.runtime_state)
+        return payload
+
+
+@dataclass(slots=True)
+class TrainingSessionProgressAnchorOutput:
+    """Stable progress anchor for training session recovery reads."""
+
+    current_round_no: int
+    total_rounds: int
+    completed_rounds: int
+    remaining_rounds: int
+    progress_percent: float = 0.0
+    next_round_no: Optional[int] = None
+
+    @classmethod
+    def from_payload(cls, payload: Dict[str, Any] | None) -> "TrainingSessionProgressAnchorOutput | None":
+        """Normalize a raw progress anchor payload into a stable DTO."""
+        if not isinstance(payload, dict):
+            return None
+
+        current_round_no = payload.get("current_round_no")
+        total_rounds = payload.get("total_rounds")
+        completed_rounds = payload.get("completed_rounds")
+        remaining_rounds = payload.get("remaining_rounds")
+        if current_round_no is None or total_rounds is None or completed_rounds is None or remaining_rounds is None:
+            return None
+
+        next_round_no = payload.get("next_round_no")
+        return cls(
+            current_round_no=_to_non_negative_int(current_round_no),
+            total_rounds=_to_non_negative_int(total_rounds),
+            completed_rounds=_to_non_negative_int(completed_rounds),
+            remaining_rounds=_to_non_negative_int(remaining_rounds),
+            progress_percent=float(payload.get("progress_percent", 0.0) or 0.0),
+            next_round_no=_to_non_negative_int(next_round_no) if next_round_no is not None else None,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Export the stable progress anchor payload."""
+        payload = {
+            "current_round_no": self.current_round_no,
+            "total_rounds": self.total_rounds,
+            "completed_rounds": self.completed_rounds,
+            "remaining_rounds": self.remaining_rounds,
+            "progress_percent": self.progress_percent,
+        }
+        if self.next_round_no is not None:
+            payload["next_round_no"] = self.next_round_no
+        return payload
+
+
+@dataclass(slots=True)
+class TrainingSessionSummaryOutput:
+    """Stable training session recovery summary."""
+
+    session_id: str
+    status: str
+    training_mode: str
+    current_round_no: int
+    total_rounds: int
+    k_state: Dict[str, float]
+    s_state: Dict[str, float]
+    progress_anchor: "TrainingSessionProgressAnchorOutput | Dict[str, Any]"
+    can_resume: bool
+    is_completed: bool
+    player_profile: Optional["TrainingPlayerProfileOutput | Dict[str, Any]"] = None
+    runtime_state: Optional["TrainingRuntimeStateOutput | Dict[str, Any]"] = None
+    resumable_scenario: Optional["TrainingScenarioOutput | Dict[str, Any]"] = None
+    scenario_candidates: List["TrainingScenarioOutput | Dict[str, Any]"] = field(default_factory=list)
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    end_time: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Export the stable session summary payload."""
+        payload = {
+            "session_id": self.session_id,
+            "status": self.status,
+            "training_mode": self.training_mode,
+            "current_round_no": self.current_round_no,
+            "total_rounds": self.total_rounds,
+            "k_state": _copy_dict(self.k_state),
+            "s_state": _copy_dict(self.s_state),
+            "progress_anchor": _serialize_progress_anchor(self.progress_anchor) or {},
+            "resumable_scenario": _serialize_scenario(self.resumable_scenario),
+            "scenario_candidates": _serialize_scenario_list(self.scenario_candidates) or [],
+            "can_resume": self.can_resume,
+            "is_completed": self.is_completed,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "end_time": self.end_time,
         }
         if self.player_profile is not None:
             payload["player_profile"] = _serialize_player_profile(self.player_profile)

@@ -10,6 +10,7 @@ const CharacterSetting = lazy(() => import('@/pages/CharacterSetting'));
 const CharacterSelection = lazy(() => import('@/pages/CharacterSelection'));
 const FirstMeetingSelection = lazy(() => import('@/pages/FirstMeetingSelection'));
 const Game = lazy(() => import('@/pages/Game'));
+const Training = lazy(() => import('@/pages/Training'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const renderLazyPage = (PageComponent: ComponentType) => (
@@ -29,6 +30,7 @@ const routes = [
       { path: 'characterselection', element: renderLazyPage(CharacterSelection) },
       { path: 'firstmeeting', element: renderLazyPage(FirstMeetingSelection) },
       { path: 'game', element: renderLazyPage(Game) },
+      { path: 'training', element: renderLazyPage(Training) },
       { path: '*', element: renderLazyPage(NotFound) },
     ],
   },

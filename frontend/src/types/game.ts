@@ -33,7 +33,22 @@ export interface StorySceneData {
   isGameFinished: boolean;
 }
 
+export interface StoryEndingKeyStates {
+  favorability: number | null;
+  trust: number | null;
+  hostility: number | null;
+  dependence: number | null;
+}
+
 export interface StoryEndingSummary {
+  type: string;
+  description: string;
+  sceneId: string | null;
+  eventTitle: string | null;
+  keyStates: StoryEndingKeyStates;
+}
+
+export interface StoryEndingCheckItem {
   type: string;
   description: string;
   favorability: number | null;
@@ -43,7 +58,54 @@ export interface StoryEndingSummary {
 
 export interface StoryEndingCheckResult {
   hasEnding: boolean;
+  ending: StoryEndingCheckItem | null;
+}
+
+export interface StoryEndingSummaryResult {
+  threadId: string;
+  status: string | null;
+  roundNo: number;
+  hasEnding: boolean;
   ending: StoryEndingSummary | null;
+  updatedAt: string | null;
+  expiresAt: string | null;
+}
+
+export interface StoryHistoryUserAction {
+  kind: string;
+  summary: string;
+  rawInput: string | null;
+  optionIndex: number | null;
+  optionText: string | null;
+  optionType: string | null;
+}
+
+export interface StoryHistoryStateSummary {
+  changes: Record<string, number>;
+  currentStates: Record<string, number>;
+}
+
+export interface StoryHistoryItem {
+  roundNo: number;
+  status: string;
+  sceneId: string | null;
+  eventTitle: string | null;
+  characterDialogue: string | null;
+  userAction: StoryHistoryUserAction;
+  stateSummary: StoryHistoryStateSummary;
+  isEventFinished: boolean;
+  isGameFinished: boolean;
+  createdAt: string | null;
+}
+
+export interface StorySessionHistoryResult {
+  threadId: string;
+  status: string | null;
+  currentRoundNo: number;
+  latestSceneId: string | null;
+  updatedAt: string | null;
+  expiresAt: string | null;
+  history: StoryHistoryItem[];
 }
 
 export interface StorySessionInitParams {

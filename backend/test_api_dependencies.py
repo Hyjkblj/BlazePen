@@ -23,6 +23,7 @@ class DependencyWiringTestCase(unittest.TestCase):
         dependencies._session_manager = None
         dependencies._training_service = None
         dependencies._story_image_executor = None
+        dependencies._story_session_query_policy = None
         dependencies._story_service_bundle = None
 
     def test_story_service_bundle_should_share_one_story_contract(self):
@@ -30,11 +31,13 @@ class DependencyWiringTestCase(unittest.TestCase):
         image_service = object()
         character_service = object()
         image_executor = object()
+        story_session_query_policy = object()
 
         story_asset_service = SimpleNamespace(image_service=image_service)
         story_session_service = SimpleNamespace(
             session_manager=session_manager,
             story_asset_service=story_asset_service,
+            session_query_policy=story_session_query_policy,
         )
         story_turn_service = SimpleNamespace(
             session_manager=session_manager,
@@ -64,6 +67,9 @@ class DependencyWiringTestCase(unittest.TestCase):
             "get_story_image_executor",
             return_value=image_executor,
         ), patch(
+            "story.story_session_query_policy.StorySessionQueryPolicy.from_environment",
+            return_value=story_session_query_policy,
+        ), patch(
             "story.story_asset_service.StoryAssetService",
             return_value=story_asset_service,
         ) as story_asset_cls, patch(
@@ -82,6 +88,7 @@ class DependencyWiringTestCase(unittest.TestCase):
             bundle = dependencies.get_story_service_bundle()
 
         self.assertIs(bundle.story_asset_service, story_asset_service)
+        self.assertIs(bundle.story_session_query_policy, story_session_query_policy)
         self.assertIs(bundle.story_session_service, story_session_service)
         self.assertIs(bundle.story_turn_service, story_turn_service)
         self.assertIs(bundle.story_ending_service, story_ending_service)
@@ -92,6 +99,7 @@ class DependencyWiringTestCase(unittest.TestCase):
         story_session_cls.assert_called_once_with(
             session_manager=session_manager,
             story_asset_service=story_asset_service,
+            session_query_policy=story_session_query_policy,
         )
         story_turn_cls.assert_called_once_with(
             session_manager=session_manager,

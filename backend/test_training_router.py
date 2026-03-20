@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from api.dependencies import get_training_service
 from api.routers import training
+from training.exceptions import TrainingSessionNotFoundError, TrainingSessionRecoveryStateError
 
 
 class _FakeTrainingService:
@@ -146,6 +147,53 @@ class _FakeTrainingService:
                     "reasons": ["系统推荐得分最高"],
                 },
             },
+        }
+
+    def get_session_summary(self, session_id):
+        return {
+            "session_id": session_id,
+            "status": "in_progress",
+            "training_mode": "self-paced",
+            "current_round_no": 1,
+            "total_rounds": 6,
+            "k_state": {"K1": 0.5},
+            "s_state": {"credibility": 0.7},
+            "progress_anchor": {
+                "current_round_no": 1,
+                "total_rounds": 6,
+                "completed_rounds": 1,
+                "remaining_rounds": 5,
+                "progress_percent": 0.1667,
+                "next_round_no": 2,
+            },
+            "player_profile": {"name": "Li Min", "identity": "Reporter"},
+            "runtime_state": {
+                "current_round_no": 1,
+                "current_scene_id": "S2",
+                "k_state": {"K1": 0.5},
+                "s_state": {"credibility": 0.7},
+                "runtime_flags": {
+                    "panic_triggered": False,
+                    "source_exposed": False,
+                    "editor_locked": False,
+                    "high_risk_path": False,
+                },
+                "state_bar": {
+                    "editor_trust": 0.62,
+                    "public_stability": 0.74,
+                    "source_safety": 0.68,
+                },
+            },
+            "resumable_scenario": {"id": "S2", "title": "Resume Scenario"},
+            "scenario_candidates": [
+                {"id": "S2", "title": "Resume Scenario"},
+                {"id": "S3", "title": "Alt Scenario"},
+            ],
+            "can_resume": True,
+            "is_completed": False,
+            "created_at": "2026-03-20T10:00:00",
+            "updated_at": "2026-03-20T10:05:00",
+            "end_time": None,
         }
 
     def get_progress(self, session_id):
@@ -482,6 +530,40 @@ class TrainingRouterTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["scenario_candidates"], [])
         self.assertEqual(payload["data"]["ending"]["ending_type"], "steady")
 
+    def test_session_summary_route_should_return_recovery_payload(self):
+        response = self.client.get("/api/v1/training/sessions/s-test")
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["code"], 200)
+        self.assertEqual(payload["data"]["session_id"], "s-test")
+        self.assertEqual(payload["data"]["training_mode"], "self-paced")
+        self.assertEqual(payload["data"]["progress_anchor"]["next_round_no"], 2)
+        self.assertEqual(payload["data"]["resumable_scenario"]["id"], "S2")
+        self.assertEqual(len(payload["data"]["scenario_candidates"]), 2)
+        self.assertTrue(payload["data"]["can_resume"])
+
+    def test_session_summary_route_should_return_not_found_error_code(self):
+        self.app.dependency_overrides[get_training_service] = lambda: _MissingSessionTrainingService()
+
+        response = self.client.get("/api/v1/training/sessions/missing-session")
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(payload["error"]["code"], "TRAINING_SESSION_NOT_FOUND")
+        self.assertEqual(payload["error"]["details"]["route"], "training.session_summary")
+
+    def test_session_summary_route_should_return_conflict_for_corrupted_recovery_state(self):
+        self.app.dependency_overrides[get_training_service] = lambda: _CorruptedSessionTrainingService()
+
+        response = self.client.get("/api/v1/training/sessions/s-corrupted")
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(payload["error"]["code"], "TRAINING_SESSION_RECOVERY_STATE_CORRUPTED")
+        self.assertEqual(payload["error"]["details"]["recovery_reason"], "scenario_sequence_empty")
+        self.assertEqual(payload["error"]["details"]["route"], "training.session_summary")
+
     def test_init_route_should_return_400_for_invalid_training_mode(self):
         """初始化接口遇到训练模式校验失败时应返回 400。"""
         self.app.dependency_overrides[get_training_service] = lambda: _InvalidModeTrainingService()
@@ -544,6 +626,19 @@ class TrainingRouterTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["summary"]["selection_source_counts"][0]["code"], "candidate_pool")
         self.assertEqual(payload["data"]["summary"]["source_exposed_round_count"], 1)
         self.assertTrue(payload["data"]["runtime_state"]["runtime_flags"]["source_exposed"])
+
+
+class _MissingSessionTrainingService:
+    def get_session_summary(self, session_id):
+        raise TrainingSessionNotFoundError(session_id=session_id)
+
+
+class _CorruptedSessionTrainingService:
+    def get_session_summary(self, session_id):
+        raise TrainingSessionRecoveryStateError(
+            session_id=session_id,
+            reason="scenario_sequence_empty",
+        )
 
 
 class _InvalidModeTrainingService:

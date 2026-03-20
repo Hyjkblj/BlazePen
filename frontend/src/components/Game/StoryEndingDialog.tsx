@@ -1,6 +1,7 @@
 import ModalDialog from '@/components/ModalDialog';
 import type { StoryEndingStatus } from '@/hooks/useStoryEnding';
 import type { StoryEndingSummary } from '@/types/game';
+import { resolveSceneDisplayName } from '@/utils/storyScene';
 
 export interface StoryEndingDialogProps {
   open: boolean;
@@ -34,11 +35,21 @@ export default function StoryEndingDialog({
   onClose,
   onRetry,
 }: StoryEndingDialogProps) {
+  const endingSceneLabel = endingSummary?.sceneId
+    ? resolveSceneDisplayName(endingSummary.sceneId) ?? endingSummary.sceneId
+    : null;
+  const endingMeta = endingSummary
+    ? [endingSummary.eventTitle, endingSceneLabel].filter(
+        (value): value is string => typeof value === 'string' && value.trim() !== ''
+      )
+    : [];
+
   const metrics = endingSummary
     ? [
-        { label: '好感', value: endingSummary.favorability },
-        { label: '信任', value: endingSummary.trust },
-        { label: '敌意', value: endingSummary.hostility },
+        { label: '好感', value: endingSummary.keyStates.favorability },
+        { label: '信任', value: endingSummary.keyStates.trust },
+        { label: '敌意', value: endingSummary.keyStates.hostility },
+        { label: '依赖', value: endingSummary.keyStates.dependence },
       ].filter((metric) => metric.value !== null)
     : [];
 
@@ -100,6 +111,9 @@ export default function StoryEndingDialog({
             <p className="story-ending-heading">
               {resolveEndingTitle(endingSummary.type)}
             </p>
+            {endingMeta.length > 0 ? (
+              <p className="story-session-dialog-caption">{endingMeta.join(' · ')}</p>
+            ) : null}
             <p className="story-ending-description">{endingSummary.description}</p>
 
             {metrics.length > 0 ? (

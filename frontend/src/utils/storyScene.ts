@@ -1,8 +1,12 @@
 import { getSceneNameById } from '@/config/scenes';
 import type {
   CheckEndingResponse,
+  LegacyStoryEndingPayload,
   ProcessGameInputResponse,
-  StoryEndingPayload,
+  StoryHistoryItemPayload,
+  StorySessionHistoryResponse,
+  StoryEndingSummaryItemPayload,
+  StoryEndingSummaryResponse,
   StoryResponsePayload,
   StorySessionSnapshotResponse,
 } from '@/types/api';
@@ -12,6 +16,8 @@ import type {
   PlayerOption,
   StoryEndingCheckResult,
   StoryEndingSummary,
+  StoryEndingSummaryResult,
+  StorySessionHistoryResult,
   StorySceneData,
   StorySessionSnapshotResult,
 } from '@/types/game';
@@ -91,6 +97,23 @@ const normalizeOptionalMetric = (value: unknown): number | null => {
   return null;
 };
 
+const normalizeNumericRecord = (value: unknown): Record<string, number> => {
+  const record = asRecord(value);
+  if (!record) {
+    return {};
+  }
+
+  return Object.entries(record).reduce<Record<string, number>>((normalized, [key, rawValue]) => {
+    const metric = normalizeOptionalMetric(rawValue);
+    if (metric === null) {
+      return normalized;
+    }
+
+    normalized[key] = metric;
+    return normalized;
+  }, {});
+};
+
 export const normalizeStoryScenePayload = (
   payload: Partial<StoryResponsePayload> | null | undefined
 ): StorySceneData => ({
@@ -123,9 +146,19 @@ export const normalizeStorySessionSnapshotPayload = (
   expiresAt: normalizeOptionalString(readStoryPayloadField(payload, 'expires_at')),
 });
 
-export const normalizeStoryEndingPayload = (
-  payload: Partial<StoryEndingPayload> | null | undefined
-): StoryEndingSummary | null => {
+const normalizeStoryEndingKeyStates = (value: unknown) => {
+  const payload = asRecord(value);
+  return {
+    favorability: normalizeOptionalMetric(payload?.favorability),
+    trust: normalizeOptionalMetric(payload?.trust),
+    hostility: normalizeOptionalMetric(payload?.hostility),
+    dependence: normalizeOptionalMetric(payload?.dependence),
+  };
+};
+
+const normalizeLegacyStoryEndingPayload = (
+  payload: Partial<LegacyStoryEndingPayload> | null | undefined
+): StoryEndingCheckResult['ending'] | null => {
   const type = normalizeOptionalString(payload?.type);
   const description = normalizeOptionalString(payload?.description);
 
@@ -142,11 +175,101 @@ export const normalizeStoryEndingPayload = (
   };
 };
 
+const normalizeStoryEndingSummaryItem = (
+  payload: Partial<StoryEndingSummaryItemPayload> | null | undefined
+): StoryEndingSummary | null => {
+  const type = normalizeOptionalString(payload?.type);
+  const description = normalizeOptionalString(payload?.description);
+
+  if (!type || !description) {
+    return null;
+  }
+
+  return {
+    type,
+    description,
+    sceneId: normalizeOptionalString(payload?.scene),
+    eventTitle: normalizeOptionalString(payload?.event_title),
+    keyStates: normalizeStoryEndingKeyStates(payload?.key_states),
+  };
+};
+
 export const normalizeStoryEndingCheckPayload = (
   payload: Partial<CheckEndingResponse> | null | undefined
 ): StoryEndingCheckResult => ({
   hasEnding: payload?.has_ending === true,
-  ending: normalizeStoryEndingPayload(payload?.ending),
+  ending: normalizeLegacyStoryEndingPayload(payload?.ending),
+});
+
+export const normalizeStoryEndingSummaryPayload = (
+  payload: Partial<StoryEndingSummaryResponse> | null | undefined
+): StoryEndingSummaryResult => ({
+  threadId: normalizeOptionalString(payload?.thread_id) ?? '',
+  status: normalizeOptionalString(payload?.status),
+  roundNo: normalizeOptionalNumber(payload?.round_no),
+  hasEnding: payload?.has_ending === true,
+  ending: normalizeStoryEndingSummaryItem(payload?.ending),
+  updatedAt: normalizeOptionalString(payload?.updated_at),
+  expiresAt: normalizeOptionalString(payload?.expires_at),
+});
+
+const normalizeStoryHistoryItem = (
+  payload: Partial<StoryHistoryItemPayload> | null | undefined
+) => ({
+  roundNo: normalizeOptionalNumber(payload?.round_no),
+  status: normalizeOptionalString(payload?.status) ?? 'in_progress',
+  sceneId: normalizeOptionalString(payload?.scene),
+  eventTitle: normalizeOptionalString(payload?.event_title),
+  characterDialogue: normalizeOptionalString(payload?.character_dialogue),
+  userAction: {
+    kind: normalizeOptionalString(payload?.user_action?.kind) ?? 'free_text',
+    summary: normalizeOptionalString(payload?.user_action?.summary) ?? '',
+    rawInput: normalizeOptionalString(payload?.user_action?.raw_input),
+    optionIndex:
+      payload?.user_action?.option_index === null
+        ? null
+        : normalizeOptionalNumber(payload?.user_action?.option_index, -1) >= 0
+          ? normalizeOptionalNumber(payload?.user_action?.option_index)
+          : null,
+    optionText: normalizeOptionalString(payload?.user_action?.option_text),
+    optionType: normalizeOptionalString(payload?.user_action?.option_type),
+  },
+  stateSummary: {
+    changes: normalizeNumericRecord(payload?.state_summary?.changes),
+    currentStates: normalizeNumericRecord(payload?.state_summary?.current_states),
+  },
+  isEventFinished: payload?.is_event_finished === true,
+  isGameFinished: payload?.is_game_finished === true,
+  createdAt: normalizeOptionalString(payload?.created_at),
+});
+
+export const normalizeStorySessionHistoryPayload = (
+  payload: Partial<StorySessionHistoryResponse> | null | undefined
+): StorySessionHistoryResult => ({
+  threadId: normalizeOptionalString(payload?.thread_id) ?? '',
+  status: normalizeOptionalString(payload?.status),
+  currentRoundNo: normalizeOptionalNumber(payload?.current_round_no),
+  latestSceneId: normalizeOptionalString(payload?.latest_scene),
+  updatedAt: normalizeOptionalString(payload?.updated_at),
+  expiresAt: normalizeOptionalString(payload?.expires_at),
+  history: Array.isArray(payload?.history)
+    ? payload.history.map((item) => normalizeStoryHistoryItem(item))
+    : [],
+});
+
+export const toStoryEndingCheckResult = (
+  payload: StoryEndingSummaryResult
+): StoryEndingCheckResult => ({
+  hasEnding: payload.hasEnding && payload.ending !== null,
+  ending: payload.ending
+    ? {
+        type: payload.ending.type,
+        description: payload.ending.description,
+        favorability: payload.ending.keyStates.favorability,
+        trust: payload.ending.keyStates.trust,
+        hostility: payload.ending.keyStates.hostility,
+      }
+    : null,
 });
 
 export const toInitialGameData = (

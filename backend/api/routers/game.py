@@ -4,18 +4,19 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 
 from api.dependencies import get_game_service
 from api.error_codes import (
     INTERNAL_ERROR,
+    STORY_SESSION_ACCESS_DENIED,
     STORY_SESSION_EXPIRED,
     STORY_SESSION_NOT_FOUND,
     STORY_SESSION_RESTORE_FAILED,
     VALIDATION_ERROR,
     infer_story_error_code,
 )
-from api.response import build_success_payload, error_response, not_found_response
+from api.response import build_success_payload, error_response, forbidden_response, not_found_response
 from api.schemas import GameInitRequest, GameInputRequest, InitializeStoryRequest, TriggerEndingRequest
 from api.services.game_service import GameService
 from api.story_contract_utils import (
@@ -36,6 +37,7 @@ from api.story_schemas import (
     StoryTurnApiResponse,
 )
 from story.exceptions import (
+    StorySessionAccessDeniedError,
     StorySessionExpiredError,
     StorySessionNotFoundError,
     StorySessionRestoreFailedError,
@@ -203,14 +205,36 @@ async def initialize_story(
 async def list_recent_sessions(
     user_id: str = Query(..., min_length=1),
     limit: int = Query(10, ge=1, le=20),
+    actor_user_id: str | None = Header(default=None, alias="X-Story-Actor-Id"),
     game_service: GameService = Depends(get_game_service),
 ):
     """Return recent persisted story sessions for one user."""
 
     try:
-        result = game_service.list_story_sessions(user_id=user_id, limit=limit)
+        result = game_service.list_story_sessions(
+            user_id=user_id,
+            limit=limit,
+            actor_user_id=actor_user_id,
+        )
         payload = normalize_story_session_list_payload(result)
         return build_success_payload(data=payload)
+    except StorySessionAccessDeniedError as exc:
+        logger.warning(
+            "story session list denied: user_id=%s actor_user_id=%s policy_mode=%s",
+            user_id,
+            actor_user_id,
+            exc.policy_mode,
+        )
+        return forbidden_response(
+            message="story session access denied",
+            error_code=STORY_SESSION_ACCESS_DENIED,
+            details={
+                "route": "story.sessions_list",
+                "user_id": user_id,
+                "actor_user_id": actor_user_id,
+                "policy_mode": exc.policy_mode,
+            },
+        )
     except Exception as exc:
         logger.error(
             "failed to list story sessions: user_id=%s error=%s",

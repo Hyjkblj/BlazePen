@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   normalizeStoryEndingCheckPayload,
+  normalizeStoryEndingSummaryPayload,
   normalizeInitialGameData,
   normalizeStoryScenePayload,
+  normalizeStorySessionHistoryPayload,
   normalizeStorySessionSnapshotPayload,
   normalizeStoryTurnPayload,
   resolveSceneImageAsset,
   resolveStorySceneVisual,
+  toStoryEndingCheckResult,
   toInitialGameData,
 } from './storyScene';
 
@@ -123,8 +126,89 @@ describe('normalizeStorySessionSnapshotPayload', () => {
   });
 });
 
+describe('normalizeStorySessionHistoryPayload', () => {
+  it('normalizes canonical story history into a stable frontend read model', () => {
+    expect(
+      normalizeStorySessionHistoryPayload({
+        thread_id: ' thread-live ',
+        status: ' completed ',
+        current_round_no: 4,
+        latest_scene: ' study_room ',
+        updated_at: '2026-03-20T12:00:00Z',
+        expires_at: '2026-03-20T12:30:00Z',
+        history: [
+          {
+            round_no: 1,
+            status: 'in_progress',
+            scene: 'study_room',
+            event_title: 'First Meeting',
+            character_dialogue: 'Nice to meet you.',
+            user_action: {
+              kind: 'option',
+              summary: 'Wave back',
+              option_index: 0,
+              option_text: 'Wave back',
+              option_type: 'action',
+            },
+            state_summary: {
+              changes: {
+                trust: '10',
+                favorability: 4,
+              },
+              current_states: {
+                trust: 60,
+                hostility: '12',
+              },
+            },
+            is_event_finished: false,
+            is_game_finished: false,
+            created_at: '2026-03-20T11:58:00Z',
+          },
+        ],
+      })
+    ).toEqual({
+      threadId: 'thread-live',
+      status: 'completed',
+      currentRoundNo: 4,
+      latestSceneId: 'study_room',
+      updatedAt: '2026-03-20T12:00:00Z',
+      expiresAt: '2026-03-20T12:30:00Z',
+      history: [
+        {
+          roundNo: 1,
+          status: 'in_progress',
+          sceneId: 'study_room',
+          eventTitle: 'First Meeting',
+          characterDialogue: 'Nice to meet you.',
+          userAction: {
+            kind: 'option',
+            summary: 'Wave back',
+            rawInput: null,
+            optionIndex: 0,
+            optionText: 'Wave back',
+            optionType: 'action',
+          },
+          stateSummary: {
+            changes: {
+              trust: 10,
+              favorability: 4,
+            },
+            currentStates: {
+              trust: 60,
+              hostility: 12,
+            },
+          },
+          isEventFinished: false,
+          isGameFinished: false,
+          createdAt: '2026-03-20T11:58:00Z',
+        },
+      ],
+    });
+  });
+});
+
 describe('normalizeStoryEndingCheckPayload', () => {
-  it('normalizes the ending contract into a stable frontend model', () => {
+  it('keeps the legacy ending contract stable for compatibility callers', () => {
     expect(
       normalizeStoryEndingCheckPayload({
         has_ending: true,
@@ -135,6 +219,88 @@ describe('normalizeStoryEndingCheckPayload', () => {
           trust: 56,
           hostility: null,
         },
+      })
+    ).toEqual({
+      hasEnding: true,
+      ending: {
+        type: 'good_ending',
+        description: 'A warm, hopeful ending.',
+        favorability: 68,
+        trust: 56,
+        hostility: null,
+      },
+    });
+  });
+});
+
+describe('normalizeStoryEndingSummaryPayload', () => {
+  it('normalizes the canonical ending summary route into the frontend read model', () => {
+    expect(
+      normalizeStoryEndingSummaryPayload({
+        thread_id: ' thread-ended ',
+        status: ' completed ',
+        round_no: 6,
+        has_ending: true,
+        ending: {
+          type: ' good_ending ',
+          description: ' A warm, hopeful ending. ',
+          scene: ' cafe_nearby ',
+          event_title: ' Final Promise ',
+          key_states: {
+            favorability: '68',
+            trust: 56,
+            hostility: null,
+            dependence: '41',
+          },
+        },
+        updated_at: '2026-03-20T10:00:00Z',
+        expires_at: '2026-03-20T10:30:00Z',
+      })
+    ).toEqual({
+      threadId: 'thread-ended',
+      status: 'completed',
+      roundNo: 6,
+      hasEnding: true,
+      ending: {
+        type: 'good_ending',
+        description: 'A warm, hopeful ending.',
+        sceneId: 'cafe_nearby',
+        eventTitle: 'Final Promise',
+        keyStates: {
+          favorability: 68,
+          trust: 56,
+          hostility: null,
+          dependence: 41,
+        },
+      },
+      updatedAt: '2026-03-20T10:00:00Z',
+      expiresAt: '2026-03-20T10:30:00Z',
+    });
+  });
+});
+
+describe('toStoryEndingCheckResult', () => {
+  it('adapts the canonical ending summary model into the legacy ending-check shape', () => {
+    expect(
+      toStoryEndingCheckResult({
+        threadId: 'thread-ended',
+        status: 'completed',
+        roundNo: 6,
+        hasEnding: true,
+        ending: {
+          type: 'good_ending',
+          description: 'A warm, hopeful ending.',
+          sceneId: 'cafe_nearby',
+          eventTitle: 'Final Promise',
+          keyStates: {
+            favorability: 68,
+            trust: 56,
+            hostility: null,
+            dependence: 41,
+          },
+        },
+        updatedAt: '2026-03-20T10:00:00Z',
+        expiresAt: '2026-03-20T10:30:00Z',
       })
     ).toEqual({
       hasEnding: true,

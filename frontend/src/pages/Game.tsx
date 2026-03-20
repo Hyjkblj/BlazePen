@@ -3,6 +3,7 @@ import {
   GameDialogue,
   GameSceneBackground,
   StoryEndingDialog,
+  StorySessionHistoryDialog,
   StorySessionToolbar,
   StorySessionTranscriptDialog,
 } from '@/components/Game';
@@ -25,6 +26,11 @@ function Game() {
     hasTranscript,
     transcriptEntries,
     isTranscriptDialogOpen,
+    canViewHistory,
+    isHistoryDialogOpen,
+    historyStatus,
+    historyError,
+    historySession,
     canViewEnding,
     isEndingDialogOpen,
     endingStatus,
@@ -36,8 +42,11 @@ function Game() {
     handleSceneAssetError,
     openTranscriptDialog,
     closeTranscriptDialog,
+    openHistoryDialog,
+    closeHistoryDialog,
     openEndingDialog,
     closeEndingDialog,
+    retryHistoryLoad,
     retryEndingSummary,
     selectOption,
   } = useGameSessionFlow();
@@ -76,9 +85,12 @@ function Game() {
 
       <StorySessionToolbar
         hasTranscript={hasTranscript}
+        canViewHistory={canViewHistory}
         canViewEnding={canViewEnding}
+        historyStatus={historyStatus}
         endingStatus={endingStatus}
         onOpenTranscript={openTranscriptDialog}
+        onOpenHistory={openHistoryDialog}
         onOpenEnding={openEndingDialog}
       />
 
@@ -96,6 +108,15 @@ function Game() {
         open={isTranscriptDialogOpen}
         entries={transcriptEntries}
         onClose={closeTranscriptDialog}
+      />
+
+      <StorySessionHistoryDialog
+        open={isHistoryDialogOpen}
+        historyStatus={historyStatus}
+        historySession={historySession}
+        historyError={historyError}
+        onClose={closeHistoryDialog}
+        onRetry={retryHistoryLoad}
       />
 
       <StoryEndingDialog

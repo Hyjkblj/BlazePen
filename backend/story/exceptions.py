@@ -23,6 +23,26 @@ class StorySessionExpiredError(StoryDomainError):
         self.thread_id = thread_id
 
 
+class StorySessionAccessDeniedError(StoryDomainError):
+    """Story session read request rejected by access policy."""
+
+    def __init__(
+        self,
+        *,
+        requested_user_id: str,
+        actor_user_id: str | None,
+        policy_mode: str,
+    ):
+        actor_label = actor_user_id or "missing"
+        super().__init__(
+            "story session access denied: "
+            f"requested_user_id={requested_user_id}, actor_user_id={actor_label}, policy_mode={policy_mode}"
+        )
+        self.requested_user_id = requested_user_id
+        self.actor_user_id = actor_user_id
+        self.policy_mode = policy_mode
+
+
 class DuplicateStoryRoundSubmissionError(StoryDomainError):
     """Duplicate round submission identified by `(thread_id, round_no)`."""
 

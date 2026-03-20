@@ -1,25 +1,23 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeedbackProvider, GameFlowProvider } from '@/contexts';
 import { GAME_STORAGE_KEYS } from '@/storage/gameStorage';
 import {
-  checkEnding,
+  getStorySessionHistory,
   getStorySessionSnapshot,
-  initGame,
-  initializeStory,
+  getStoryEndingSummary,
   processGameInput,
 } from '@/services/gameApi';
 import { ServiceError } from '@/services/serviceError';
 import Game from './Game';
 
 vi.mock('@/services/gameApi', () => ({
-  initGame: vi.fn(),
-  initializeStory: vi.fn(),
   getStorySessionSnapshot: vi.fn(),
+  getStorySessionHistory: vi.fn(),
+  getStoryEndingSummary: vi.fn(),
   processGameInput: vi.fn(),
-  checkEnding: vi.fn(),
   triggerEnding: vi.fn(),
 }));
 
@@ -138,20 +136,24 @@ describe('Game page integration', () => {
   beforeEach(() => {
     sessionStorage.clear();
     localStorage.clear();
-    vi.mocked(initGame).mockReset();
-    vi.mocked(initializeStory).mockReset();
     vi.mocked(getStorySessionSnapshot).mockReset();
+    vi.mocked(getStorySessionHistory).mockReset();
     vi.mocked(processGameInput).mockReset();
-    vi.mocked(checkEnding).mockReset();
+    vi.mocked(getStoryEndingSummary).mockReset();
     vi.mocked(getStorySessionSnapshot).mockRejectedValue(
       new ServiceError({
         code: 'SERVICE_UNAVAILABLE',
         message: 'Snapshot unavailable.',
       })
     );
-    vi.mocked(checkEnding).mockResolvedValue({
+    vi.mocked(getStoryEndingSummary).mockResolvedValue({
+      threadId: 'thread-default',
+      status: 'in_progress',
+      roundNo: 0,
       hasEnding: false,
       ending: null,
+      updatedAt: null,
+      expiresAt: null,
     });
   });
 
@@ -160,7 +162,7 @@ describe('Game page integration', () => {
     vi.clearAllMocks();
   });
 
-  it('recovers an expired session by loading a fresh opening state for the new thread', async () => {
+  it('falls back to readable local context and clears the active thread when the submitted story session is expired', async () => {
     seedSavedGame();
     seedCharacterDraft();
     vi.mocked(getStorySessionSnapshot).mockResolvedValueOnce(
@@ -172,20 +174,6 @@ describe('Game page integration', () => {
         message: 'Story session expired.',
       })
     );
-    vi.mocked(initGame).mockResolvedValueOnce({
-      threadId: 'thread-new',
-      userId: null,
-      gameMode: 'solo',
-    });
-    vi.mocked(initializeStory).mockResolvedValueOnce({
-      sceneId: 'study_room',
-      sceneImageUrl: '/scene-recovered.png',
-      compositeImageUrl: null,
-      storyBackground: null,
-      characterDialogue: 'Fresh opening after recovery',
-      playerOptions: [{ id: 2, text: 'Restart from here', type: 'action' }],
-      isGameFinished: false,
-    });
 
     renderGamePage();
 
@@ -201,38 +189,23 @@ describe('Game page integration', () => {
     });
 
     await waitFor(() => {
-      expect(initGame).toHaveBeenCalledWith({
-        gameMode: 'solo',
-        characterId: 'character-1',
-      });
+      expect(sessionStorage.getItem(GAME_STORAGE_KEYS.GAME_THREAD_ID)).toBeNull();
     });
 
-    await waitFor(() => {
-      expect(initializeStory).toHaveBeenCalledWith(
-        'thread-new',
-        'character-1',
-        'study_room',
-        '/character.png'
-      );
-    });
+    expect(screen.getByText('A tense pause fills the room.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Take the risk' })).toBeNull();
+    expect(
+      screen.getByText('当前为本地只读快照，无法继续提交。请稍后重试恢复或重新开始故事。')
+    ).toBeTruthy();
 
     await waitFor(() => {
-      expect(sessionStorage.getItem(GAME_STORAGE_KEYS.GAME_THREAD_ID)).toBe('thread-new');
-      expect(sessionStorage.getItem(GAME_STORAGE_KEYS.GAME_CHARACTER_ID)).toBe('character-1');
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('Fresh opening after recovery')).toBeTruthy();
-      expect(screen.getByRole('button', { name: 'Restart from here' })).toBeTruthy();
-    });
-
-    await waitFor(() => {
-      expect(readStoredSave('gameSave_thread-new')?.messages).toEqual([
-        { role: 'assistant', content: 'Fresh opening after recovery' },
+      expect(readStoredSave('gameSave_thread-old')?.messages).toEqual([
+        { role: 'assistant', content: 'A tense pause fills the room.' },
       ]);
       expect(
-        readStoredSave('gameSave_thread-new')?.messages.some(
-          (message: { content: string }) => message.content === 'A tense pause fills the room.'
+        readStoredSave('gameSave_thread-old')?.messages.some(
+          (message: { role: string; content: string }) =>
+            message.role === 'user' && message.content === 'Take the risk'
         )
       ).toBe(false);
     });
@@ -648,6 +621,9 @@ describe('Game page integration', () => {
     expect(
       screen.getByRole('button', { name: 'Retry later' }).hasAttribute('disabled')
     ).toBe(true);
+    expect(screen.getByRole('button', { name: '服务端历史' }).hasAttribute('disabled')).toBe(
+      true
+    );
 
     fireEvent.click(screen.getByRole('button', { name: '当前记录' }));
 
@@ -661,6 +637,86 @@ describe('Game page integration', () => {
       screen.getByText('这里只展示当前设备已经加载过的会话内容，用于恢复和回看，不代表服务端完整历史。')
     ).toBeTruthy();
     expect(screen.getAllByText('Saved dialogue').length).toBeGreaterThan(1);
+  });
+
+  it('loads persisted server history separately from the current-device transcript', async () => {
+    sessionStorage.setItem(GAME_STORAGE_KEYS.GAME_THREAD_ID, 'thread-history');
+    sessionStorage.setItem(GAME_STORAGE_KEYS.GAME_CHARACTER_ID, 'character-1');
+    sessionStorage.setItem(GAME_STORAGE_KEYS.CURRENT_CHARACTER_ID, 'character-1');
+
+    vi.mocked(getStorySessionSnapshot).mockResolvedValueOnce({
+      threadId: 'thread-history',
+      sessionRestored: false,
+      needReselectOption: false,
+      restoredFromThreadId: null,
+      sceneId: 'study_room',
+      sceneImageUrl: '/scene.png',
+      compositeImageUrl: null,
+      storyBackground: 'Recovered background',
+      characterDialogue: 'Recovered dialogue',
+      playerOptions: [{ id: 1, text: 'Continue', type: 'action' }],
+      isGameFinished: false,
+      roundNo: 2,
+      status: 'in_progress',
+      updatedAt: '2026-03-20T12:00:00Z',
+      expiresAt: '2026-03-20T12:30:00Z',
+    });
+    vi.mocked(getStorySessionHistory).mockResolvedValueOnce({
+      threadId: 'thread-history',
+      status: 'in_progress',
+      currentRoundNo: 2,
+      latestSceneId: 'study_room',
+      updatedAt: '2026-03-20T12:00:00Z',
+      expiresAt: '2026-03-20T12:30:00Z',
+      history: [
+        {
+          roundNo: 1,
+          status: 'in_progress',
+          sceneId: 'study_room',
+          eventTitle: 'First Meeting',
+          characterDialogue: 'Nice to meet you.',
+          userAction: {
+            kind: 'option',
+            summary: 'Wave back',
+            rawInput: null,
+            optionIndex: 0,
+            optionText: 'Wave back',
+            optionType: 'action',
+          },
+          stateSummary: {
+            changes: {
+              trust: 10,
+            },
+            currentStates: {
+              trust: 60,
+            },
+          },
+          isEventFinished: false,
+          isGameFinished: false,
+          createdAt: '2026-03-20T11:58:00Z',
+        },
+      ],
+    });
+
+    renderGamePage();
+
+    await waitFor(() => {
+      expect(screen.getByText('Recovered dialogue')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '服务端历史' }));
+
+    await waitFor(() => {
+      expect(getStorySessionHistory).toHaveBeenCalledWith('thread-history');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: '服务端历史' })).toBeTruthy();
+      expect(screen.getByText('First Meeting · 自习室')).toBeTruthy();
+      expect(screen.getByText('Wave back')).toBeTruthy();
+      expect(screen.getByText('Nice to meet you.')).toBeTruthy();
+      expect(screen.getByText('信任 +10')).toBeTruthy();
+    });
   });
 
   it('loads and reopens the ending summary when a finished story session is restored', async () => {
@@ -685,25 +741,36 @@ describe('Game page integration', () => {
       updatedAt: '2026-03-19T14:00:00Z',
       expiresAt: '2026-03-19T14:30:00Z',
     });
-    vi.mocked(checkEnding).mockResolvedValueOnce({
+    vi.mocked(getStoryEndingSummary).mockResolvedValueOnce({
+      threadId: 'thread-finished',
+      status: 'completed',
+      roundNo: 6,
       hasEnding: true,
       ending: {
         type: 'good_ending',
         description: 'A warm, hopeful ending.',
-        favorability: 88,
-        trust: 76,
-        hostility: 12,
+        sceneId: 'cafe_nearby',
+        eventTitle: 'Final Promise',
+        keyStates: {
+          favorability: 88,
+          trust: 76,
+          hostility: 12,
+          dependence: null,
+        },
       },
+      updatedAt: '2026-03-19T14:00:00Z',
+      expiresAt: '2026-03-19T14:30:00Z',
     });
 
     renderGamePage();
 
     await waitFor(() => {
-      expect(checkEnding).toHaveBeenCalledWith('thread-finished');
+      expect(getStoryEndingSummary).toHaveBeenCalledWith('thread-finished');
     });
 
     await waitFor(() => {
       expect(screen.getByText('圆满结局')).toBeTruthy();
+      expect(screen.getByText('Final Promise · 咖啡厅')).toBeTruthy();
       expect(screen.getByText('A warm, hopeful ending.')).toBeTruthy();
       expect(screen.getByText('88')).toBeTruthy();
     });
@@ -720,4 +787,99 @@ describe('Game page integration', () => {
       expect(screen.getByText('圆满结局')).toBeTruthy();
     });
   });
+
+  it.each([
+    {
+      status: 404,
+      code: 'STORY_SESSION_NOT_FOUND' as const,
+    },
+    {
+      status: 410,
+      code: 'SESSION_EXPIRED' as const,
+    },
+    {
+      status: 500,
+      code: 'SERVICE_UNAVAILABLE' as const,
+    },
+  ])(
+    'shows ending error state and allows retry when the restored ending summary request fails with status $status',
+    async ({ status, code }) => {
+      sessionStorage.setItem(GAME_STORAGE_KEYS.GAME_THREAD_ID, 'thread-finished');
+      sessionStorage.setItem(GAME_STORAGE_KEYS.GAME_CHARACTER_ID, 'character-1');
+      sessionStorage.setItem(GAME_STORAGE_KEYS.CURRENT_CHARACTER_ID, 'character-1');
+
+      vi.mocked(getStorySessionSnapshot).mockResolvedValueOnce({
+        threadId: 'thread-finished',
+        sessionRestored: false,
+        needReselectOption: false,
+        restoredFromThreadId: null,
+        sceneId: 'cafe_nearby',
+        sceneImageUrl: '/ending-scene.png',
+        compositeImageUrl: null,
+        storyBackground: 'Ending background',
+        characterDialogue: 'This is where our story settles.',
+        playerOptions: [],
+        isGameFinished: true,
+        roundNo: 6,
+        status: 'completed',
+        updatedAt: '2026-03-19T14:00:00Z',
+        expiresAt: '2026-03-19T14:30:00Z',
+      });
+      vi.mocked(getStoryEndingSummary)
+        .mockRejectedValueOnce(
+          new ServiceError({
+            code,
+            status,
+            message: `Ending summary unavailable (${status}).`,
+          })
+        )
+        .mockResolvedValueOnce({
+          threadId: 'thread-finished',
+          status: 'completed',
+          roundNo: 6,
+          hasEnding: true,
+          ending: {
+            type: 'good_ending',
+            description: 'Recovered ending summary.',
+            sceneId: 'cafe_nearby',
+            eventTitle: 'Final Promise',
+            keyStates: {
+              favorability: 88,
+              trust: 76,
+              hostility: 12,
+              dependence: null,
+            },
+          },
+          updatedAt: '2026-03-19T14:00:00Z',
+          expiresAt: '2026-03-19T14:30:00Z',
+        });
+
+      renderGamePage();
+
+      await waitFor(() => {
+        expect(getStoryEndingSummary).toHaveBeenCalledTimes(1);
+        expect(getStoryEndingSummary).toHaveBeenCalledWith('thread-finished');
+      });
+
+      const errorDialog = await screen.findByRole('dialog', { name: '故事结局' });
+      expect(within(errorDialog).getByText(`Ending summary unavailable (${status}).`)).toBeTruthy();
+
+      const actionButtons = within(errorDialog)
+        .getAllByRole('button')
+        .filter((button) => (button.textContent ?? '').trim() !== '');
+      fireEvent.click(actionButtons[0]);
+
+      await waitFor(() => {
+        expect(getStoryEndingSummary).toHaveBeenCalledTimes(2);
+      });
+
+      const retriedDialog = await screen.findByRole('dialog', { name: '故事结局' });
+      await waitFor(() => {
+        expect(within(retriedDialog).getByText('Recovered ending summary.')).toBeTruthy();
+        expect(
+          within(retriedDialog).queryByText(`Ending summary unavailable (${status}).`)
+        ).toBeNull();
+      });
+    }
+  );
 });

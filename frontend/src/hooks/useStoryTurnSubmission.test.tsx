@@ -3,14 +3,12 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FeedbackContextValue } from '@/contexts/feedbackCore';
-import { initGame, initializeStory, processGameInput } from '@/services/gameApi';
 import { ServiceError } from '@/services/serviceError';
+import { submitStoryTurn } from '@/services/storyTurnService';
 import { useStoryTurnSubmission } from './useStoryTurnSubmission';
 
-vi.mock('@/services/gameApi', () => ({
-  initGame: vi.fn(),
-  initializeStory: vi.fn(),
-  processGameInput: vi.fn(),
+vi.mock('@/services/storyTurnService', () => ({
+  submitStoryTurn: vi.fn(),
 }));
 
 const createFeedbackSpy = (): FeedbackContextValue => ({
@@ -38,9 +36,7 @@ const createActionSpies = () => ({
 
 describe('useStoryTurnSubmission', () => {
   beforeEach(() => {
-    vi.mocked(initGame).mockReset();
-    vi.mocked(initializeStory).mockReset();
-    vi.mocked(processGameInput).mockReset();
+    vi.mocked(submitStoryTurn).mockReset();
   });
 
   it('uses the backend returned dialogue and options when the session asks the user to reselect', async () => {
@@ -48,8 +44,9 @@ describe('useStoryTurnSubmission', () => {
     const actions = createActionSpies();
     const syncActiveSession = vi.fn();
     const setCharacterImage = vi.fn();
+    const persistReadOnlySnapshot = vi.fn();
 
-    vi.mocked(processGameInput).mockResolvedValueOnce({
+    vi.mocked(submitStoryTurn).mockResolvedValueOnce({
       threadId: 'thread-restored',
       sessionRestored: true,
       needReselectOption: true,
@@ -67,6 +64,7 @@ describe('useStoryTurnSubmission', () => {
       useStoryTurnSubmission({
         feedback,
         state: {
+          messages: [{ role: 'assistant', content: 'A tense pause fills the room.' }],
           loading: false,
           threadId: 'thread-old',
           currentOptions: [{ id: 1, text: 'Take the risk', type: 'action' }],
@@ -79,6 +77,7 @@ describe('useStoryTurnSubmission', () => {
         preferredCharacterId: 'character-1',
         setCharacterImage,
         syncActiveSession,
+        persistReadOnlySnapshot,
       })
     );
 
@@ -94,39 +93,28 @@ describe('useStoryTurnSubmission', () => {
     expect(feedback.warning).toHaveBeenCalledWith(
       'Game session restored. Please choose an option again.'
     );
+    expect(persistReadOnlySnapshot).not.toHaveBeenCalled();
   });
 
-  it('reinitializes a fresh opening state when story turn submission reports SESSION_EXPIRED', async () => {
+  it('drops the active session instead of switching to a fresh thread when the story session expires', async () => {
     const feedback = createFeedbackSpy();
     const actions = createActionSpies();
     const syncActiveSession = vi.fn();
     const setCharacterImage = vi.fn();
+    const persistReadOnlySnapshot = vi.fn();
 
-    vi.mocked(processGameInput).mockRejectedValueOnce(
+    vi.mocked(submitStoryTurn).mockRejectedValueOnce(
       new ServiceError({
         code: 'STORY_SESSION_EXPIRED',
         message: 'Story session expired.',
       })
     );
-    vi.mocked(initGame).mockResolvedValueOnce({
-      threadId: 'thread-new',
-      userId: null,
-      gameMode: 'solo',
-    });
-    vi.mocked(initializeStory).mockResolvedValueOnce({
-      sceneId: 'study_room',
-      sceneImageUrl: '/scene.png',
-      compositeImageUrl: null,
-      storyBackground: null,
-      characterDialogue: 'Fresh opening dialogue.',
-      playerOptions: [{ id: 2, text: 'Restart from here', type: 'action' }],
-      isGameFinished: false,
-    });
 
     const { result } = renderHook(() =>
       useStoryTurnSubmission({
         feedback,
         state: {
+          messages: [{ role: 'assistant', content: 'A tense pause fills the room.' }],
           loading: false,
           threadId: 'thread-old',
           currentOptions: [{ id: 1, text: 'Take the risk', type: 'action' }],
@@ -139,6 +127,7 @@ describe('useStoryTurnSubmission', () => {
         preferredCharacterId: 'character-1',
         setCharacterImage,
         syncActiveSession,
+        persistReadOnlySnapshot,
       })
     );
 
@@ -146,28 +135,21 @@ describe('useStoryTurnSubmission', () => {
       await result.current.selectOption(0);
     });
 
-    expect(initGame).toHaveBeenCalledWith({
-      gameMode: 'solo',
+    expect(submitStoryTurn).toHaveBeenCalledWith({
+      threadId: 'thread-old',
+      userInput: 'option:1',
       characterId: 'character-1',
     });
-    expect(initializeStory).toHaveBeenCalledWith(
-      'thread-new',
-      'character-1',
-      'study_room',
-      '/character.png'
-    );
-    expect(syncActiveSession).toHaveBeenCalledWith('thread-new');
-    expect(actions.replaceMessages).toHaveBeenCalledWith([
-      { role: 'assistant', content: 'Fresh opening dialogue.' },
+    expect(syncActiveSession).toHaveBeenCalledWith(null);
+    expect(persistReadOnlySnapshot).toHaveBeenCalledWith('thread-old', [
+      { role: 'assistant', content: 'A tense pause fills the room.' },
     ]);
-    expect(actions.setDialogue).toHaveBeenCalledWith('Fresh opening dialogue.');
-    expect(actions.setOptions).toHaveBeenCalledWith([
-      { id: 2, text: 'Restart from here', type: 'action' },
-    ]);
+    expect(actions.setDialogue).toHaveBeenCalledWith('A tense pause fills the room.');
+    expect(actions.setOptions).toHaveBeenLastCalledWith([]);
     expect(actions.setGameFinished).toHaveBeenCalledWith(false);
-    expect(feedback.success).toHaveBeenCalledWith(
-      'Game session restored with a fresh story state.'
-    );
+    expect(actions.rollbackPendingUserMessage).toHaveBeenCalledTimes(1);
+    expect(actions.replaceMessages).not.toHaveBeenCalled();
+    expect(feedback.error).toHaveBeenCalledWith('Story session expired. Please restart the story.');
   });
 
   it('drops the active session when the backend restore flow fails explicitly', async () => {
@@ -175,8 +157,9 @@ describe('useStoryTurnSubmission', () => {
     const actions = createActionSpies();
     const syncActiveSession = vi.fn();
     const setCharacterImage = vi.fn();
+    const persistReadOnlySnapshot = vi.fn();
 
-    vi.mocked(processGameInput).mockRejectedValueOnce(
+    vi.mocked(submitStoryTurn).mockRejectedValueOnce(
       new ServiceError({
         code: 'STORY_SESSION_RESTORE_FAILED',
         message: 'Story session recovery failed.',
@@ -187,6 +170,7 @@ describe('useStoryTurnSubmission', () => {
       useStoryTurnSubmission({
         feedback,
         state: {
+          messages: [{ role: 'assistant', content: 'A tense pause fills the room.' }],
           loading: false,
           threadId: 'thread-old',
           currentOptions: [{ id: 1, text: 'Take the risk', type: 'action' }],
@@ -199,6 +183,7 @@ describe('useStoryTurnSubmission', () => {
         preferredCharacterId: 'character-1',
         setCharacterImage,
         syncActiveSession,
+        persistReadOnlySnapshot,
       })
     );
 
@@ -207,6 +192,9 @@ describe('useStoryTurnSubmission', () => {
     });
 
     expect(syncActiveSession).toHaveBeenCalledWith(null);
+    expect(persistReadOnlySnapshot).toHaveBeenCalledWith('thread-old', [
+      { role: 'assistant', content: 'A tense pause fills the room.' },
+    ]);
     expect(actions.setOptions).toHaveBeenLastCalledWith([]);
     expect(feedback.error).toHaveBeenCalledWith(
       'Game session could not be recovered. Please restart the story.'

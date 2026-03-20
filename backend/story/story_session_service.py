@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 from story.exceptions import StorySessionExpiredError, StorySessionNotFoundError
 from story.story_asset_service import StoryAssetService
+from story.story_session_query_policy import StorySessionQueryPolicy
 from story.story_response_utils import attach_snapshot_metadata
 from utils.logger import get_logger
 
@@ -15,9 +16,16 @@ logger = get_logger(__name__)
 class StorySessionService:
     """Own story-session lifecycle reads and initialization."""
 
-    def __init__(self, *, session_manager, story_asset_service: StoryAssetService | None = None):
+    def __init__(
+        self,
+        *,
+        session_manager,
+        story_asset_service: StoryAssetService | None = None,
+        session_query_policy: StorySessionQueryPolicy | None = None,
+    ):
         self.session_manager = session_manager
         self.story_asset_service = story_asset_service or StoryAssetService()
+        self.session_query_policy = session_query_policy or StorySessionQueryPolicy()
 
     def init_game(
         self,
@@ -50,17 +58,32 @@ class StorySessionService:
             "status": "initialized",
         }
 
-    def list_recent_sessions(self, *, user_id: str, limit: int = 10) -> Dict[str, Any]:
+    def list_recent_sessions(
+        self,
+        *,
+        user_id: str,
+        limit: int = 10,
+        actor_user_id: str | None = None,
+    ) -> Dict[str, Any]:
+        authorized_user_id = self.session_query_policy.authorize_recent_sessions_query(
+            requested_user_id=user_id,
+            actor_user_id=actor_user_id,
+        )
         logger.info(
-            "story recent sessions requested: user_id=%s limit=%s",
-            user_id,
+            "story recent sessions requested: user_id=%s actor_user_id=%s policy_mode=%s limit=%s",
+            authorized_user_id,
+            actor_user_id,
+            self.session_query_policy.mode,
             limit,
         )
 
-        sessions = self.session_manager.list_story_sessions(user_id=user_id, limit=limit)
+        sessions = self.session_manager.list_story_sessions(user_id=authorized_user_id, limit=limit)
+        latest_snapshots = self.session_manager.get_latest_snapshots(
+            [session_record.thread_id for session_record in sessions]
+        )
         summaries = []
         for session_record in sessions:
-            latest_snapshot = self.session_manager.get_latest_snapshot(session_record.thread_id)
+            latest_snapshot = latest_snapshots.get(session_record.thread_id)
             snapshot_summary = latest_snapshot.to_summary() if latest_snapshot is not None else {}
             effective_status = self._resolve_effective_status(session_record)
             summaries.append(
@@ -86,7 +109,7 @@ class StorySessionService:
             )
 
         return {
-            "user_id": user_id,
+            "user_id": authorized_user_id,
             "sessions": summaries,
         }
 

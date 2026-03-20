@@ -1,12 +1,14 @@
 import AppRouter from './router';
-import { FeedbackProvider, GameFlowProvider } from '@/contexts';
+import { FeedbackProvider, GameFlowProvider, TrainingFlowProvider } from '@/contexts';
 import './App.css';
 
 function App() {
   return (
     <FeedbackProvider>
       <GameFlowProvider>
-        <AppRouter />
+        <TrainingFlowProvider>
+          <AppRouter />
+        </TrainingFlowProvider>
       </GameFlowProvider>
     </FeedbackProvider>
   );

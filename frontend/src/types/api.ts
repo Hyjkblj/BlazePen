@@ -63,12 +63,27 @@ export interface StoryResponsePayload extends GenericApiRecord {
   snapshot?: GenericApiRecord | null;
 }
 
-export interface StoryEndingPayload extends GenericApiRecord {
+export interface LegacyStoryEndingPayload extends GenericApiRecord {
   type?: string;
   description?: string;
   favorability?: number | string | null;
   trust?: number | string | null;
   hostility?: number | string | null;
+}
+
+export interface StoryEndingKeyStatesPayload extends GenericApiRecord {
+  favorability?: number | string | null;
+  trust?: number | string | null;
+  hostility?: number | string | null;
+  dependence?: number | string | null;
+}
+
+export interface StoryEndingSummaryItemPayload extends GenericApiRecord {
+  type?: string;
+  description?: string;
+  scene?: string | null;
+  event_title?: string | null;
+  key_states?: StoryEndingKeyStatesPayload | null;
 }
 
 export interface RemoveBackgroundResponse {
@@ -128,7 +143,55 @@ export interface StorySessionSnapshotResponse extends ProcessGameInputResponse {
 
 export interface CheckEndingResponse extends GenericApiRecord {
   has_ending?: boolean;
-  ending?: StoryEndingPayload | null;
+  ending?: LegacyStoryEndingPayload | null;
+}
+
+export interface StoryEndingSummaryResponse extends GenericApiRecord {
+  thread_id?: string;
+  status?: string;
+  round_no?: number;
+  has_ending?: boolean;
+  ending?: StoryEndingSummaryItemPayload | null;
+  updated_at?: string;
+  expires_at?: string;
+}
+
+export interface StoryHistoryUserActionPayload extends GenericApiRecord {
+  kind?: string;
+  summary?: string;
+  raw_input?: string | null;
+  option_index?: number | null;
+  option_text?: string | null;
+  option_type?: string | null;
+}
+
+export interface StoryHistoryStateSummaryPayload extends GenericApiRecord {
+  changes?: Record<string, unknown> | null;
+  current_states?: Record<string, unknown> | null;
+}
+
+export interface StoryHistoryItemPayload extends GenericApiRecord {
+  round_no?: number;
+  status?: string;
+  scene?: string | null;
+  event_title?: string | null;
+  character_dialogue?: string | null;
+  user_action?: StoryHistoryUserActionPayload | null;
+  state_summary?: StoryHistoryStateSummaryPayload | null;
+  is_event_finished?: boolean;
+  is_game_finished?: boolean;
+  created_at?: string | null;
+}
+
+export interface StorySessionHistoryResponse extends GenericApiRecord {
+  thread_id?: string;
+  status?: string;
+  current_round_no?: number;
+  latest_scene?: string | null;
+  updated_at?: string | null;
+  expires_at?: string | null;
+  history?: StoryHistoryItemPayload[] | null;
+  latest_snapshot?: GenericApiRecord | null;
 }
 
 export interface PresetVoiceItem {
@@ -174,4 +237,190 @@ export interface SetVoiceConfigRequest {
   preset_voice_id?: string | null;
   voice_design_description?: string | null;
   voice_params?: Record<string, unknown>;
+}
+
+export interface TrainingPlayerProfileApi {
+  name?: string | null;
+  gender?: string | null;
+  identity?: string | null;
+  age?: number | string | null;
+}
+
+export interface TrainingScenarioOptionApiResponse extends GenericApiRecord {
+  id?: string;
+  label?: string;
+  impact_hint?: string | null;
+}
+
+export interface TrainingScenarioRecommendationApiResponse extends GenericApiRecord {
+  mode?: string;
+  rank_score?: number | string | null;
+  weakness_score?: number | string | null;
+  state_boost_score?: number | string | null;
+  risk_boost_score?: number | string | null;
+  phase_boost_score?: number | string | null;
+  reasons?: string[] | null;
+  rank?: number | string | null;
+}
+
+export interface TrainingDecisionCandidateApiResponse extends GenericApiRecord {
+  scenario_id?: string;
+  title?: string | null;
+  rank?: number | string | null;
+  rank_score?: number | string | null;
+  is_selected?: boolean;
+  is_recommended?: boolean;
+}
+
+export interface TrainingBranchTransitionApiResponse extends GenericApiRecord {
+  source_scenario_id?: string;
+  target_scenario_id?: string;
+  transition_type?: string | null;
+  reason?: string | null;
+  triggered_flags?: string[] | null;
+  matched_rule?: Record<string, unknown> | null;
+}
+
+export interface TrainingRoundDecisionContextApiResponse extends GenericApiRecord {
+  mode?: string;
+  selection_source?: string | null;
+  selected_scenario_id?: string;
+  recommended_scenario_id?: string | null;
+  candidate_pool?: TrainingDecisionCandidateApiResponse[] | null;
+  selected_recommendation?: TrainingScenarioRecommendationApiResponse | null;
+  recommended_recommendation?: TrainingScenarioRecommendationApiResponse | null;
+  selected_branch_transition?: TrainingBranchTransitionApiResponse | null;
+  recommended_branch_transition?: TrainingBranchTransitionApiResponse | null;
+}
+
+export interface TrainingScenarioApiResponse extends GenericApiRecord {
+  id?: string;
+  title?: string | null;
+  era_date?: string | null;
+  location?: string | null;
+  brief?: string | null;
+  mission?: string | null;
+  decision_focus?: string | null;
+  target_skills?: string[] | null;
+  risk_tags?: string[] | null;
+  briefing?: string | null;
+  options?: TrainingScenarioOptionApiResponse[] | null;
+  completion_hint?: string | null;
+  recommendation?: TrainingScenarioRecommendationApiResponse | null;
+}
+
+export interface TrainingEvaluationApiResponse extends GenericApiRecord {
+  llm_model?: string | null;
+  confidence?: number | string | null;
+  risk_flags?: string[] | null;
+  skill_delta?: Record<string, unknown> | null;
+  s_delta?: Record<string, unknown> | null;
+  evidence?: string[] | null;
+  skill_scores_preview?: Record<string, unknown> | null;
+  eval_mode?: string | null;
+  fallback_reason?: string | null;
+  calibration?: Record<string, unknown> | null;
+  llm_raw_text?: string | null;
+}
+
+export interface TrainingRuntimeFlagsApiResponse extends GenericApiRecord {
+  panic_triggered?: boolean;
+  source_exposed?: boolean;
+  editor_locked?: boolean;
+  high_risk_path?: boolean;
+}
+
+export interface TrainingRuntimeStateBarApiResponse extends GenericApiRecord {
+  editor_trust?: number | string | null;
+  public_stability?: number | string | null;
+  source_safety?: number | string | null;
+}
+
+export interface TrainingConsequenceEventApiResponse extends GenericApiRecord {
+  event_type?: string;
+  label?: string | null;
+  summary?: string | null;
+  severity?: string | null;
+  round_no?: number | string | null;
+  related_flag?: string | null;
+  state_bar?: TrainingRuntimeStateBarApiResponse | null;
+  payload?: Record<string, unknown> | null;
+}
+
+export interface TrainingRuntimeStateApiResponse extends GenericApiRecord {
+  current_round_no?: number | string | null;
+  current_scene_id?: string | null;
+  k_state?: Record<string, unknown> | null;
+  s_state?: Record<string, unknown> | null;
+  runtime_flags?: TrainingRuntimeFlagsApiResponse | null;
+  state_bar?: TrainingRuntimeStateBarApiResponse | null;
+  player_profile?: TrainingPlayerProfileApi | null;
+}
+
+export interface TrainingInitRequest extends GenericApiRecord {
+  user_id: string;
+  character_id?: number;
+  training_mode?: string;
+  player_profile?: TrainingPlayerProfileApi | null;
+}
+
+export interface TrainingInitResponse extends GenericApiRecord {
+  session_id?: string;
+  status?: string | null;
+  round_no?: number | string | null;
+  k_state?: Record<string, unknown> | null;
+  s_state?: Record<string, unknown> | null;
+  player_profile?: TrainingPlayerProfileApi | null;
+  runtime_state?: TrainingRuntimeStateApiResponse | null;
+  next_scenario?: TrainingScenarioApiResponse | null;
+  scenario_candidates?: TrainingScenarioApiResponse[] | null;
+}
+
+export interface TrainingScenarioNextRequest extends GenericApiRecord {
+  session_id: string;
+}
+
+export interface TrainingScenarioNextResponse extends GenericApiRecord {
+  session_id?: string;
+  status?: string | null;
+  round_no?: number | string | null;
+  scenario?: TrainingScenarioApiResponse | null;
+  scenario_candidates?: TrainingScenarioApiResponse[] | null;
+  k_state?: Record<string, unknown> | null;
+  s_state?: Record<string, unknown> | null;
+  player_profile?: TrainingPlayerProfileApi | null;
+  runtime_state?: TrainingRuntimeStateApiResponse | null;
+  ending?: Record<string, unknown> | null;
+}
+
+export interface TrainingRoundSubmitRequest extends GenericApiRecord {
+  session_id: string;
+  scenario_id: string;
+  user_input: string;
+  selected_option?: string | null;
+}
+
+export interface TrainingRoundSubmitResponse extends GenericApiRecord {
+  session_id?: string;
+  round_no?: number | string | null;
+  evaluation?: TrainingEvaluationApiResponse | null;
+  k_state?: Record<string, unknown> | null;
+  s_state?: Record<string, unknown> | null;
+  player_profile?: TrainingPlayerProfileApi | null;
+  runtime_state?: TrainingRuntimeStateApiResponse | null;
+  consequence_events?: TrainingConsequenceEventApiResponse[] | null;
+  is_completed?: boolean;
+  ending?: Record<string, unknown> | null;
+  decision_context?: TrainingRoundDecisionContextApiResponse | null;
+}
+
+export interface TrainingProgressResponse extends GenericApiRecord {
+  session_id?: string;
+  status?: string | null;
+  round_no?: number | string | null;
+  total_rounds?: number | string | null;
+  k_state?: Record<string, unknown> | null;
+  s_state?: Record<string, unknown> | null;
+  player_profile?: TrainingPlayerProfileApi | null;
+  runtime_state?: TrainingRuntimeStateApiResponse | null;
 }

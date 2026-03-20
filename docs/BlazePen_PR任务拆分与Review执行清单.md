@@ -1,8 +1,9 @@
 # BlazePen PR 任务拆分与 Review 执行清单
 
-- 文档版本: `v1.1`
-- 更新日期: `2026-03-19`
+- 文档版本: `v1.2`
+- 更新日期: `2026-03-20`
 - 关联主文档: `docs/BlazePen_前后端架构分析与开发规划.md`
+- 状态评估基线: `0e7eda8 feat: split story query services and recovery UI`
 - 使用目的: 将架构规划落成可执行的 PR 粒度、统一 review 口径与交付模板。
 
 ---
@@ -70,30 +71,32 @@
 3. 一个任务包如果同时涉及前后端，则拆成两个配对 PR
 4. 只有纯单侧任务，才允许没有配对 PR
 
+以下状态判断以 `0e7eda8` 和 `docs/reviews/2026-03-20_frontend_backend_split_review.txt` 为主，并额外计入当前工作区中 recent sessions latest snapshot 批量读取收尾改动。
+
 ### 3.2 后端线
 
-| 执行 PR | 对应任务包 | 任务名 | 核心目标 | 依赖 |
-| --- | --- | --- | --- | --- |
-| PR-BE-01 | PR-01 | 基线治理与命名规范（后端） | 冻结术语、边界、路由归属、review 口径 | 无 |
-| PR-BE-02 | PR-02 | API 契约统一与错误模型标准化（后端） | 统一 DTO、错误码、响应 envelope、traceId | PR-BE-01 |
-| PR-BE-03 | PR-03 | 故事会话持久化与幂等化 | 让 story 会话可恢复、可审计、可幂等 | PR-BE-02 |
-| PR-BE-04 | PR-04 | 故事域服务拆分与异步媒体流水线 | 清理巨型 service，拆分 story/media 职责 | PR-BE-03 |
-| PR-BE-05 | PR-06 | 故事恢复、历史与结局后端支持 | 提供恢复、历史、结局所需稳定接口 | PR-BE-04, PR-FE-04 |
-| PR-BE-06 | PR-07 / PR-08 | 训练前端接入支撑与报告 DTO 稳定化 | 为训练前端、训练报告、训练诊断提供稳定契约 | PR-BE-02 |
-| PR-BE-07 | PR-09 | 后端观测性、发布治理与回归体系 | 结构化日志、trace、迁移规范、集成测试 | PR-BE-05, PR-BE-06 |
+| 执行 PR | 对应任务包 | 任务名 | 当前状态 | 已落地进展 | 当前主要风险/未完成项 | 下一步 | 依赖 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PR-BE-01 | PR-01 | 基线治理与命名规范（后端） | 已完成 | 术语、边界、review 口径已进入文档基线 | 后续新增 story/training 路由仍可能出现边界回退 | 继续作为 review 守线，不再扩范围 | 无 |
+| PR-BE-02 | PR-02 | API 契约统一与错误模型标准化（后端） | 已完成 | DTO、错误码、响应 envelope、traceId 基线已建立 | 新 query route 仍需防止回退到 message 文本承载业务语义 | 新接口继续沿用 DTO/error code 规范，不再引入页面兼容字段 | PR-BE-01 |
+| PR-BE-03 | PR-03 | 故事会话持久化与幂等化 | 已完成 | story session、snapshot、restore、幂等提交已成为故事主线基础设施 | 查询侧与 policy 侧还在 `PR-BE-05` 收尾 | 只补 query/read-model/test，不回头扩大会话事实源 | PR-BE-02 |
+| PR-BE-04 | PR-04 | 故事域服务拆分与异步媒体流水线 | 主体已完成，收尾观察中 | `GameService` 已不再承担会话、回合、结局和媒体合同全部职责；`StorySessionService`、`StoryTurnService`、`StoryEndingService`、`StoryHistoryService` 已形成主边界；结局判断已回到持久化事实 | 后续 query/read-model 能力存在被重新倒灌到巨型 service 的风险；媒体异步链路仍需持续观察 | 保持 story query/read model 继续落在 `story/*service` 与 `repository-store` 边界 | PR-BE-03 |
+| PR-BE-05 | PR-06 | 故事恢复、历史与结局后端支持 | 进行中 | `/sessions`、`/sessions/{thread_id}/history`、`/sessions/{thread_id}/ending` 已落地；恢复/查询 smoke 已补；当前工作区正在消除 recent sessions latest snapshot N+1 | `/api/v1/game/sessions?user_id=` ownership/policy 未明确；recent sessions read model 仍需批量 latest snapshot；需与前端收口 transcript 和 server history 语义 | 完成 policy 决策、批量查询优化、route/service/repository tests，再推进前端全量接入 | PR-BE-04, PR-FE-04 |
+| PR-BE-06 | PR-07 / PR-08 | 训练前端接入支撑与报告 DTO 稳定化 | 未开始 | 无 | story 主线 query/recovery 未完全收口前，不宜并行扩训练契约 | 待 `PR-BE-05` 稳定后启动 | PR-BE-02 |
+| PR-BE-07 | PR-09 | 后端观测性、发布治理与回归体系 | 未开始 | 无 | 结构化日志、trace、迁移规范、集成测试仍未系统收口 | 依赖 `PR-BE-05`、`PR-BE-06` 后统一推进 | PR-BE-05, PR-BE-06 |
 
 ### 3.3 前端线
 
-| 执行 PR | 对应任务包 | 任务名 | 核心目标 | 依赖 |
-| --- | --- | --- | --- | --- |
-| PR-FE-01 | PR-01 | 基线治理与命名规范（前端） | 冻结 `pages / flows / hooks / services / storage / contexts` 边界与术语 | 无 |
-| PR-FE-02 | PR-02 | 前端契约消费标准化 | 收敛 normalizer、serviceError、snake_case 到 camelCase 兼容逻辑 | PR-FE-01, PR-BE-02 |
-| PR-FE-03 | 新增 | 前端解耦合与职责收敛 | 拆分巨型 flow/hook/context，避免双事实源和跨模式复用 | PR-FE-02 |
-| PR-FE-04 | PR-05 | 前端会话状态重构与服务端快照接管 | 让 story 页面以服务端快照驱动恢复、刷新和重连 | PR-BE-03, PR-FE-03 |
-| PR-FE-05 | PR-06 | 故事主线恢复、历史与结局产品完善 | 完成 story 主线的恢复入口、历史查看、结局呈现与异常提示 | PR-BE-05, PR-FE-04 |
-| PR-FE-06 | PR-07 | 训练主线前端 MVP 接入 | 打通训练入口、训练流程页和提交链路 | PR-BE-06, PR-FE-03 |
-| PR-FE-07 | PR-08 | 训练报告与诊断产品化 | 完成训练进度、报告、诊断的产品层闭环 | PR-BE-06, PR-FE-06 |
-| PR-FE-08 | PR-09 | 前端观测性与回归体系 | 埋点、错误边界、E2E 冒烟、关键主路径回归 | PR-FE-05, PR-FE-07, PR-BE-07 |
+| 执行 PR | 对应任务包 | 任务名 | 当前状态 | 已落地进展 | 当前主要风险/未完成项 | 下一步 | 依赖 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PR-FE-01 | PR-01 | 基线治理与命名规范（前端） | 已完成 | `pages / flows / hooks / services / storage / contexts` 边界已进入 review 基线 | 后续开发仍可能在页面层引入跨层兼容逻辑 | 继续作为 review 守线 | 无 |
+| PR-FE-02 | PR-02 | 前端契约消费标准化 | 已完成主体 | normalizer、serviceError、snake_case 到 camelCase 的收敛方向已建立 | story read model 仍有 legacy contract 残留，尤其是 ending query 仍未完全切到 canonical route | 新增页面禁止直接兼容脏字段；继续把迁移留在 `services/normalizer` | PR-FE-01, PR-BE-02 |
+| PR-FE-03 | 新增 | 前端解耦合与职责收敛 | 主体已落地，但不能视为完全收口 | story 运行时已拆出 `useStoryEnding`、`useStorySessionTranscript`、`useGameInit`、`useStorySessionRestore`、`useStoryTurnSubmission` 等职责单元；角色选择链路也已继续细分 | `useStoryTurnSubmission` 仍持有 `initGame -> initializeStory` 恢复编排，说明 hook/service 边界尚未完全稳定 | 先把恢复策略统一下沉为结构化契约或专门 recovery service，再判定本 PR 收口 | PR-FE-02 |
+| PR-FE-04 | PR-05 | 前端会话状态重构与服务端快照接管 | 进行中 | 服务端快照恢复、active-session 与 resume-save 分层、本地只读兜底已进入代码事实 | expired/not-found 等恢复决策仍有一部分留在 hook fallback，服务端 snapshot 还不是唯一恢复事实源 | 改成 contract-driven recovery，页面和 hook 只消费结构化恢复结果 | PR-BE-03, PR-FE-03 |
+| PR-FE-05 | PR-06 | 故事主线恢复、历史与结局产品完善 | 进行中 | transcript dialog 和 ending dialog 已有产品容器，恢复入口已开始产品化 | `frontend/src/services/gameApi.ts` 仍调用 legacy `/v1/game/check-ending/{threadId}`；前端还未真正消费 `/sessions/{thread_id}/history`；当前 transcript 只代表当前设备已加载消息 | 切换 canonical ending/history route，明确 transcript 与 history 语义，并补页面级回归 | PR-BE-05, PR-FE-04 |
+| PR-FE-06 | PR-07 | 训练主线前端 MVP 接入 | 未开始 | 无 | story 主线会话、恢复、ending 未收口前不宜扩大范围 | 待 `PR-FE-04`、`PR-FE-05` 稳定后启动 | PR-BE-06, PR-FE-03 |
+| PR-FE-07 | PR-08 | 训练报告与诊断产品化 | 未开始 | 无 | 依赖训练主线前端 MVP 和稳定 DTO | 待 `PR-FE-06` 完成后启动 | PR-BE-06, PR-FE-06 |
+| PR-FE-08 | PR-09 | 前端观测性与回归体系 | 未开始 | 无 | story/training 主路径尚未全部稳定，不适合先做最终收口 | 依赖 `PR-FE-05`、`PR-FE-07`、`PR-BE-07` | PR-FE-05, PR-FE-07, PR-BE-07 |
 
 ### 3.4 前端新增解耦合任务说明
 
@@ -107,6 +110,13 @@
 4. 页面不再直接处理 restore/reselect/dirty field 兼容逻辑，统一下沉到 `services` 和 `normalizer`。
 5. `storage` 只保留 UX 缓存职责，不再被 flow/hook 当成 live session 的事实源。
 6. 巨型 hook、巨型流程脚本、上下文直出 storage API 的实现必须在这一阶段优先拆掉。
+
+### 3.5 当前必须强调的问题（2026-03-20）
+
+1. 不得把 `PR-FE-03` 标记为完成，除非 `frontend/src/hooks/useStoryTurnSubmission.ts` 不再自编排 `initGame -> initializeStory` 恢复链路。
+2. 不得把 `PR-FE-05` 标记为完成，除非 `frontend/src/services/gameApi.ts` 完成从 `/v1/game/check-ending/{threadId}` 到 `/v1/game/sessions/{thread_id}/ending` 的迁移，并由页面消费 canonical ending DTO。
+3. 不得把 `PR-BE-05` 标记为完成，除非 recent sessions read model 去掉 latest snapshot 的 N+1 读取，并明确 `/api/v1/game/sessions?user_id=` 的 ownership/policy。
+4. transcript dialog 当前只代表“当前设备已加载消息”，不能在 PR 说明、review 结论或产品描述中表述成“服务端完整历史”。
 
 ---
 

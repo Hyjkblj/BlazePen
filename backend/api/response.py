@@ -114,10 +114,20 @@ def unauthorized_response(message: str = "unauthorized") -> JSONResponse:
     return error_response(code=401, message=message, error_code="UNAUTHORIZED")
 
 
-def forbidden_response(message: str = "forbidden") -> JSONResponse:
+def forbidden_response(
+    message: str = "forbidden",
+    *,
+    error_code: str = "FORBIDDEN",
+    details: Optional[Dict[str, Any]] = None,
+) -> JSONResponse:
     """Return a 403 JSON response."""
 
-    return error_response(code=403, message=message, error_code="FORBIDDEN")
+    return error_response(
+        code=403,
+        message=message,
+        error_code=error_code,
+        details=details,
+    )
 
 
 def server_error_response(message: str = "internal server error") -> JSONResponse:

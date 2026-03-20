@@ -133,6 +133,9 @@ class StoryStoreProtocol(Protocol):
     def get_latest_story_snapshot(self, thread_id: str) -> StorySnapshotRecord | None:
         ...
 
+    def get_latest_story_snapshots(self, thread_ids: List[str]) -> Dict[str, StorySnapshotRecord]:
+        ...
+
     def save_story_round_artifacts(
         self,
         *,
@@ -232,6 +235,14 @@ class DatabaseStoryStore:
         return self._to_story_snapshot_record(
             self.storage_backend.get_latest_story_snapshot(thread_id)
         )
+
+    def get_latest_story_snapshots(self, thread_ids: List[str]) -> Dict[str, StorySnapshotRecord]:
+        records: Dict[str, StorySnapshotRecord] = {}
+        for row in self.storage_backend.get_latest_story_snapshots(thread_ids):
+            record = self._to_story_snapshot_record(row)
+            if record is not None:
+                records[record.thread_id] = record
+        return records
 
     def save_story_round_artifacts(
         self,

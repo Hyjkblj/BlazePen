@@ -1,8 +1,8 @@
 # BlazePen 前后端架构分析与开发规划
 
-- 文档版本: `v1.0`
-- 更新日期: `2026-03-19`
-- 仓库基线: `57aa6d4 Refactor training policies and harden game session flows`
+- 文档版本: `v1.1`
+- 更新日期: `2026-03-20`
+- 仓库基线: `0e7eda8 feat: split story query services and recovery UI`
 - 适用范围: `frontend/`、`backend/`
 - 文档目的: 基于当前代码事实，输出一份可执行、可评审、可分任务推进的前后端开发规划文档。
 
@@ -20,6 +20,29 @@
 一句话判断:
 
 > 这是一个“前端已产品化的故事游戏壳 + 后端已工程化的训练引擎核”的组合项目。最佳实践不是继续让两条线各自生长，而是先把故事主线补齐到训练主线的工程质量，再把训练主线产品化接入前端。
+
+### 1.1 当前推进快照（2026-03-20）
+
+#### 后端
+
+1. `PR-BE-01 ~ PR-BE-03` 已完成基础治理、契约统一与 story 会话持久化基线。
+2. `PR-BE-04` 主体已落地：`GameService` 已不再同时承担会话、回合、结局和媒体合同；`StorySessionService`、`StoryTurnService`、`StoryEndingService`、`StoryHistoryService` 已形成主边界。
+3. 之前“结局判断依赖运行时会话”的风险已明显收敛，结局查询已经基于持久化事实输出，不应再把进程内会话视为权威状态。
+4. `PR-BE-05` 已进入收尾阶段：session list、history、ending 查询接口已存在；当前工作区正在补 recent sessions 的 latest snapshot 批量读取，准备关闭查询侧 N+1。
+
+#### 前端
+
+1. `PR-FE-03` 主体已落地：story 运行时已拆出 `useStoryEnding`、`useStorySessionTranscript`、`useGameInit`、`useStorySessionRestore`、`useStoryTurnSubmission` 等职责单元，角色选择链路也已继续细分。
+2. `PR-FE-04` 部分落地：服务端快照恢复、active-session 与 resume-save 分层、本地只读兜底已进入代码事实。
+3. `PR-FE-05` 部分落地：transcript dialog 和 ending dialog 已有产品形态，但查询契约和恢复模型尚未完全收口。
+4. 前端当前仍不能宣布“故事会话恢复链路已完成解耦”，因为恢复与结局消费仍保留 legacy 和客户端 fallback 双轨。
+
+#### 当前必须强调的问题
+
+1. `frontend/src/services/gameApi.ts:270` 仍调用 legacy `/v1/game/check-ending/{threadId}`。这会让 `PR-FE-05` 的结局产品层继续依赖兼容接口，而不是消费 `PR-BE-05` 已提供的 canonical ending summary。
+2. `frontend/src/hooks/useStoryTurnSubmission.ts:117` 仍在 hook 内编排 `initGame -> initializeStory` 恢复流程。这说明 `PR-FE-04` 还没有把恢复模型收口成“前端只消费结构化恢复结果”的形态，`hooks` 仍然握有一部分服务端应该裁决的恢复策略。
+3. `/api/v1/game/sessions?user_id=` 的 ownership/policy 仍未明确。只要这一点不清晰，`PR-BE-05` 的 query route 就还不是可长期承诺的稳定外部契约。
+4. transcript 弹窗当前展示的是“当前设备已加载消息”，不等同于服务端完整 history。只要前端还没有接入 canonical history route，就不能把该能力表述成“历史回放已完成”。
 
 ---
 
@@ -432,6 +455,12 @@ flowchart LR
 
 把故事后端从“巨型流程服务”拆为稳定的领域服务和媒体服务，减少热路径耦合。
 
+### 当前进度（2026-03-20）
+
+1. 后端主体已落地，`GameService` 职责已明显收缩，story session/turn/ending/history 服务已拆出。
+2. 结局权威事实已回到持久化层，这是当前后端架构质量最关键的正向变化之一。
+3. 本任务仍需持续守住边界：后续 query/read-model 增补不得把 story 读取职责重新倒灌回 `GameService` 或其他聚合 service。
+
 ### 前端任务
 
 1. API 调用模块按领域拆分为:
@@ -481,6 +510,12 @@ flowchart LR
 
 让前端状态从“流程脚本驱动”切换到“服务端快照驱动”，降低恢复复杂度。
 
+### 当前进度（2026-03-20）
+
+1. 前端已开始按“初始化 / 恢复 / transcript / ending / submit”拆分 hook，服务端快照恢复也已进入主路径。
+2. 但恢复策略仍有一部分停留在 `useStoryTurnSubmission` 内部，这说明快照接管尚未真正成为单一事实源。
+3. 因此本任务当前只能判定为“主体已落地，收口未完成”；只要 hook 还在自编排重建会话，就不能视为彻底完成。
+
 ### 前端任务
 
 1. 将当前游戏状态拆成三层:
@@ -526,6 +561,12 @@ flowchart LR
 ### 目标
 
 在架构稳定后补齐故事主线产品层能力，使其具备完整用户体验闭环。
+
+### 当前进度（2026-03-20）
+
+1. 后端已提供 recent sessions、history、ending 查询能力，前端也已有 transcript 和 ending 的产品容器。
+2. 当前主要缺口不在 UI，而在契约切换：前端 ending 仍走 legacy route，history 仍未真正消费服务端 read model。
+3. 因此本任务不能因为“弹窗已出现”就判定完成，必须以 canonical history/ending 契约接入和异常路径回归为完成标准。
 
 ### 前端任务
 
@@ -707,17 +748,32 @@ flowchart LR
 
 ## 6. 推荐 PR 切分方式
 
-后续建议严格按以下方式切分提交和 review:
+后续建议继续按 FE / BE 双轨执行，并在状态判断上明确“已完成主体”和“真正收口完成”的区别。
 
-1. `PR-01`: 任务0 基线治理与命名规范
-2. `PR-02`: 任务1 API 契约统一与错误模型标准化
-3. `PR-03`: 任务2 故事会话持久化与幂等化
-4. `PR-04`: 任务3 故事域服务拆分与异步媒体流水线
-5. `PR-05`: 任务4 前端会话状态重构与服务端快照接管
-6. `PR-06`: 任务5 故事主线恢复、历史与结局产品完善
-7. `PR-07`: 任务6 训练主线前端 MVP 接入
-8. `PR-08`: 任务7 训练报告与诊断产品化
-9. `PR-09`: 任务8 观测性、发布治理与回归体系
+### 6.1 后端执行线（当前状态）
+
+1. `PR-BE-01`: 已完成，后续只作为术语和边界的 review 守线。
+2. `PR-BE-02`: 已完成，DTO、错误模型、响应 envelope 和 trace 基线已建立；后续新增 route 不得回退到 message 驱动语义。
+3. `PR-BE-03`: 已完成，story session/snapshot/idempotency 已成为后续恢复链路基础。
+4. `PR-BE-04`: 主体已完成，`GameService` 拆分已经进入稳定期；后续 story query/read-model 能力继续落在 `story/*service` 与 `repository-store` 边界，不回灌巨型 service。
+5. `PR-BE-05`: 进行中，session/history/ending route 已落地；当前重点是 ownership/policy、recent sessions batch snapshot read、前端消费语义收口。
+6. `PR-BE-06 ~ PR-BE-07`: 暂不建议提前启动，先完成 story 主线 query/recovery closure。
+
+### 6.2 前端执行线（当前状态）
+
+1. `PR-FE-01`: 已完成，后续只守 `pages / flows / hooks / services / storage / contexts` 边界。
+2. `PR-FE-02`: 已完成主体，但 story read model 仍有 legacy contract 残留，新增页面不得继续在页面层兼容脏字段。
+3. `PR-FE-03`: 主体已落地，但不能视为完全收口；只要 `useStoryTurnSubmission` 仍自编排恢复，本 PR 就仍有尾项。
+4. `PR-FE-04`: 进行中；服务端快照已进入恢复链路，但仍需把 expired/not-found 等恢复决策下沉为统一契约。
+5. `PR-FE-05`: 进行中；产品 UI 已有，但必须完成 canonical ending/history 接入，才能宣告 story 恢复与结局产品化完成。
+6. `PR-FE-06 ~ PR-FE-08`: 暂不建议在 story 会话、恢复、ending 未收口前扩大范围。
+
+### 6.3 当前不应误判为“已完成”的事项
+
+1. `PR-FE-03` 不能因为 hook 已拆分就判定完成，前提是恢复策略必须退出页面和 hook 的自编排。
+2. `PR-FE-04` 不能因为已经能从 snapshot 或 localStorage 恢复就判定完成，前提是服务端快照成为单一事实源。
+3. `PR-FE-05` 不能因为已经有 transcript/ending dialog 就判定完成，前提是页面切到 canonical ending/history 契约。
+4. `PR-BE-05` 不能因为查询 route 已开放就判定完成，前提是 ownership/policy、批量查询性能和前端消费语义都已收口。
 
 不建议的提交方式:
 
@@ -755,13 +811,19 @@ flowchart LR
 
 ## 8. 当前阶段的明确建议
 
-在当前基线下，最合理的执行顺序是:
+在 `2026-03-20` 这个基线下，最合理的下一步不是“继续扩故事功能”，而是“把 `PR-BE-05 / PR-FE-04 / PR-FE-05` 收口到同一套契约和恢复模型”。
 
-1. 先做 `任务0` 和 `任务1`，冻结命名、边界和契约。
-2. 再做 `任务2` 和 `任务3`，把故事运行时补齐到可恢复、可维护状态。
-3. 然后做 `任务4` 和 `任务5`，让前端真正从服务端状态驱动。
-4. 最后推进 `任务6` 和 `任务7`，把训练主线产品化。
-5. 用 `任务8` 收口，形成发布、观测和回归体系。
+1. 后端优先收尾 `PR-BE-05`：
+   - 明确 `/api/v1/game/sessions?user_id=` 的 ownership/policy。
+   - 完成 recent sessions latest snapshot 批量读取和对应测试，关闭 query-side N+1。
+   - 固化 history/ending read model，避免后续前端迁移时再次改字段语义。
+2. 前端优先收尾 `PR-FE-04 / PR-FE-05`：
+   - 把 ending summary 从 legacy `/v1/game/check-ending/{threadId}` 迁移到 canonical `/v1/game/sessions/{thread_id}/ending`。
+   - 让恢复链路只消费结构化恢复结果，不再在 hook 中自编排 `initGame -> initializeStory`。
+   - 明确 transcript 与 server history 的产品语义，避免把“本地已加载消息”误表述成“完整历史”。
+3. `PR-FE-03` 只在上述两点完成后才可宣告收口；否则当前“hook 已拆分”的状态仍只是结构改善，不是恢复模型完成。
+4. 在 story 主线恢复、历史、结局的契约未稳定前，不建议扩大 `PR-FE-06 / PR-BE-06` 的训练前端接入范围。
+5. 每次配对 PR 合并前，必须继续按前端和后端分开 review，并把结论回写到 `docs/reviews/`，防止状态判断再次漂移。
 
 当前最不建议做的事情:
 
@@ -783,6 +845,10 @@ flowchart LR
 - `frontend/src/flows/useFirstMeetingFlow.ts`
 - `frontend/src/flows/useGameSessionFlow.ts`
 - `frontend/src/hooks/useGameInit.ts`
+- `frontend/src/hooks/useStorySessionRestore.ts`
+- `frontend/src/hooks/useStoryTurnSubmission.ts`
+- `frontend/src/hooks/useStoryEnding.ts`
+- `frontend/src/hooks/useStorySessionTranscript.ts`
 - `frontend/src/hooks/useGameState.ts`
 - `frontend/src/services/characterApi.ts`
 - `frontend/src/services/gameApi.ts`
@@ -797,6 +863,10 @@ flowchart LR
 - `backend/api/routers/training.py`
 - `backend/api/services/game_session.py`
 - `backend/api/services/game_service.py`
+- `backend/story/story_session_service.py`
+- `backend/story/story_turn_service.py`
+- `backend/story/story_ending_service.py`
+- `backend/story/story_history_service.py`
 - `backend/api/services/training_service.py`
 - `backend/game/story_engine.py`
 

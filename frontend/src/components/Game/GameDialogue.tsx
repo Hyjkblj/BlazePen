@@ -4,6 +4,7 @@ export interface GameDialogueProps {
   currentDialogue: string;
   currentOptions: PlayerOption[];
   loading: boolean;
+  optionsDisabledReason: string | null;
   onOptionSelect: (index: number) => void;
 }
 
@@ -11,6 +12,7 @@ export default function GameDialogue({
   currentDialogue,
   currentOptions,
   loading,
+  optionsDisabledReason,
   onOptionSelect,
 }: GameDialogueProps) {
   return (
@@ -21,6 +23,9 @@ export default function GameDialogue({
           <div className="dialogue-content">{currentDialogue}</div>
         </div>
       )}
+      {optionsDisabledReason ? (
+        <p className="game-dialogue-status">{optionsDisabledReason}</p>
+      ) : null}
       {currentOptions.length > 0 && (
         <div className="game-options-container">
           {currentOptions.map((option, index) => (
@@ -29,7 +34,7 @@ export default function GameDialogue({
               type="button"
               className="game-option-button"
               onClick={() => onOptionSelect(index)}
-              disabled={loading}
+              disabled={loading || Boolean(optionsDisabledReason)}
             >
               {option.text}
             </button>

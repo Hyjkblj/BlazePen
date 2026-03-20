@@ -239,6 +239,7 @@ class StoryTurnService:
         ) or {}
         dialogue_round_to_persist = None
         dialogue_state_changes = {}
+        selected_option_payload = None
 
         if option_id is not None:
             if not session.current_dialogue_round:
@@ -253,6 +254,13 @@ class StoryTurnService:
                 )
 
             selected_option = options[option_id]
+            if isinstance(selected_option, dict):
+                selected_option_payload = {
+                    "id": selected_option.get("id"),
+                    "text": selected_option.get("text"),
+                    "type": selected_option.get("type"),
+                    "state_changes": dict(selected_option.get("state_changes") or {}),
+                }
             session.story_engine.process_player_choice(
                 character_id=character_id,
                 choice=selected_option,
@@ -409,14 +417,18 @@ class StoryTurnService:
         status = "completed" if response_data.get("is_game_finished") else "in_progress"
 
         try:
+            request_payload = {
+                "thread_id": thread_id,
+                "user_input": user_input,
+                "option_id": option_id,
+            }
+            if selected_option_payload is not None:
+                request_payload["selected_option"] = selected_option_payload
+
             snapshot_record = self.session_manager.save_story_round(
                 session=session,
                 round_no=round_no,
-                request_payload={
-                    "thread_id": thread_id,
-                    "user_input": user_input,
-                    "option_id": option_id,
-                },
+                request_payload=request_payload,
                 response_payload=response_data,
                 user_input_raw=user_input,
                 option_id=option_id,

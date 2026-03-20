@@ -20,6 +20,7 @@ export interface GameSessionSnapshot {
   characterImageUrl: string | null;
   compositeImageUrl: string | null;
   shouldUseComposite: boolean;
+  isGameFinished: boolean;
 }
 
 export interface StorySceneData {
@@ -30,6 +31,19 @@ export interface StorySceneData {
   characterDialogue: string | null;
   playerOptions: PlayerOption[];
   isGameFinished: boolean;
+}
+
+export interface StoryEndingSummary {
+  type: string;
+  description: string;
+  favorability: number | null;
+  trust: number | null;
+  hostility: number | null;
+}
+
+export interface StoryEndingCheckResult {
+  hasEnding: boolean;
+  ending: StoryEndingSummary | null;
 }
 
 export interface StorySessionInitParams {
@@ -140,4 +154,5 @@ export interface InitialGameData {
   playerOptions: PlayerOption[];
   compositeImageUrl: string | null;
   sceneImageUrl: string | null;
+  isGameFinished: boolean;
 }

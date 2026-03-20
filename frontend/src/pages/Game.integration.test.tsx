@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeedbackProvider, GameFlowProvider } from '@/contexts';
 import { GAME_STORAGE_KEYS } from '@/storage/gameStorage';
 import {
+  checkEnding,
   getStorySessionSnapshot,
   initGame,
   initializeStory,
@@ -40,6 +41,7 @@ const seedSavedGame = ({
   characterImageUrl = '/character.png',
   compositeImageUrl = null,
   shouldUseComposite = false,
+  isGameFinished = false,
 }: {
   threadId?: string;
   characterId?: string;
@@ -50,6 +52,7 @@ const seedSavedGame = ({
   characterImageUrl?: string | null;
   compositeImageUrl?: string | null;
   shouldUseComposite?: boolean;
+  isGameFinished?: boolean;
 } = {}) => {
   sessionStorage.setItem(GAME_STORAGE_KEYS.GAME_THREAD_ID, threadId);
   sessionStorage.setItem(GAME_STORAGE_KEYS.GAME_CHARACTER_ID, characterId);
@@ -69,6 +72,7 @@ const seedSavedGame = ({
         characterImageUrl,
         compositeImageUrl,
         shouldUseComposite,
+        isGameFinished,
       },
       timestamp: 1,
     })
@@ -122,9 +126,9 @@ const buildServerSnapshotFromThreadSave = (threadId: string) => {
     storyBackground: null,
     characterDialogue: save.snapshot.currentDialogue,
     playerOptions: save.snapshot.currentOptions,
-    isGameFinished: false,
+    isGameFinished: save.snapshot.isGameFinished === true,
     roundNo: 1,
-    status: 'in_progress',
+    status: save.snapshot.isGameFinished === true ? 'completed' : 'in_progress',
     updatedAt: '2026-03-19T12:00:00Z',
     expiresAt: '2026-03-19T12:30:00Z',
   };
@@ -138,12 +142,17 @@ describe('Game page integration', () => {
     vi.mocked(initializeStory).mockReset();
     vi.mocked(getStorySessionSnapshot).mockReset();
     vi.mocked(processGameInput).mockReset();
+    vi.mocked(checkEnding).mockReset();
     vi.mocked(getStorySessionSnapshot).mockRejectedValue(
       new ServiceError({
         code: 'SERVICE_UNAVAILABLE',
         message: 'Snapshot unavailable.',
       })
     );
+    vi.mocked(checkEnding).mockResolvedValue({
+      hasEnding: false,
+      ending: null,
+    });
   });
 
   afterEach(() => {
@@ -159,7 +168,7 @@ describe('Game page integration', () => {
     );
     vi.mocked(processGameInput).mockRejectedValueOnce(
       new ServiceError({
-        code: 'SESSION_EXPIRED',
+        code: 'STORY_SESSION_EXPIRED',
         message: 'Story session expired.',
       })
     );
@@ -216,6 +225,17 @@ describe('Game page integration', () => {
       expect(screen.getByText('Fresh opening after recovery')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Restart from here' })).toBeTruthy();
     });
+
+    await waitFor(() => {
+      expect(readStoredSave('gameSave_thread-new')?.messages).toEqual([
+        { role: 'assistant', content: 'Fresh opening after recovery' },
+      ]);
+      expect(
+        readStoredSave('gameSave_thread-new')?.messages.some(
+          (message: { content: string }) => message.content === 'A tense pause fills the room.'
+        )
+      ).toBe(false);
+    });
   });
 
   it('uses the backend returned option list when the restored session requires reselecting the option', async () => {
@@ -253,6 +273,22 @@ describe('Game page integration', () => {
       expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
       expect(screen.queryByRole('button', { name: 'Take the risk' })).toBeNull();
     });
+
+    await waitFor(() => {
+      expect(readStoredSave('gameSave_thread-restored')?.messages).toEqual([
+        { role: 'assistant', content: 'A tense pause fills the room.' },
+      ]);
+      expect(readStoredSave('gameSave_thread-restored')?.lastMessage).toBe(
+        'A tense pause fills the room.'
+      );
+      expect(
+        readStoredSave('gameSave_thread-restored')?.messages.some(
+          (message: { role: string; content: string }) =>
+            message.role === 'user' && message.content === 'Take the risk'
+        )
+      ).toBe(false);
+      expect(readStoredSave(GAME_STORAGE_KEYS.MAIN_SAVE)?.threadId).toBe('thread-restored');
+    });
   });
 
   it('does not restore a stale local snapshot when the server explicitly marks the story session expired', async () => {
@@ -263,7 +299,7 @@ describe('Game page integration', () => {
     });
     vi.mocked(getStorySessionSnapshot).mockRejectedValueOnce(
       new ServiceError({
-        code: 'SESSION_EXPIRED',
+        code: 'STORY_SESSION_EXPIRED',
         message: 'Story session expired.',
       })
     );
@@ -280,6 +316,95 @@ describe('Game page integration', () => {
 
     expect(screen.queryByText('Stale dialogue')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry stale path' })).toBeNull();
+  });
+
+  it('does not reactivate persisted initial game data after the server rejects the active thread restore', async () => {
+    seedSavedGame({
+      threadId: 'thread-invalid',
+      currentDialogue: 'Cached dialogue',
+      currentOptions: [{ id: 1, text: 'Cached option', type: 'action' }],
+    });
+    sessionStorage.setItem(
+      GAME_STORAGE_KEYS.INITIAL_GAME_DATA,
+      JSON.stringify({
+        sceneId: 'study_room',
+        storyBackground: 'Draft opening background',
+        characterDialogue: 'Draft opening dialogue',
+        playerOptions: [{ id: 1, text: 'Draft option', type: 'action' }],
+        compositeImageUrl: null,
+        sceneImageUrl: '/draft-scene.png',
+        isGameFinished: false,
+      })
+    );
+    vi.mocked(getStorySessionSnapshot).mockRejectedValueOnce(
+      new ServiceError({
+        code: 'STORY_SESSION_NOT_FOUND',
+        message: 'Story session not found.',
+      })
+    );
+
+    renderGamePage();
+
+    await waitFor(() => {
+      expect(getStorySessionSnapshot).toHaveBeenCalledWith('thread-invalid');
+    });
+
+    await waitFor(() => {
+      expect(sessionStorage.getItem(GAME_STORAGE_KEYS.GAME_THREAD_ID)).toBeNull();
+      expect(sessionStorage.getItem(GAME_STORAGE_KEYS.INITIAL_GAME_DATA)).toBeNull();
+    });
+
+    expect(screen.queryByText('Draft opening background')).toBeNull();
+    expect(screen.queryByText('Draft opening dialogue')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Draft option' })).toBeNull();
+  });
+
+  it('falls back to readable local context and disables further submission when turn recovery fails explicitly', async () => {
+    seedSavedGame({
+      threadId: 'thread-broken',
+      currentDialogue: 'Recovery failed dialogue',
+      currentOptions: [{ id: 1, text: 'Unavailable option', type: 'action' }],
+    });
+    seedCharacterDraft();
+    vi.mocked(getStorySessionSnapshot).mockResolvedValueOnce(
+      buildServerSnapshotFromThreadSave('thread-broken')
+    );
+    vi.mocked(processGameInput).mockRejectedValueOnce(
+      new ServiceError({
+        code: 'STORY_SESSION_RESTORE_FAILED',
+        message: 'Story session recovery failed.',
+      })
+    );
+
+    renderGamePage();
+
+    const optionButton = await screen.findByRole('button', { name: 'Unavailable option' });
+    fireEvent.click(optionButton);
+
+    await waitFor(() => {
+      expect(processGameInput).toHaveBeenCalledWith({
+        threadId: 'thread-broken',
+        userInput: 'option:1',
+        characterId: 'character-1',
+      });
+    });
+
+    await waitFor(() => {
+      expect(sessionStorage.getItem(GAME_STORAGE_KEYS.GAME_THREAD_ID)).toBeNull();
+    });
+
+    expect(screen.getByText('Recovery failed dialogue')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Unavailable option' })).toBeNull();
+    expect(
+      screen.getByText('当前为本地只读快照，无法继续提交。请稍后重试恢复或重新开始故事。')
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '当前记录' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: '当前设备会话记录' })).toBeTruthy();
+      expect(screen.getAllByText('Recovery failed dialogue').length).toBeGreaterThan(1);
+    });
   });
 
   it('persists composite asset fallback state and keeps the broken url out of restored snapshots', async () => {
@@ -501,6 +626,98 @@ describe('Game page integration', () => {
     await waitFor(() => {
       expect(screen.getByText('Recovered after corrupted cache')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+    });
+  });
+
+  it('shows the current-device transcript viewer for a local read-only restore snapshot', async () => {
+    seedSavedGame({
+      currentDialogue: 'Saved dialogue',
+      currentOptions: [{ id: 1, text: 'Retry later', type: 'action' }],
+    });
+    seedCharacterDraft();
+
+    renderGamePage();
+
+    await waitFor(() => {
+      expect(screen.getByText('Saved dialogue')).toBeTruthy();
+    });
+
+    expect(
+      screen.getByText('当前为本地只读快照，无法继续提交。请稍后重试恢复或重新开始故事。')
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Retry later' }).hasAttribute('disabled')
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: '当前记录' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('dialog', { name: '当前设备会话记录' })
+      ).toBeTruthy();
+    });
+
+    expect(
+      screen.getByText('这里只展示当前设备已经加载过的会话内容，用于恢复和回看，不代表服务端完整历史。')
+    ).toBeTruthy();
+    expect(screen.getAllByText('Saved dialogue').length).toBeGreaterThan(1);
+  });
+
+  it('loads and reopens the ending summary when a finished story session is restored', async () => {
+    sessionStorage.setItem(GAME_STORAGE_KEYS.GAME_THREAD_ID, 'thread-finished');
+    sessionStorage.setItem(GAME_STORAGE_KEYS.GAME_CHARACTER_ID, 'character-1');
+    sessionStorage.setItem(GAME_STORAGE_KEYS.CURRENT_CHARACTER_ID, 'character-1');
+
+    vi.mocked(getStorySessionSnapshot).mockResolvedValueOnce({
+      threadId: 'thread-finished',
+      sessionRestored: false,
+      needReselectOption: false,
+      restoredFromThreadId: null,
+      sceneId: 'cafe_nearby',
+      sceneImageUrl: '/ending-scene.png',
+      compositeImageUrl: null,
+      storyBackground: 'Ending background',
+      characterDialogue: 'This is where our story settles.',
+      playerOptions: [],
+      isGameFinished: true,
+      roundNo: 6,
+      status: 'completed',
+      updatedAt: '2026-03-19T14:00:00Z',
+      expiresAt: '2026-03-19T14:30:00Z',
+    });
+    vi.mocked(checkEnding).mockResolvedValueOnce({
+      hasEnding: true,
+      ending: {
+        type: 'good_ending',
+        description: 'A warm, hopeful ending.',
+        favorability: 88,
+        trust: 76,
+        hostility: 12,
+      },
+    });
+
+    renderGamePage();
+
+    await waitFor(() => {
+      expect(checkEnding).toHaveBeenCalledWith('thread-finished');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('圆满结局')).toBeTruthy();
+      expect(screen.getByText('A warm, hopeful ending.')).toBeTruthy();
+      expect(screen.getByText('88')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('圆满结局')).toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '结局摘要' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('圆满结局')).toBeTruthy();
     });
   });
 });

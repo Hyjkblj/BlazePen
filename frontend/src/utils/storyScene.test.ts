@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  normalizeStoryEndingCheckPayload,
   normalizeInitialGameData,
   normalizeStoryScenePayload,
   normalizeStorySessionSnapshotPayload,
@@ -52,6 +53,7 @@ describe('toInitialGameData', () => {
       storyBackground: 'Intro',
       characterDialogue: 'Hello there',
       playerOptions: [{ id: 1, text: 'Continue', type: 'action' }],
+      isGameFinished: true,
     });
   });
 });
@@ -121,6 +123,32 @@ describe('normalizeStorySessionSnapshotPayload', () => {
   });
 });
 
+describe('normalizeStoryEndingCheckPayload', () => {
+  it('normalizes the ending contract into a stable frontend model', () => {
+    expect(
+      normalizeStoryEndingCheckPayload({
+        has_ending: true,
+        ending: {
+          type: ' good_ending ',
+          description: ' A warm, hopeful ending. ',
+          favorability: '68',
+          trust: 56,
+          hostility: null,
+        },
+      })
+    ).toEqual({
+      hasEnding: true,
+      ending: {
+        type: 'good_ending',
+        description: 'A warm, hopeful ending.',
+        favorability: 68,
+        trust: 56,
+        hostility: null,
+      },
+    });
+  });
+});
+
 describe('normalizeInitialGameData', () => {
   it('supports both camelCase and legacy snake_case persisted snapshots', () => {
     expect(
@@ -131,6 +159,7 @@ describe('normalizeInitialGameData', () => {
         playerOptions: [{ id: 1, text: 'Continue', type: 'action' }],
         compositeImageUrl: null,
         sceneImageUrl: '/scene.png',
+        isGameFinished: true,
       })
     ).toEqual({
       sceneId: 'restaurant',
@@ -139,6 +168,7 @@ describe('normalizeInitialGameData', () => {
       playerOptions: [{ id: 1, text: 'Continue', type: 'action' }],
       compositeImageUrl: null,
       sceneImageUrl: '/scene.png',
+      isGameFinished: true,
     });
 
     expect(
@@ -157,6 +187,7 @@ describe('normalizeInitialGameData', () => {
       playerOptions: [{ id: 2, text: 'Enter', type: 'action' }],
       compositeImageUrl: '/composite.png',
       sceneImageUrl: '/scene-legacy.png',
+      isGameFinished: false,
     });
   });
 

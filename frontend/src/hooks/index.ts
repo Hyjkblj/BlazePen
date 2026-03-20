@@ -12,6 +12,12 @@ export { useGameAssetFeedback } from './useGameAssetFeedback';
 export type { UseGameAssetFeedbackResult } from './useGameAssetFeedback';
 export { useStoryTurnSubmission } from './useStoryTurnSubmission';
 export type { UseStoryTurnSubmissionResult } from './useStoryTurnSubmission';
+export { useStoryEnding } from './useStoryEnding';
+export type {
+  StoryEndingStatus,
+  UseStoryEndingOptions,
+  UseStoryEndingResult,
+} from './useStoryEnding';
 export { useGameTts } from './useGameTts';
 export { useStorySessionRestore } from './useStorySessionRestore';
 export type {
@@ -19,6 +25,12 @@ export type {
   UseStorySessionRestoreOptions,
   UseStorySessionRestoreResult,
 } from './useStorySessionRestore';
+export { useStorySessionTranscript } from './useStorySessionTranscript';
+export type {
+  StoryTranscriptEntry,
+  UseStorySessionTranscriptOptions,
+  UseStorySessionTranscriptResult,
+} from './useStorySessionTranscript';
 export { useCharacterPortraitSelection } from './useCharacterPortraitSelection';
 export type {
   CharacterOption,

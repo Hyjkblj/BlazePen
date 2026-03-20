@@ -5,9 +5,12 @@ import {
   useGameInit,
   useGameState,
   useGameTts,
+  useStoryEnding,
+  useStorySessionTranscript,
   useStoryTurnSubmission,
 } from '@/hooks';
-import type { PlayerOption } from '@/types/game';
+import type { StoryEndingStatus, StoryTranscriptEntry } from '@/hooks';
+import type { PlayerOption, StoryEndingSummary } from '@/types/game';
 import { resolvePreferredCharacterId } from '@/utils/gameSession';
 import { logger } from '@/utils/logger';
 
@@ -22,10 +25,25 @@ export interface UseGameSessionFlowResult {
   characterImageUrl: string | null;
   currentDialogue: string;
   currentOptions: PlayerOption[];
+  optionsDisabledReason: string | null;
+  hasTranscript: boolean;
+  transcriptEntries: StoryTranscriptEntry[];
+  isTranscriptDialogOpen: boolean;
+  isGameFinished: boolean;
+  canViewEnding: boolean;
+  isEndingDialogOpen: boolean;
+  endingStatus: StoryEndingStatus;
+  endingSummary: StoryEndingSummary | null;
+  endingError: string | null;
   dismissTransition: () => void;
   handleCharacterAssetError: () => void;
   handleCompositeAssetError: () => void;
   handleSceneAssetError: () => void;
+  openTranscriptDialog: () => void;
+  closeTranscriptDialog: () => void;
+  openEndingDialog: () => void;
+  closeEndingDialog: () => void;
+  retryEndingSummary: () => void;
   selectOption: (optionIndex: number) => Promise<void>;
 }
 
@@ -51,6 +69,7 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
     characterId,
     messages,
     threadId,
+    isGameFinished,
   } = gameState.state;
 
   useGameTts(currentDialogue, characterId);
@@ -82,6 +101,10 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
     activeCharacterId: flowState.runtimeSession.currentCharacterId,
     draftCharacterId: flowState.characterDraft?.characterId,
   });
+  const optionsDisabledReason =
+    !threadId && messages.length > 0
+      ? '当前为本地只读快照，无法继续提交。请稍后重试恢复或重新开始故事。'
+      : null;
 
   const syncActiveSession = useCallback(
     (nextThreadId: string | null) => {
@@ -115,11 +138,36 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
       currentDialogue,
       currentScene,
       characterImageUrl,
+      isGameFinished,
     },
     actions,
     preferredCharacterId,
     setCharacterImage,
     syncActiveSession,
+  });
+
+  const {
+    hasTranscript,
+    transcriptEntries,
+    isTranscriptDialogOpen,
+    openTranscriptDialog,
+    closeTranscriptDialog,
+  } = useStorySessionTranscript({
+    messages,
+  });
+
+  const {
+    isEndingDialogOpen,
+    endingSummary,
+    endingStatus,
+    endingError,
+    canViewEnding,
+    openEndingDialog,
+    closeEndingDialog,
+    retryEndingSummary,
+  } = useStoryEnding({
+    threadId,
+    isGameFinished,
   });
 
   const dismissTransition = () => {
@@ -149,10 +197,25 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
     characterImageUrl,
     currentDialogue,
     currentOptions,
+    optionsDisabledReason,
+    hasTranscript,
+    transcriptEntries,
+    isTranscriptDialogOpen,
+    isGameFinished,
+    canViewEnding,
+    isEndingDialogOpen,
+    endingStatus,
+    endingSummary,
+    endingError,
     dismissTransition,
     handleCharacterAssetError,
     handleCompositeAssetError,
     handleSceneAssetError,
+    openTranscriptDialog,
+    closeTranscriptDialog,
+    openEndingDialog,
+    closeEndingDialog,
+    retryEndingSummary,
     selectOption,
   };
 }

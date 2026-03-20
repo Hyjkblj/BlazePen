@@ -1,6 +1,8 @@
 import { getSceneNameById } from '@/config/scenes';
 import type {
+  CheckEndingResponse,
   ProcessGameInputResponse,
+  StoryEndingPayload,
   StoryResponsePayload,
   StorySessionSnapshotResponse,
 } from '@/types/api';
@@ -8,6 +10,8 @@ import type {
   GameTurnResult,
   InitialGameData,
   PlayerOption,
+  StoryEndingCheckResult,
+  StoryEndingSummary,
   StorySceneData,
   StorySessionSnapshotResult,
 } from '@/types/game';
@@ -72,6 +76,21 @@ const normalizeOptionalNumber = (value: unknown, fallback = 0): number => {
   return fallback;
 };
 
+const normalizeOptionalMetric = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+};
+
 export const normalizeStoryScenePayload = (
   payload: Partial<StoryResponsePayload> | null | undefined
 ): StorySceneData => ({
@@ -104,6 +123,32 @@ export const normalizeStorySessionSnapshotPayload = (
   expiresAt: normalizeOptionalString(readStoryPayloadField(payload, 'expires_at')),
 });
 
+export const normalizeStoryEndingPayload = (
+  payload: Partial<StoryEndingPayload> | null | undefined
+): StoryEndingSummary | null => {
+  const type = normalizeOptionalString(payload?.type);
+  const description = normalizeOptionalString(payload?.description);
+
+  if (!type || !description) {
+    return null;
+  }
+
+  return {
+    type,
+    description,
+    favorability: normalizeOptionalMetric(payload?.favorability),
+    trust: normalizeOptionalMetric(payload?.trust),
+    hostility: normalizeOptionalMetric(payload?.hostility),
+  };
+};
+
+export const normalizeStoryEndingCheckPayload = (
+  payload: Partial<CheckEndingResponse> | null | undefined
+): StoryEndingCheckResult => ({
+  hasEnding: payload?.has_ending === true,
+  ending: normalizeStoryEndingPayload(payload?.ending),
+});
+
 export const toInitialGameData = (
   payload: StorySceneData | Partial<StoryResponsePayload> | null | undefined
 ): InitialGameData => {
@@ -134,6 +179,7 @@ export const toInitialGameData = (
     playerOptions: storyScene.playerOptions,
     compositeImageUrl: storyScene.compositeImageUrl,
     sceneImageUrl: storyScene.sceneImageUrl,
+    isGameFinished: storyScene.isGameFinished,
   };
 };
 
@@ -157,6 +203,7 @@ export const normalizeInitialGameData = (data: InitialGameDataInput): InitialGam
     sceneImageUrl: normalizeOptionalString(
       'sceneImageUrl' in data ? data.sceneImageUrl : data.scene_image_url
     ),
+    isGameFinished: 'isGameFinished' in data ? data.isGameFinished === true : false,
   };
 };
 

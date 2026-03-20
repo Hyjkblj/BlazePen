@@ -9,6 +9,7 @@ from story.exceptions import (
 from story.story_repository import SqlAlchemyStoryRepository
 from story.story_asset_service import StoryAssetService
 from story.story_ending_service import StoryEndingService
+from story.story_history_service import StoryHistoryService
 from story.story_session_service import StorySessionService
 from story.story_store import (
     DatabaseStoryStore,
@@ -24,6 +25,7 @@ __all__ = [
     "StorySessionService",
     "StoryTurnService",
     "StoryEndingService",
+    "StoryHistoryService",
     "DatabaseStoryStore",
     "StorySessionRecord",
     "StoryRoundRecord",

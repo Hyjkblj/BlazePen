@@ -1,0 +1,33 @@
+## 前端 Findings
+- 本次不在 review 范围。
+
+## 后端 Findings
+- [Blocker] backend/story/story_ending_service.py:27
+  问题：`check_ending()` 仍以 runtime `session.story_engine.is_game_finished()` 作为结局事实源，和本轮新增的持久化结局摘要模型并不一致。
+  原因：`trigger_ending()` 在 `backend/story/story_ending_service.py:101` 已把 `is_game_finished=True` 和 `status=completed` 持久化到快照/会话，但 `GameSession.restore_from_snapshot()` 在 `backend/api/services/game_session.py:175` 只恢复对话、场景和状态，不恢复可持久化的结局完成语义；旧路由 `/v1/game/check-ending/{thread_id}` 仍直接走这条 runtime 判定链路。
+  影响：进程重启、runtime session 被驱逐或多实例切换后，已完成会话仍可能返回 `has_ending=false`。我已在本地用 `trigger_ending -> 重建 GameSessionManager -> check_ending` 复现：同一 `thread_id` 上，`get_ending_summary()` 返回 `has_ending=true`，但 `check_ending()` 返回 `false`。这属于恢复路径失效和双事实源问题；当前前端仍消费该接口时不应合并。
+  建议：不要再让 `check_ending()` 读取 runtime engine；直接复用 `get_ending_summary()` 的 persisted facts，或在完成前端迁移后将 `/check-ending/{thread_id}` 显式废弃，并保证兼容期内该路由语义与 persisted ending summary 完全一致。
+
+- [Major] backend/api/routers/game.py:346
+  问题：`check-ending` 路由仍通过 `infer_story_error_code(message)` 从异常 message 文本推断业务 error_code。
+  原因：这让契约语义依赖 message 文案和语言实现，而不是依赖稳定的 domain exception / DTO，违反“错误处理不能依赖 message 文本承载业务语义”的 review 标准。
+  影响：story service 只要调整报错文案、国际化或替换异常来源，同一错误场景就可能映射出不同的 error_code / HTTP 语义，前端恢复分支和日志聚合都会变得不稳定。
+  建议：把 `ValueError` 分流替换为明确的 story-domain typed exceptions，并在 router 层按异常类型做固定映射；至少先停止对 `check-ending` 使用 `infer_story_error_code()`。
+
+## Open Questions
+- `/api/v1/game/check-ending/{thread_id}` 是否仍是当前前端正式依赖的公开契约？`frontend/src/services/gameApi.ts:270` 仍在调用它；如果计划改由 `/api/v1/game/sessions/{thread_id}/ending` 承接，需要明确同轮迁移与兼容策略。
+- `/api/v1/game/sessions?user_id=` 是否暂定为匿名内部接口？如果不是，需要补 ownership / policy 约束和对应测试，否则任意 `user_id` 查询能力会变成外部可见契约。
+
+## 测试缺口
+- 前端：本次不在 review 范围，未补充前端测试结论。
+- 后端：`backend/test_story_query_routes.py` 缺少 `GET /api/v1/game/check-ending/{thread_id}` 在 `trigger_ending` 后、runtime session 丢失或进程重启场景下的恢复契约测试；当前只覆盖了新 `/sessions/{thread_id}/ending` 路由。
+- 后端：`backend/test_story_restore_smoke.py` 缺少“`trigger_ending()` 完成后重建 `GameSessionManager` 再执行 `check_ending()`”的回归测试；这正是本次 Blocker 失守的路径。
+- 后端：`backend/test_api_contract_standardization.py` 没有覆盖 `GET /api/v1/game/check-ending/{thread_id}` 的固定 `error_code` 契约，当前 message-based 推断即使回归也不会被测试拦住。
+
+## Review Summary
+- 本轮 PR-BE-04 的拆分方向是对的，`StorySessionService`、`StoryHistoryService`、`StoryEndingService` 已经把 `GameService` 的职责明显收窄。
+- 但旧的 `check-ending` 兼容链路没有跟着切到持久化事实源，导致“新查询模型已正确、旧公开接口仍错误”的双轨状态。
+- 这个问题不是代码风格问题，而是恢复一致性问题；在手动触发结局后我已本地复现错误结果。
+- 同时，旧路由的错误码仍依赖 message 文本推断，契约稳定性没有真正收口到 typed exception。
+- 后端新增测试覆盖了新查询/恢复主链路，但没有覆盖仍在对外提供的 legacy ending 路由。
+- 结论：当前不建议按“后端结局查询已完成拆分”合并，至少要先修复 `check-ending` 的事实源和错误映射，或同步完成路由迁移与废弃策略。

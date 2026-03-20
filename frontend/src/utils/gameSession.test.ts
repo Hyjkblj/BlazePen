@@ -199,6 +199,7 @@ describe('resolveGameInitializationPlan', () => {
           playerOptions: [],
           compositeImageUrl: null,
           sceneImageUrl: null,
+          isGameFinished: false,
         },
         resolveSceneName,
       })
@@ -213,6 +214,7 @@ describe('resolveGameInitializationPlan', () => {
         playerOptions: [],
         compositeImageUrl: null,
         sceneImageUrl: null,
+        isGameFinished: false,
       },
       selectedSceneTransition: null,
     });

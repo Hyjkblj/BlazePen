@@ -72,7 +72,11 @@ async def handle_initialize_story_request(
             request.character_image_url,
             request.opening_event_id,
         )
-        payload = normalize_story_turn_payload(result, thread_id=request.thread_id)
+        payload = normalize_story_turn_payload(
+            result,
+            thread_id=request.thread_id,
+            story_asset_service=game_service.story_asset_service,
+        )
         return build_success_payload(data=payload)
     except StorySessionExpiredError as exc:
         return error_response(

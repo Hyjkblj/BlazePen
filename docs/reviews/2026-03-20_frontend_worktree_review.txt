@@ -1,0 +1,22 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+
+## 后端 Findings
+- 本次不在 review 范围。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：`frontend/src/pages/Game.integration.test.tsx` 缺少 `STORY_SESSION_RESTORE_FAILED` 的页面级回归，当前只有 hook 单测验证清空活动会话，尚未验证页面最终会进入无 `threadId`、无可提交选项、仅保留可读上下文的状态。
+- 前端：`frontend/src/hooks/useStoryEnding.test.tsx` 缺少 ending 请求竞态测试，需覆盖“旧 `threadId` 的 `checkEnding()` 延迟返回时，不能覆盖新线程 ending 状态”的路径。
+- 前端：`frontend/src/pages/Game.integration.test.tsx` 或 `frontend/src/hooks/useStoryTurnSubmission.test.tsx` 缺少 `need_reselect_option` 且 `threadId` 变更时的持久化回归，需明确验证回滚后的 transcript/本地快照不会把未确认的用户选择写入新线程存档。
+- 前端：`frontend/src/flows/useFirstStepFlow.test.tsx` 缺少“Continue Game -> Game 页面 -> 服务端超时 -> 本地只读快照兜底”这条跨页面链路的集成覆盖。
+- 后端：本次不在 review 范围。
+
+## Review Summary
+- 本轮前端恢复链相比上一轮明显收敛，`initialGameData` 误复活失效线程和故事会话错误码折叠两个高风险点已经修掉。
+- `useStoryTurnSubmission` 现在在 fresh recovery 分支会替换消息历史，避免了新旧 `threadId` 串档这一类阻塞问题继续存在。
+- transcript、ending summary、只读本地快照三条新能力基本保持在 `hook/service/storage` 边界内，没有明显把契约兼容散回页面层。
+- 当前主要剩余风险不在已见实现缺陷，而在几个关键恢复分支尚缺页面级和竞态级测试保护。
+- 这轮前端改动可以继续推进，但需要尽快把上述回归测试补齐，防止后续迭代再次把恢复链做散。

@@ -1,5 +1,11 @@
 import SceneTransition from '@/components/SceneTransition';
-import { GameDialogue, GameSceneBackground } from '@/components/Game';
+import {
+  GameDialogue,
+  GameSceneBackground,
+  StoryEndingDialog,
+  StorySessionToolbar,
+  StorySessionTranscriptDialog,
+} from '@/components/Game';
 import { useGameSessionFlow } from '@/flows/useGameSessionFlow';
 import './Game.css';
 
@@ -15,10 +21,24 @@ function Game() {
     characterImageUrl,
     currentDialogue,
     currentOptions,
+    optionsDisabledReason,
+    hasTranscript,
+    transcriptEntries,
+    isTranscriptDialogOpen,
+    canViewEnding,
+    isEndingDialogOpen,
+    endingStatus,
+    endingSummary,
+    endingError,
     dismissTransition,
     handleCharacterAssetError,
     handleCompositeAssetError,
     handleSceneAssetError,
+    openTranscriptDialog,
+    closeTranscriptDialog,
+    openEndingDialog,
+    closeEndingDialog,
+    retryEndingSummary,
     selectOption,
   } = useGameSessionFlow();
 
@@ -54,13 +74,37 @@ function Game() {
         />
       </div>
 
+      <StorySessionToolbar
+        hasTranscript={hasTranscript}
+        canViewEnding={canViewEnding}
+        endingStatus={endingStatus}
+        onOpenTranscript={openTranscriptDialog}
+        onOpenEnding={openEndingDialog}
+      />
+
       <GameDialogue
         currentDialogue={currentDialogue}
         currentOptions={currentOptions}
         loading={loading}
+        optionsDisabledReason={optionsDisabledReason}
         onOptionSelect={(index) => {
           void selectOption(index);
         }}
+      />
+
+      <StorySessionTranscriptDialog
+        open={isTranscriptDialogOpen}
+        entries={transcriptEntries}
+        onClose={closeTranscriptDialog}
+      />
+
+      <StoryEndingDialog
+        open={isEndingDialogOpen}
+        endingStatus={endingStatus}
+        endingSummary={endingSummary}
+        endingError={endingError}
+        onClose={closeEndingDialog}
+        onRetry={retryEndingSummary}
       />
     </div>
   );

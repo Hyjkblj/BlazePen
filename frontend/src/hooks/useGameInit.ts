@@ -145,10 +145,10 @@ export function useGameInit(actions: GameSessionInitActions): UseGameInitResult 
             initializationPlan.threadId,
             initializationPlan.characterId
           );
+          clearInitialGameData();
 
           if (restoreResult.source === 'server' && restoreResult.restored) {
             hydrateSessionIdentity(initializationPlan.threadId, initializationPlan.characterId);
-            clearInitialGameData();
             return;
           }
 
@@ -156,47 +156,6 @@ export function useGameInit(actions: GameSessionInitActions): UseGameInitResult 
             enterReadonlySnapshotMode(initializationPlan.characterId);
             notifyLocalRestoreFallback(restoreResult.error);
             return;
-          }
-
-          if (initializationPlan.initialGameData) {
-            hydrateSessionIdentity(initializationPlan.threadId, initializationPlan.characterId);
-            applyInitialEntryData(initializationPlan.initialGameData, {
-              characterId: initializationPlan.characterId,
-              selectedSceneTransition: initializationPlan.selectedSceneTransition,
-            });
-            clearInitialGameData();
-            return;
-          }
-
-          if (
-            initializationPlan.selectedSceneTransition &&
-            initializationPlan.characterId
-          ) {
-            try {
-              hydrateSessionIdentity(initializationPlan.threadId, initializationPlan.characterId);
-              actions.enterScene(
-                initializationPlan.selectedSceneTransition.sceneId,
-                initializationPlan.selectedSceneTransition.sceneName,
-                'reset'
-              );
-
-              const imageUrl = resolveCharacterImageUrl(characterDraft);
-              const storyData = await initializeStory(
-                initializationPlan.threadId,
-                initializationPlan.characterId,
-                initializationPlan.selectedSceneTransition.sceneId,
-                imageUrl
-              );
-
-              applyStoryData(storyData, {
-                characterId: initializationPlan.characterId,
-                sceneMode: 'silent',
-              });
-              actions.replaceMessages(buildInitialAssistantMessages(storyData));
-              return;
-            } catch (error: unknown) {
-              logger.error('failed to fetch initial story data', error);
-            }
           }
 
           clearInvalidSessionState(initializationPlan.characterId);

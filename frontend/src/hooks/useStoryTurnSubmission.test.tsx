@@ -26,6 +26,8 @@ const createActionSpies = () => ({
   setThreadId: vi.fn(),
   setDialogue: vi.fn(),
   setOptions: vi.fn(),
+  setGameFinished: vi.fn(),
+  replaceMessages: vi.fn(),
   rollbackPendingUserMessage: vi.fn(),
   stopLoading: vi.fn(),
   enterScene: vi.fn(),
@@ -71,6 +73,7 @@ describe('useStoryTurnSubmission', () => {
           currentDialogue: 'A tense pause fills the room.',
           currentScene: 'study_room',
           characterImageUrl: '/character.png',
+          isGameFinished: false,
         },
         actions,
         preferredCharacterId: 'character-1',
@@ -86,6 +89,7 @@ describe('useStoryTurnSubmission', () => {
     expect(syncActiveSession).toHaveBeenCalledWith('thread-restored');
     expect(actions.setDialogue).toHaveBeenCalledWith('Please choose again.');
     expect(actions.setOptions).toHaveBeenCalledWith([{ id: 2, text: 'Retry', type: 'action' }]);
+    expect(actions.setGameFinished).toHaveBeenCalledWith(false);
     expect(actions.rollbackPendingUserMessage).toHaveBeenCalledTimes(1);
     expect(feedback.warning).toHaveBeenCalledWith(
       'Game session restored. Please choose an option again.'
@@ -100,7 +104,7 @@ describe('useStoryTurnSubmission', () => {
 
     vi.mocked(processGameInput).mockRejectedValueOnce(
       new ServiceError({
-        code: 'SESSION_EXPIRED',
+        code: 'STORY_SESSION_EXPIRED',
         message: 'Story session expired.',
       })
     );
@@ -129,6 +133,7 @@ describe('useStoryTurnSubmission', () => {
           currentDialogue: 'A tense pause fills the room.',
           currentScene: 'study_room',
           characterImageUrl: '/character.png',
+          isGameFinished: false,
         },
         actions,
         preferredCharacterId: 'character-1',
@@ -152,12 +157,59 @@ describe('useStoryTurnSubmission', () => {
       '/character.png'
     );
     expect(syncActiveSession).toHaveBeenCalledWith('thread-new');
+    expect(actions.replaceMessages).toHaveBeenCalledWith([
+      { role: 'assistant', content: 'Fresh opening dialogue.' },
+    ]);
     expect(actions.setDialogue).toHaveBeenCalledWith('Fresh opening dialogue.');
     expect(actions.setOptions).toHaveBeenCalledWith([
       { id: 2, text: 'Restart from here', type: 'action' },
     ]);
+    expect(actions.setGameFinished).toHaveBeenCalledWith(false);
     expect(feedback.success).toHaveBeenCalledWith(
       'Game session restored with a fresh story state.'
+    );
+  });
+
+  it('drops the active session when the backend restore flow fails explicitly', async () => {
+    const feedback = createFeedbackSpy();
+    const actions = createActionSpies();
+    const syncActiveSession = vi.fn();
+    const setCharacterImage = vi.fn();
+
+    vi.mocked(processGameInput).mockRejectedValueOnce(
+      new ServiceError({
+        code: 'STORY_SESSION_RESTORE_FAILED',
+        message: 'Story session recovery failed.',
+      })
+    );
+
+    const { result } = renderHook(() =>
+      useStoryTurnSubmission({
+        feedback,
+        state: {
+          loading: false,
+          threadId: 'thread-old',
+          currentOptions: [{ id: 1, text: 'Take the risk', type: 'action' }],
+          currentDialogue: 'A tense pause fills the room.',
+          currentScene: 'study_room',
+          characterImageUrl: '/character.png',
+          isGameFinished: false,
+        },
+        actions,
+        preferredCharacterId: 'character-1',
+        setCharacterImage,
+        syncActiveSession,
+      })
+    );
+
+    await act(async () => {
+      await result.current.selectOption(0);
+    });
+
+    expect(syncActiveSession).toHaveBeenCalledWith(null);
+    expect(actions.setOptions).toHaveBeenLastCalledWith([]);
+    expect(feedback.error).toHaveBeenCalledWith(
+      'Game session could not be recovered. Please restart the story.'
     );
   });
 });

@@ -64,6 +64,20 @@ class SqlAlchemyStoryRepository:
                 .first()
             )
 
+    def list_story_sessions_by_user(self, user_id: str, limit: int = 10) -> list[StorySession]:
+        with self.get_session() as session:
+            return (
+                session.query(StorySession)
+                .filter(StorySession.user_id == user_id)
+                .order_by(
+                    StorySession.last_active_at.desc(),
+                    StorySession.updated_at.desc(),
+                    StorySession.created_at.desc(),
+                )
+                .limit(limit)
+                .all()
+            )
+
     def update_story_session(self, thread_id: str, updates: dict) -> StorySession | None:
         with self.get_session() as session:
             row = (

@@ -50,6 +50,46 @@ class StorySessionService:
             "status": "initialized",
         }
 
+    def list_recent_sessions(self, *, user_id: str, limit: int = 10) -> Dict[str, Any]:
+        logger.info(
+            "story recent sessions requested: user_id=%s limit=%s",
+            user_id,
+            limit,
+        )
+
+        sessions = self.session_manager.list_story_sessions(user_id=user_id, limit=limit)
+        summaries = []
+        for session_record in sessions:
+            latest_snapshot = self.session_manager.get_latest_snapshot(session_record.thread_id)
+            snapshot_summary = latest_snapshot.to_summary() if latest_snapshot is not None else {}
+            effective_status = self._resolve_effective_status(session_record)
+            summaries.append(
+                {
+                    "thread_id": session_record.thread_id,
+                    "user_id": session_record.user_id,
+                    "character_id": int(session_record.character_id),
+                    "game_mode": session_record.game_mode,
+                    "status": effective_status,
+                    "round_no": int(session_record.current_round_no or 0),
+                    "scene": snapshot_summary.get("scene") or session_record.current_scene_id,
+                    "event_title": snapshot_summary.get("event_title"),
+                    "is_initialized": bool(session_record.is_initialized),
+                    "has_ending": bool(
+                        snapshot_summary.get("is_game_finished", False)
+                        or effective_status == "completed"
+                    ),
+                    "can_resume": effective_status not in {"completed", "expired"},
+                    "updated_at": snapshot_summary.get("updated_at")
+                    or self._isoformat(getattr(session_record, "updated_at", None)),
+                    "expires_at": self._isoformat(getattr(session_record, "expires_at", None)),
+                }
+            )
+
+        return {
+            "user_id": user_id,
+            "sessions": summaries,
+        }
+
     def get_session_snapshot(self, thread_id: str) -> Dict[str, Any]:
         session_record = self.session_manager.get_session_record(thread_id)
         if session_record is None:
@@ -176,3 +216,15 @@ class StorySessionService:
                 and stored_composite_asset.get("status") == StoryAssetService.PENDING
             ),
         )
+
+    @staticmethod
+    def _resolve_effective_status(session_record) -> str:
+        if session_record is None:
+            return "missing"
+        if session_record.is_expired():
+            return "expired"
+        return str(getattr(session_record, "status", "initialized") or "initialized")
+
+    @staticmethod
+    def _isoformat(value) -> str | None:
+        return value.isoformat() if value is not None else None

@@ -1,0 +1,38 @@
+## 前端 Findings
+- [Blocker] frontend/src/hooks/useGameInit.ts:161
+  问题：服务端恢复失败后，代码仍会用 `activeSession.initialGameData` 重新激活同一个 `threadId`，把本地 opening state 当成可继续的在线会话。
+  原因：`useGameInit` 在 `restoreFromServerSnapshot()` 已经明确返回失败的情况下，仍允许 `initialGameData` 覆盖服务端结论，破坏了“服务端快照/错误码才是故事会话事实源”的约束。
+  影响：当服务端已判定 `threadId` 不存在、已过期或恢复失败时，页面仍会展示可点击选项并继续沿用失效 `threadId`；用户会进入幽灵会话，后续提交只能再次失败或触发额外补救分支，恢复链会持续漂移。
+  建议：`initialGameData` 只能在“线程刚创建且尚未进入服务端托管恢复”之前使用；一旦已有 `threadId` 且服务端返回恢复失败，必须清掉 `initialGameData`，并严格分流到只读本地兜底（仅超时/服务不可用）或显式重开故事，而不是继续激活失效线程。
+
+- [Blocker] frontend/src/hooks/useStoryTurnSubmission.ts:121
+  问题：`SESSION_EXPIRED` 分支创建新 `threadId` 后只回滚待提交用户消息，没有替换旧线程的 `messages` 历史，却立即把新线程同步成当前活动会话。
+  原因：这个恢复分支只更新了 dialogue/options/scene 等部分状态，没有重置完整的会话级状态，导致 `threadId` 已切到新会话，但 transcript 与后续持久化仍沿用旧会话内容，违反 `threadId` 必须严格区分的边界。
+  影响：`frontend/src/flows/useGameSessionFlow.ts` 的持久化副作用会把旧线程消息写进新的 `gameSave_<newThreadId>`；用户在“当前记录”弹窗里看到的是旧线程内容，本地恢复时也可能读到“新快照 + 旧消息”的混合状态。
+  建议：如果该分支的语义是“开启一条全新的 fresh story state”，就必须在切换 `threadId` 前整体替换会话级状态，至少包括 `messages`、dialogue、options、ending/transcript 相关状态；更稳妥的做法是把它改成显式 restart flow，而不是在 turn submit 热路径里做半重置恢复。
+
+- [Major] frontend/src/services/gameApi.ts:43
+  问题：前端把 `STORY_SESSION_NOT_FOUND`、`STORY_SESSION_EXPIRED`、`STORY_SESSION_RESTORE_FAILED` 全部折叠成单一 `SESSION_EXPIRED`。
+  原因：`services` 层没有稳定消费后端错误契约，而是提前抹平了不同业务语义，导致上层 hook/page 无法基于明确错误码设计恢复、重试和提示策略。
+  影响：前端无法区分“线程已死亡”“线程过期”“恢复链本身失败”三类完全不同的状态，后续只能继续堆叠页面级启发式兼容，架构上会不断把恢复责任从服务端契约推回前端流程脚本。
+  建议：保留后端错误码的区分，至少在前端服务层拆成独立的 service error code；`useGameInit`、`useStorySessionRestore`、`useStoryTurnSubmission` 再分别消费这些稳定语义，明确哪些允许本地只读兜底，哪些必须强制重开。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+
+## Open Questions
+- `STORY_SESSION_NOT_FOUND`、`STORY_SESSION_EXPIRED`、`STORY_SESSION_RESTORE_FAILED` 在故事主线里是否应当对应三套明确且不同的前端恢复策略？如果这是既定契约，需要先冻结契约，再继续扩展 FE 恢复分支。
+
+## 测试缺口
+- 前端：`frontend/src/pages/Game.integration.test.tsx` / `frontend/src/hooks/useGameInit.ts` 缺少“服务端明确返回会话失效时，`activeSession.initialGameData` 不得把死 `threadId` 重新激活”的集成回归。
+- 前端：`frontend/src/hooks/useStoryTurnSubmission.test.tsx` / `frontend/src/pages/Game.integration.test.tsx` 缺少“`SESSION_EXPIRED` 后切到新 `threadId` 时，旧 `messages` 不会被持久化到新线程存档”的用例。
+- 前端：`frontend/src/hooks/useStoryEnding.test.tsx` 缺少“thread 切换时旧的 `checkEnding()` 延迟返回不能覆盖新线程 ending 状态”的竞态测试。
+- 后端：`backend/test_api_contract_standardization.py` 缺少 `/api/v1/game/trigger-ending` 在 PR-BE-04 拆分后的 contract 回归，当前没有验证 `status=completed`、assets merge 和错误 envelope。
+- 后端：`backend/test_story_restore_smoke.py` 只覆盖了 snapshot restore，缺少“进程重启后继续 submit/ending 路径仍复用同一 story bundle 并保持契约一致”的烟雾测试。
+
+## Review Summary
+- 这轮后端拆分本身没有发现新的阻塞性回归，依赖注入和 GameService facade 的收口方向是对的。
+- 真正的风险集中在前端会话恢复链：服务端已经失效的故事线程，仍可能被前端本地状态重新激活。
+- 当前最危险的两处问题都属于“部分恢复成功后继续把旧状态当真”，会直接破坏 `threadId` 边界和恢复模型。
+- 错误码在 `gameApi.ts` 被过度折叠，进一步放大了页面层自行发明恢复语义的问题。
+- 现有测试已覆盖不少 happy path，但还没有把“服务端明确否决会话时前端不得复活本地状态”这条红线钉死。

@@ -37,6 +37,7 @@ const createActionSpies = () => ({
   setCharacterImageUrl: vi.fn(),
   setDialogue: vi.fn(),
   setOptions: vi.fn(),
+  setGameFinished: vi.fn(),
   enterScene: vi.fn(),
   applyCompositeScene: vi.fn(),
   applySceneVisual: vi.fn(),
@@ -61,6 +62,7 @@ describe('useStorySessionRestore', () => {
       characterImageUrl: '/character.png',
       compositeImageUrl: null,
       shouldUseComposite: false,
+      isGameFinished: false,
     };
 
     vi.mocked(getStorySessionSnapshot).mockRejectedValueOnce(
@@ -100,6 +102,7 @@ describe('useStorySessionRestore', () => {
     ]);
     expect(actions.setDialogue).toHaveBeenCalledWith('Saved dialogue');
     expect(actions.setOptions).toHaveBeenCalledWith([{ id: 1, text: 'Retry', type: 'action' }]);
+    expect(actions.setGameFinished).toHaveBeenCalledWith(false);
     expect(actions.applySceneVisual).toHaveBeenCalledWith({
       sceneImageUrl: '/scene.png',
       characterImageUrl: '/character.png',
@@ -113,7 +116,7 @@ describe('useStorySessionRestore', () => {
 
     vi.mocked(getStorySessionSnapshot).mockRejectedValueOnce(
       new ServiceError({
-        code: 'SESSION_EXPIRED',
+        code: 'STORY_SESSION_EXPIRED',
         message: 'Story session expired.',
       })
     );
@@ -129,6 +132,7 @@ describe('useStorySessionRestore', () => {
         characterImageUrl: '/character.png',
         compositeImageUrl: null,
         shouldUseComposite: false,
+        isGameFinished: false,
       },
       timestamp: 1,
     });
@@ -170,6 +174,7 @@ describe('useStorySessionRestore', () => {
       playerOptions: [],
       compositeImageUrl: null,
       sceneImageUrl: null,
+      isGameFinished: false,
     };
 
     const { result } = renderHook(() =>

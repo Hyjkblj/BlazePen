@@ -107,6 +107,9 @@ class StoryStoreProtocol(Protocol):
     def get_story_session(self, thread_id: str) -> StorySessionRecord | None:
         ...
 
+    def list_story_sessions_by_user(self, user_id: str, limit: int = 10) -> List[StorySessionRecord]:
+        ...
+
     def update_story_session(self, thread_id: str, updates: dict) -> StorySessionRecord | None:
         ...
 
@@ -184,6 +187,12 @@ class DatabaseStoryStore:
 
     def get_story_session(self, thread_id: str) -> StorySessionRecord | None:
         return self._to_story_session_record(self.storage_backend.get_story_session(thread_id))
+
+    def list_story_sessions_by_user(self, user_id: str, limit: int = 10) -> List[StorySessionRecord]:
+        return [
+            self._to_story_session_record(row)
+            for row in self.storage_backend.list_story_sessions_by_user(user_id, limit)
+        ]
 
     def update_story_session(self, thread_id: str, updates: dict) -> StorySessionRecord | None:
         return self._to_story_session_record(

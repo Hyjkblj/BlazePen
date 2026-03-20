@@ -114,12 +114,14 @@ export function useStorySessionRestore({
   const restoreSavedSnapshot = useCallback(
     (snapshot: GameSessionSnapshot | undefined, characterId?: string | null) => {
       if (!snapshot) {
+        actions.setGameFinished(false);
         if (characterId) {
           setCharacterImage(characterId);
         }
         return;
       }
 
+      actions.setGameFinished(snapshot.isGameFinished === true);
       actions.setDialogue(snapshot.currentDialogue);
       actions.setOptions(snapshot.currentOptions);
 
@@ -253,6 +255,7 @@ export function useStorySessionRestore({
 
       actions.setDialogue(storyData.characterDialogue);
       actions.setOptions(storyData.playerOptions);
+      actions.setGameFinished(storyData.isGameFinished);
     },
     [actions, setCharacterImage]
   );
@@ -322,8 +325,21 @@ export function useStorySessionRestore({
 
   const notifyRestoreFailure = useCallback(
     (error: unknown, fallbackMessage: string) => {
-      if (isServiceError(error) && error.code === 'SESSION_EXPIRED') {
-        feedback.error('Story session is no longer available. Please restart the story.');
+      if (isServiceError(error) && error.code === 'STORY_SESSION_NOT_FOUND') {
+        feedback.error('Story session could not be found. Please restart the story.');
+        return;
+      }
+
+      if (
+        isServiceError(error) &&
+        (error.code === 'STORY_SESSION_EXPIRED' || error.code === 'SESSION_EXPIRED')
+      ) {
+        feedback.error('Story session expired. Please restart the story.');
+        return;
+      }
+
+      if (isServiceError(error) && error.code === 'STORY_SESSION_RESTORE_FAILED') {
+        feedback.error('Story session recovery failed. Please restart the story.');
         return;
       }
 

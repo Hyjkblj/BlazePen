@@ -10,9 +10,12 @@ from fastapi.testclient import TestClient
 from api.dependencies import get_game_service, get_training_service
 from api.routers import characters, game, training
 from story.exceptions import StorySessionExpiredError, StorySessionNotFoundError
+from story.story_asset_service import StoryAssetService
 
 
 class _FakeGameService:
+    story_asset_service = StoryAssetService()
+
     def init_game(self, user_id=None, character_id=None, game_mode="solo"):
         return {
             "thread_id": "thread-001",
@@ -194,6 +197,16 @@ class _ExpiredInitGameService(_FakeGameService):
         character_image_url=None,
         opening_event_id=None,
     ):
+        raise StorySessionExpiredError(thread_id=thread_id)
+
+
+class _NotFoundCheckEndingGameService(_FakeGameService):
+    def check_ending(self, thread_id: str):
+        raise StorySessionNotFoundError(thread_id=thread_id)
+
+
+class _ExpiredCheckEndingGameService(_FakeGameService):
+    def check_ending(self, thread_id: str):
         raise StorySessionExpiredError(thread_id=thread_id)
 
 
@@ -438,6 +451,26 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["round_no"], 2)
         self.assertEqual(payload["data"]["scene"], "library")
         self.assertEqual(payload["data"]["updated_at"], "2026-03-19T12:00:00")
+
+    def test_story_check_ending_route_returns_stable_not_found_error_code(self):
+        self.app.dependency_overrides[get_game_service] = lambda: _NotFoundCheckEndingGameService()
+
+        response = self.client.get("/api/v1/game/check-ending/missing-thread")
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(payload["error"]["code"], "STORY_SESSION_NOT_FOUND")
+        self.assertTrue(payload["error"]["traceId"])
+
+    def test_story_check_ending_route_returns_stable_expired_error_code(self):
+        self.app.dependency_overrides[get_game_service] = lambda: _ExpiredCheckEndingGameService()
+
+        response = self.client.get("/api/v1/game/check-ending/expired-thread")
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 410)
+        self.assertEqual(payload["error"]["code"], "STORY_SESSION_EXPIRED")
+        self.assertTrue(payload["error"]["traceId"])
 
     def test_training_init_invalid_mode_returns_validation_error(self):
         response = self.client.post(

@@ -1,0 +1,42 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+
+- [Major] frontend/src/services/gameApi.ts:270
+  问题：结局摘要仍调用 legacy `/v1/game/check-ending/{threadId}`，前端 read model 也继续绑定旧的平铺 ending DTO。
+  原因：本轮后端已经拆出 canonical `/v1/game/sessions/{thread_id}/ending` 查询契约，但前端 `services -> hooks -> components` 仍消费兼容接口，服务层没有真正切到稳定契约。
+  影响：后端无法安全收敛 legacy ending route；前端也拿不到 `key_states`、`scene`、`event_title` 这类 canonical ending 字段，完成会话的恢复展示继续依赖兼容层。
+  建议：新增 `getStoryEndingSummary(threadId)` 服务，直接消费 `/v1/game/sessions/{thread_id}/ending`；把 `StoryEndingSummary` 调整为 canonical DTO，旧 `checkEnding` 仅保留为兼容 adapter，直到页面全部迁移完成。
+
+- [Major] frontend/src/hooks/useStoryTurnSubmission.ts:117
+  问题：`recoverExpiredSession()` 在 hook 内直接编排 `initGame -> initializeStory`，前端持有了一套独立的会话恢复/重建策略。
+  原因：恢复模型同时散落在后端 `/v1/game/input` 的 `session_restored/need_reselect_option` 契约和前端 hook 的 fallback 流程中，破坏 `flows / hooks / services` 边界，也违背恢复逻辑单一事实源。
+  影响：同样的会话异常会因返回码不同走不同恢复路径，出现静默换 `threadId`、消息历史被整段替换、其他客户端无法复用同一恢复规则等一致性和维护风险。
+  建议：把 expired/not-found 的恢复策略统一下沉到后端或专门的 story recovery service；前端 hook 只消费结构化恢复结果，不再自己编排 `initGame` 和 `initializeStory`。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+
+- [Minor] backend/story/story_session_service.py:60
+  问题：recent sessions read model 对每个 session 都单独调用一次 `get_latest_snapshot(thread_id)`，形成 N+1 读。
+  原因：列表读模型的 latest snapshot 聚合仍停留在 service 层循环拼装，没有在 `repository-store` 边界提供批量查询。
+  影响：当前 `limit <= 20` 还能接受，但恢复入口一旦频繁读取最近会话，数据库往返会线性增长，列表页性能和观测成本都会变差。
+  建议：在 repository/store 增加按 `thread_id` 批量取 latest snapshot 的查询，或把 read-model 必需字段物化到 `story_sessions`。
+
+## Open Questions
+- `/api/v1/game/sessions?user_id=` 是否只打算用于内部单用户桌面场景？如果计划对外暴露，需要明确 stable user identity 与 ownership/policy 边界，否则这个 query route 目前仍是“知道 user_id 就能枚举会话”的弱契约。
+- 前端本轮是否计划同步接入 `/sessions/{thread_id}/history`？当前 transcript 明示只展示当前设备已加载消息，不代表服务端完整历史；如果这就是预期，需要在 PR 说明里明确区分“本地 transcript”与“服务端 history”。
+
+## 测试缺口
+- 前端：`frontend/src/services/gameApi.test.ts` 缺少 ending query 的错误码映射覆盖；当前只测了 `processGameInput` 和 `getStorySessionSnapshot`，没有覆盖 `checkEnding()` 或后续 canonical ending-summary route 的 structured error path。
+- 前端：`frontend/src/pages/Game.integration.test.tsx` 缺少 canonical ending summary 路由迁移后的页面级回归；当前页面测试仍只验证 legacy `checkEnding` 成功路径。
+- 前端：`frontend/src/hooks/useStoryTurnSubmission.test.tsx` 和 `frontend/src/pages/Game.integration.test.tsx` 缺少“恢复策略完全由后端返回结构化结果，前端不再自行 re-init”的保护用例；当前测试只保护了 hook 自己的 fallback 行为。
+- 后端：`backend/test_story_query_routes.py` 和 `backend/test_story_query_services.py` 缺少 `GET /api/v1/game/sessions?user_id=` 的 ownership/policy 场景覆盖；如果后续引入 policy 层，当前测试不会拦住越权回归。
+- 后端：`backend/test_story_repository_queries.py` 只验证了最近会话排序，没有覆盖批量 latest snapshot 读模型；如果后续为 `list_recent_sessions` 做去 N+1 优化，需要补 repository/store 级回归。
+
+## Review Summary
+- 当前工作树的拆分方向是对的，后端 story query/read model 已经比上一轮清晰，重启恢复和 legacy ending 兼容链路也补上了测试保护。
+- 本轮没有看到阻塞合并的后端问题，后端主要剩下的是查询侧批量化和 policy 边界问题。
+- 主要风险留在前端：结局摘要仍停留在 legacy 契约，恢复策略也仍然有一部分握在 hook 层，而不是统一收口到后端契约。
+- 这意味着“代码能跑”不等于“恢复模型已经收口”；当前前端仍存在兼容层依赖和恢复规则双轨。
+- 前后端定向测试都通过了，但它们保护的仍是当前实现，不足以约束后续迁移到 canonical ending/history 契约时不回退。
+- 结论：当前状态可以继续推进，但不应把“前端结局与恢复链路已完成解耦”视为已完成事项。

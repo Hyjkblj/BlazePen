@@ -140,6 +140,16 @@
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.3);
 }
 
+.game-dialogue-status {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(139, 69, 19, 0.12);
+  color: #6b3d17;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
 /* 玩家选项按钮容器 */
 .game-options-container {
   display: flex;
@@ -434,5 +444,190 @@
     width: 40px;
     height: 40px;
     font-size: 14px;
+  }
+}
+
+.story-session-toolbar {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 20;
+  display: flex;
+  gap: 12px;
+}
+
+.story-session-toolbar-button {
+  min-width: 112px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 244, 214, 0.35);
+  border-radius: 999px;
+  background: rgba(39, 25, 9, 0.72);
+  color: #fff4d6;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+.story-session-toolbar-button:hover:not(:disabled) {
+  background: rgba(78, 49, 20, 0.88);
+  transform: translateY(-1px);
+}
+
+.story-session-toolbar-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.story-session-dialog .modal-dialog-panel {
+  background: linear-gradient(180deg, #fff6e2 0%, #f4ead6 100%);
+  border: 1px solid rgba(139, 69, 19, 0.15);
+  box-shadow: 0 18px 50px rgba(41, 25, 6, 0.28);
+}
+
+.story-session-dialog .modal-dialog-header {
+  border-bottom: 1px solid rgba(139, 69, 19, 0.12);
+}
+
+.story-session-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.story-session-dialog-caption,
+.story-session-dialog-empty,
+.story-ending-description,
+.story-session-transcript-content {
+  margin: 0;
+  color: #5f4422;
+  line-height: 1.7;
+}
+
+.story-session-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  width: 100%;
+}
+
+.story-session-dialog-action {
+  min-width: 96px;
+  padding: 10px 14px;
+  border: 1px solid rgba(128, 84, 35, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.68);
+  color: #5f4422;
+  font-weight: 600;
+}
+
+.story-session-dialog-action-primary {
+  background: #8b4513;
+  border-color: #8b4513;
+  color: #fff8eb;
+}
+
+.story-session-transcript-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 52vh;
+  margin: 0;
+  padding: 0 0 0 20px;
+  overflow-y: auto;
+}
+
+.story-session-transcript-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.story-session-transcript-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #7c5a2d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.story-session-transcript-sequence {
+  color: #8b4513;
+}
+
+.story-session-transcript-role {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(139, 69, 19, 0.12);
+}
+
+.story-ending-loading,
+.story-ending-error,
+.story-ending-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.story-ending-loading {
+  align-items: center;
+  padding: 12px 0 8px;
+}
+
+.story-ending-heading {
+  margin: 0;
+  color: #4f2f13;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.story-ending-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.story-ending-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.story-ending-metric-label {
+  color: #7c5a2d;
+  font-size: 13px;
+}
+
+.story-ending-metric-value {
+  color: #4f2f13;
+  font-size: 22px;
+}
+
+@media (max-width: 768px) {
+  .story-session-toolbar {
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    gap: 8px;
+  }
+
+  .story-session-toolbar-button {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .story-ending-metrics {
+    grid-template-columns: 1fr;
   }
 }

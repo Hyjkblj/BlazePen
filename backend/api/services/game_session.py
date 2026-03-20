@@ -283,8 +283,14 @@ class GameSessionManager:
     def get_session_record(self, thread_id: str):
         return self.story_store.get_story_session(thread_id)
 
+    def list_story_sessions(self, *, user_id: str, limit: int = 10):
+        return self.story_store.list_story_sessions_by_user(user_id, limit)
+
     def get_story_round(self, thread_id: str, round_no: int) -> StoryRoundRecord | None:
         return self.story_store.get_story_round_by_thread_round(thread_id, round_no)
+
+    def get_story_rounds(self, thread_id: str) -> list[StoryRoundRecord]:
+        return self.story_store.get_story_rounds(thread_id)
 
     def get_latest_snapshot(self, thread_id: str) -> StorySnapshotRecord | None:
         snapshot = self.story_store.get_latest_story_snapshot(thread_id)

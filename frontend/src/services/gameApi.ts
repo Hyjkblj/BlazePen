@@ -1,9 +1,10 @@
 import httpClient, { getErrorData, getErrorStatus, unwrapApiData } from '@/services/httpClient';
+import type { ServiceErrorCode } from '@/services/serviceError';
 import { ServiceError, toServiceError } from '@/services/serviceError';
 import type {
   ApiErrorData,
+  CheckEndingResponse,
   GameInitResponse,
-  GenericApiRecord,
   GetScenesResponse,
   InitializeStoryResponse,
   ProcessGameInputResponse,
@@ -12,6 +13,7 @@ import type {
 } from '@/types/api';
 import type {
   GameTurnResult,
+  StoryEndingCheckResult,
   StorySceneData,
   StorySessionInitParams,
   StorySessionInitResult,
@@ -19,6 +21,7 @@ import type {
   StoryTurnSubmitParams,
 } from '@/types/game';
 import {
+  normalizeStoryEndingCheckPayload,
   normalizeStoryScenePayload,
   normalizeStorySessionSnapshotPayload,
   normalizeStoryTurnPayload,
@@ -38,11 +41,19 @@ const normalizeOptionalString = (value: unknown): string | null => {
   return normalized;
 };
 
-const STORY_SESSION_ERROR_CODES = new Set([
+const STORY_SESSION_ERROR_CODES = new Set<ServiceErrorCode>([
   'STORY_SESSION_NOT_FOUND',
   'STORY_SESSION_EXPIRED',
   'STORY_SESSION_RESTORE_FAILED',
 ]);
+
+const mapStorySessionErrorCode = (backendErrorCode: string | null): ServiceErrorCode | null => {
+  if (!backendErrorCode || !STORY_SESSION_ERROR_CODES.has(backendErrorCode as ServiceErrorCode)) {
+    return null;
+  }
+
+  return backendErrorCode as ServiceErrorCode;
+};
 
 const readStructuredError = (errorData: ApiErrorData | undefined): Record<string, unknown> | null => {
   if (!errorData || typeof errorData.error !== 'object' || errorData.error === null) {
@@ -87,10 +98,11 @@ const toStoryServiceError = (
     typeof errorData?.message === 'string' && errorData.message.trim() !== ''
       ? errorData.message.trim()
       : fallbackMessage;
+  const mappedStoryErrorCode = mapStorySessionErrorCode(backendErrorCode);
 
-  if (backendErrorCode && STORY_SESSION_ERROR_CODES.has(backendErrorCode)) {
+  if (mappedStoryErrorCode) {
     return new ServiceError({
-      code: 'SESSION_EXPIRED',
+      code: mappedStoryErrorCode,
       status,
       message: rawMessage,
       details: readStructuredErrorDetails(errorData),
@@ -217,7 +229,10 @@ export const processGameInput = async (
       'Story turn processing timed out.'
     );
 
-    if (serviceError.code === 'SESSION_EXPIRED') {
+    if (
+      serviceError.code === 'STORY_SESSION_EXPIRED' ||
+      serviceError.code === 'STORY_SESSION_NOT_FOUND'
+    ) {
       logger.warn('[story-api] story session expired during turn submission');
     }
 
@@ -252,19 +267,19 @@ export const getStorySessionSnapshot = async (
   }
 };
 
-export const checkEnding = async (threadId: string): Promise<GenericApiRecord> => {
+export const checkEnding = async (threadId: string): Promise<StoryEndingCheckResult> => {
   try {
     const response = await httpClient.get(`/v1/game/check-ending/${threadId}`);
-    return unwrapApiData<GenericApiRecord>(response);
+    return normalizeStoryEndingCheckPayload(unwrapApiData<CheckEndingResponse>(response));
   } catch (error: unknown) {
     throw toStoryServiceError(error, 'Failed to check story ending.', 'Ending check timed out.');
   }
 };
 
-export const triggerEnding = async (threadId: string): Promise<GenericApiRecord> => {
+export const triggerEnding = async (threadId: string): Promise<GameTurnResult> => {
   try {
     const response = await httpClient.post('/v1/game/trigger-ending', { thread_id: threadId });
-    return unwrapApiData<GenericApiRecord>(response);
+    return normalizeStoryTurnPayload(unwrapApiData<ProcessGameInputResponse>(response));
   } catch (error: unknown) {
     throw toStoryServiceError(
       error,

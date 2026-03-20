@@ -3,6 +3,7 @@ import type { FeedbackContextValue } from '@/contexts/feedbackCore';
 import { initGame, initializeStory, processGameInput } from '@/services/gameApi';
 import { getServiceErrorMessage, isServiceError } from '@/services/serviceError';
 import type { GameTurnResult, PlayerOption } from '@/types/game';
+import { buildInitialAssistantMessages } from '@/utils/gameSession';
 import { logger } from '@/utils/logger';
 import { resolveSceneDisplayName, resolveStorySceneVisual } from '@/utils/storyScene';
 import type { GameSessionActions } from './useGameState';
@@ -14,6 +15,7 @@ interface StoryTurnSubmissionState {
   currentDialogue: string;
   currentScene: string | null;
   characterImageUrl: string | null;
+  isGameFinished: boolean;
 }
 
 interface UseStoryTurnSubmissionParams {
@@ -25,6 +27,8 @@ interface UseStoryTurnSubmissionParams {
     | 'setThreadId'
     | 'setDialogue'
     | 'setOptions'
+    | 'setGameFinished'
+    | 'replaceMessages'
     | 'rollbackPendingUserMessage'
     | 'stopLoading'
     | 'enterScene'
@@ -56,6 +60,7 @@ export function useStoryTurnSubmission({
     currentDialogue,
     currentScene,
     characterImageUrl,
+    isGameFinished,
   } = state;
 
   const ensureCharacterImage = useCallback(() => {
@@ -100,6 +105,7 @@ export function useStoryTurnSubmission({
       }
 
       actions.setOptions(responseData.playerOptions);
+      actions.setGameFinished(responseData.isGameFinished);
 
       if (responseData.isGameFinished) {
         feedback.info('Story finished.');
@@ -127,8 +133,6 @@ export function useStoryTurnSubmission({
         characterImageUrl ?? undefined
       );
 
-      syncActiveSession(initResponse.threadId);
-      actions.rollbackPendingUserMessage();
       applyResponseVisual({
         threadId: initResponse.threadId,
         sessionRestored: true,
@@ -136,8 +140,11 @@ export function useStoryTurnSubmission({
         restoredFromThreadId: threadId,
         ...openingState,
       });
+      actions.replaceMessages(buildInitialAssistantMessages(openingState));
       actions.setDialogue(openingState.characterDialogue);
       actions.setOptions(openingState.playerOptions);
+      actions.setGameFinished(openingState.isGameFinished);
+      syncActiveSession(initResponse.threadId);
       feedback.success('Game session restored with a fresh story state.');
       return true;
     } catch (error: unknown) {
@@ -159,8 +166,9 @@ export function useStoryTurnSubmission({
   const restorePreviousTurnState = useCallback(() => {
     actions.setDialogue(currentDialogue);
     actions.setOptions(currentOptions);
+    actions.setGameFinished(isGameFinished);
     actions.rollbackPendingUserMessage();
-  }, [actions, currentDialogue, currentOptions]);
+  }, [actions, currentDialogue, currentOptions, isGameFinished]);
 
   const applyReselectResponse = useCallback(
     (responseData: GameTurnResult) => {
@@ -168,6 +176,7 @@ export function useStoryTurnSubmission({
       applyResponseVisual(responseData);
       actions.setDialogue(responseData.characterDialogue);
       actions.setOptions(responseData.playerOptions);
+      actions.setGameFinished(responseData.isGameFinished);
     },
     [actions, applyResponseVisual]
   );
@@ -210,7 +219,12 @@ export function useStoryTurnSubmission({
       } catch (error: unknown) {
         logger.error('Failed to process game option:', error);
 
-        if (isServiceError(error) && error.code === 'SESSION_EXPIRED') {
+        if (
+          isServiceError(error) &&
+          (error.code === 'STORY_SESSION_EXPIRED' ||
+            error.code === 'STORY_SESSION_NOT_FOUND' ||
+            error.code === 'SESSION_EXPIRED')
+        ) {
           feedback.warning('Game session expired. Trying to recover...');
           const recovered = await recoverExpiredSession();
           if (!recovered) {
@@ -218,6 +232,11 @@ export function useStoryTurnSubmission({
             syncActiveSession(null);
             actions.setOptions([]);
           }
+        } else if (isServiceError(error) && error.code === 'STORY_SESSION_RESTORE_FAILED') {
+          feedback.error('Game session could not be recovered. Please restart the story.');
+          restorePreviousTurnState();
+          syncActiveSession(null);
+          actions.setOptions([]);
         } else if (isServiceError(error) && error.code === 'REQUEST_TIMEOUT') {
           feedback.error('Processing timed out. Please retry in a moment.');
           restorePreviousTurnState();

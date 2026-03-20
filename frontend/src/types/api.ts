@@ -63,6 +63,14 @@ export interface StoryResponsePayload extends GenericApiRecord {
   snapshot?: GenericApiRecord | null;
 }
 
+export interface StoryEndingPayload extends GenericApiRecord {
+  type?: string;
+  description?: string;
+  favorability?: number | string | null;
+  trust?: number | string | null;
+  hostility?: number | string | null;
+}
+
 export interface RemoveBackgroundResponse {
   original_url: string;
   transparent_url: string;
@@ -116,6 +124,11 @@ export interface ProcessGameInputResponse extends StoryResponsePayload {
 export interface StorySessionSnapshotResponse extends ProcessGameInputResponse {
   updated_at?: string;
   expires_at?: string;
+}
+
+export interface CheckEndingResponse extends GenericApiRecord {
+  has_ending?: boolean;
+  ending?: StoryEndingPayload | null;
 }
 
 export interface PresetVoiceItem {

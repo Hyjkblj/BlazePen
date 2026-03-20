@@ -24,6 +24,7 @@ export interface GameSessionState {
   characterImageUrl: string | null;
   shouldUseComposite: boolean;
   currentDialogue: string;
+  isGameFinished: boolean;
 }
 
 export interface GameSessionActions {
@@ -37,6 +38,7 @@ export interface GameSessionActions {
   setCharacterImageUrl: (url: string | null) => void;
   setDialogue: (dialogue: string | null | undefined) => void;
   setOptions: (options: PlayerOption[] | null | undefined) => void;
+  setGameFinished: (isFinished: boolean) => void;
   enterScene: (sceneId: string, sceneName: string, mode?: SceneTransitionMode) => void;
   clearSceneTransition: () => void;
   applyCompositeScene: (imageUrl: string) => void;
@@ -58,6 +60,7 @@ export type GameSessionInitActions = Pick<
   | 'setCharacterImageUrl'
   | 'setDialogue'
   | 'setOptions'
+  | 'setGameFinished'
   | 'enterScene'
   | 'applyCompositeScene'
   | 'applySceneVisual'
@@ -88,6 +91,7 @@ export function useGameState(): GameStateBag {
   const [characterImageUrl, setCharacterImageUrl] = useState<string | null>(null);
   const [shouldUseComposite, setShouldUseComposite] = useState(false);
   const [currentDialogue, setCurrentDialogue] = useState('');
+  const [isGameFinished, setGameFinished] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const previousSceneRef = useRef<string | null>(null);
@@ -206,6 +210,7 @@ export function useGameState(): GameStateBag {
       characterImageUrl,
       shouldUseComposite,
       currentDialogue,
+      isGameFinished,
     }),
     [
       actNumber,
@@ -222,6 +227,7 @@ export function useGameState(): GameStateBag {
       showTransition,
       threadId,
       transitionSceneName,
+      isGameFinished,
     ]
   );
 
@@ -235,6 +241,7 @@ export function useGameState(): GameStateBag {
         characterImageUrl,
         compositeImageUrl,
         shouldUseComposite,
+        isGameFinished,
       },
     }),
     [
@@ -243,6 +250,7 @@ export function useGameState(): GameStateBag {
       currentDialogue,
       currentOptions,
       currentScene,
+      isGameFinished,
       sceneImageUrl,
       shouldUseComposite,
     ]
@@ -260,6 +268,7 @@ export function useGameState(): GameStateBag {
       setCharacterImageUrl,
       setDialogue,
       setOptions,
+      setGameFinished,
       enterScene,
       clearSceneTransition,
       applyCompositeScene,
@@ -284,6 +293,7 @@ export function useGameState(): GameStateBag {
       rollbackPendingUserMessage,
       scrollToBottom,
       setDialogue,
+      setGameFinished,
       setOptions,
       startLoading,
       stopLoading,

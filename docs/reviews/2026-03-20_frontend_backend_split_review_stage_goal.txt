@@ -1,0 +1,35 @@
+## 前端 Findings
+- [Major] frontend/src/utils/trainingSession.ts:108
+  问题：`normalizeTrainingMode()` 对未知 training mode 静默回退为 `guided`，并被训练响应 normalizer 复用。
+  原因：这会把后端契约错误伪装成合法业务值，违反契约优先和“页面不能直接兼容后端脏字段”的约束；training 模式边界不应该靠默认值吞掉。
+  影响：一旦后端返回拼写错误、旧枚举或混入非 training 模式，前端会在不报错的情况下进入错误流程，后续 `sessionId` 恢复、模式标签和场景推荐都会建立在错误事实之上，问题很难定位。
+  建议：拆分“请求入参默认化”和“响应 DTO 解析”两条路径；响应侧只接受 allowlist 枚举，遇到未知 mode 直接抛 `INVALID_RESPONSE`，并在 `frontend/src/utils/trainingSession.test.ts`、`frontend/src/services/trainingApi.test.ts` 补充非法 mode 回归。
+
+## 后端 Findings
+- [Major] backend/story/story_session_query_policy.py:18
+  问题：story recent sessions 查询策略默认仍是 `trusted_query_user_id`。
+  原因：ownership/policy 仍然建立在 caller 自报 `user_id` 上，而不是安全默认或强制 actor 匹配，这与阶段文档要求的 query policy 收口相冲突。
+  影响：一旦部署遗漏环境变量，`/v1/game/sessions?user_id=` 仍可枚举他人会话列表，`PR-BE-05` 也不能被视为“可长期承诺”的外部契约。
+  建议：把默认模式切到严格 actor 匹配，或在缺少可信 actor 时直接拒绝该 route；同时在 `backend/test_story_query_routes.py`、`backend/test_story_query_services.py` 增加“默认配置即安全”的回归。
+- [Major] backend/api/routers/training.py:151
+  问题：新加的 `GET /v1/training/sessions/{session_id}` 继续把所有 `ValueError` 视为 not found，并通过异常 `message` 推断错误码。
+  原因：这把业务语义绑定到文本内容，且把服务内部的数据损坏、恢复状态错误与真正的 `session not found` 混在同一条 contract 上，违反错误码稳定性和恢复模型可诊断性的要求。
+  影响：例如恢复链路里 `scenario sequence is empty` 这类非 not-found 异常，会被错误包装成 `404`/伪错误码；前端恢复逻辑和运维排障都会拿到误导性信号，message 文本一改，契约也会漂移。
+  建议：引入显式 training domain exceptions，至少区分 `not found / completed / duplicate / recovery state corrupted`；route 按异常类型映射固定 HTTP status 与 error code，停止使用 `infer_training_error_code(str(exc))` 作为对外契约。
+
+## Open Questions
+- `/api/v1/game/sessions` 这条 route 预期是对外客户端直接调用，还是只允许受信网关/内网代理转发？这会影响 query policy 问题的严重度，但无论哪种都需要把默认行为和 actor 来源写死在代码与测试里。
+
+## 测试缺口
+- 前端：`frontend/src/pages/Training.tsx`、`frontend/src/router/index.tsx`、`frontend/src/App.tsx` 没有路由级集成测试，未验证 training shell 挂载、清空会话，以及全局 `TrainingFlowProvider` 不会影响 story 页面。
+- 前端：`frontend/src/utils/trainingSession.test.ts`、`frontend/src/services/trainingApi.test.ts` 没有覆盖后端返回非法 `training_mode` 时的 fail-fast 行为，目前只测了合法别名和缺失 `sessionId`。
+- 后端：`backend/test_story_query_routes.py`、`backend/test_story_query_services.py` 没有覆盖默认 policy 模式和缺失 `X-Story-Actor-Id` 的 route 行为，因此当前不安全默认值不会被回归测试拦住。
+- 后端：`backend/test_training_router.py` 没有覆盖 `GET /v1/training/sessions/{session_id}` 在“会话存在但恢复事实损坏或 sequence 为空”等非 not-found 失败场景下的 status 与 error code；`backend/test_training_service.py` 也没有强制这条恢复路径抛 typed exception。
+
+## Review Summary
+- 本轮未发现必须立刻阻塞合并的 Blocker，但前端 1 个 Major、后端 2 个 Major 都打在契约稳定性和安全默认值上。
+- story 侧 canonical history/ending 接入和 recent snapshot 单一事实源的方向是对的，收口动作本身有效。
+- training 侧 session summary/read-model 基础已经具备，但错误契约仍停留在 `ValueError + message` 过渡层，恢复能力还不能算“可长期承诺”。
+- 前端 training 壳层的分层方向基本正确，但 `trainingMode` 解析现在会吞掉后端脏值，这会把契约破坏隐藏成业务状态。
+- 已跑过本轮相关定向测试且全部通过，但这些测试没有覆盖上述两个关键退化点，所以不能据此判定问题不存在。
+- 在默认安全策略和 typed exception contract 补齐前，我不建议把这轮改动标记为对应阶段 PR 的“已收口”。

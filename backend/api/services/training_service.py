@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from threading import Lock
 from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from training.constants import DEFAULT_EVAL_MODEL, DEFAULT_K_STATE, DEFAULT_S_STATE, SKILL_CODES, TRAINING_RUNTIME_CONFIG
 from training.consequence_engine import ConsequenceEngine
@@ -40,7 +40,6 @@ from training.training_outputs import (
     TrainingKtObservationOutput,
     TrainingNextScenarioOutput,
     TrainingPlayerProfileOutput,
-    TrainingProgressOutput,
     TrainingRecommendationLogOutput,
     TrainingReportHistoryItemOutput,
     TrainingReportOutput,
@@ -49,7 +48,7 @@ from training.training_outputs import (
     TrainingRoundSubmitOutput,
     TrainingScenarioOutput,
     TrainingSessionProgressAnchorOutput,
-    TrainingSessionSummaryOutput,
+    calculate_progress_percent,
 )
 from training.scenario_repository import ScenarioRepository
 from training.telemetry_policy import TrainingTelemetryPolicy
@@ -58,6 +57,9 @@ from training.training_store import DatabaseTrainingStore, TrainingStoreProtocol
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+if TYPE_CHECKING:
+    from training.training_query_service import TrainingQueryService
 
 
 def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
@@ -145,6 +147,7 @@ class TrainingService:
         output_assembler_policy: TrainingOutputAssemblerPolicy | None = None,
         report_context_policy: TrainingReportContextPolicy | None = None,
         runtime_config: Any = None,
+        query_service: "TrainingQueryService | None" = None,
     ):
         self.runtime_config = runtime_config or TRAINING_RUNTIME_CONFIG
         self.mode_catalog = TrainingModeCatalog(runtime_config=self.runtime_config)
@@ -263,6 +266,12 @@ class TrainingService:
             runtime_config=self.runtime_config,
         )
         self.ending_policy = ending_policy or EndingPolicy(runtime_config=self.runtime_config)
+        if query_service is not None:
+            self.query_service = query_service
+        else:
+            from training.training_query_service import TrainingQueryService
+
+            self.query_service = TrainingQueryService.from_runtime(self)
 
     def init_training(
         self,
@@ -403,14 +412,16 @@ class TrainingService:
         if session.status == "completed":
             raise TrainingSessionCompletedError(session_id=session_id)
 
-        snapshot_bundle = self.session_snapshot_policy.ensure_session_snapshots(
+        snapshot_bundle = self.session_snapshot_policy.require_session_snapshots(
+            session_id=session_id,
             session=session,
-            training_store=self.training_store,
         )
-        session = snapshot_bundle.session or session
         scenario_payload_sequence = snapshot_bundle.scenario_payload_sequence
         scenario_payload_catalog = snapshot_bundle.scenario_payload_catalog
-        session_sequence = self._resolve_session_scenario_sequence(session)
+        session_sequence = self._read_persisted_session_sequence_or_raise(
+            session_id=session_id,
+            session=session,
+        )
         training_mode = self._normalize_session_training_mode(session)
         completed_scenario_ids = self._get_completed_scenario_ids(session_id)
         k_before = self._normalize_k_state(session.k_state)
@@ -589,85 +600,39 @@ class TrainingService:
         ).to_dict()
 
     def get_session_summary(self, session_id: str) -> Dict[str, Any]:
-        """Get the stable recovery summary for a training session."""
-        session = self._get_session_or_raise(session_id)
-        session, _, _ = self._ensure_session_snapshot_state(session)
-        is_completed = session.status == "completed"
-        total_rounds = len(self._resolve_session_scenario_sequence(session))
-        resumable_scenario = None
-        scenario_candidates: List[TrainingScenarioOutput] = []
-        runtime_scene_id = getattr(session, "current_scenario_id", None)
-
-        if not is_completed:
-            session, session_sequence, next_scenario_bundle = self._build_session_resume_bundle(
-                session_id=session_id,
-                session=session,
-            )
-            total_rounds = len(session_sequence)
-            resumable_scenario = self._build_training_scenario_output(next_scenario_bundle.scenario)
-            scenario_candidates = self._build_training_scenario_output_list(
-                next_scenario_bundle.scenario_candidates
-            ) or []
-            runtime_scene_id = (getattr(next_scenario_bundle, "scenario", {}) or {}).get("id")
-
-        return TrainingSessionSummaryOutput(
-            session_id=session_id,
-            status=session.status,
-            training_mode=self._normalize_session_training_mode(session),
-            current_round_no=session.current_round_no,
-            total_rounds=total_rounds,
-            k_state=self._normalize_k_state(session.k_state),
-            s_state=self._normalize_s_state(session.s_state),
-            progress_anchor=self._build_training_session_progress_anchor(
-                current_round_no=session.current_round_no,
-                total_rounds=total_rounds,
-                is_completed=is_completed,
-            ),
-            player_profile=self._resolve_session_player_profile(session),
-            runtime_state=self._build_training_runtime_state_output(
-                self._build_runtime_state(
-                    session=session,
-                    current_round_no=session.current_round_no,
-                    current_scene_id=runtime_scene_id,
-                )
-            ),
-            resumable_scenario=resumable_scenario,
-            scenario_candidates=scenario_candidates,
-            can_resume=not is_completed and resumable_scenario is not None,
-            is_completed=is_completed,
-            created_at=self._serialize_optional_datetime(getattr(session, "created_at", None)),
-            updated_at=self._serialize_optional_datetime(getattr(session, "updated_at", None)),
-            end_time=self._serialize_optional_datetime(getattr(session, "end_time", None)),
-        ).to_dict()
+        """Transitional compatibility wrapper for the training query service."""
+        return self.query_service.get_session_summary(session_id)
 
     def get_progress(self, session_id: str) -> Dict[str, Any]:
         """获取训练进度。"""
-        session = self._get_session_or_raise(session_id)
-        session_sequence = self._resolve_session_scenario_sequence(session)
-        return TrainingProgressOutput(
-            session_id=session_id,
-            status=session.status,
-            round_no=session.current_round_no,
-            total_rounds=len(session_sequence),
-            k_state=self._normalize_k_state(session.k_state),
-            s_state=self._normalize_s_state(session.s_state),
-            player_profile=self._resolve_session_player_profile(session),
-            runtime_state=self._build_training_runtime_state_output(
-                self._build_runtime_state(session=session)
-            ),
-        ).to_dict()
+        return self.query_service.get_progress(session_id)
+
+    def get_history(self, session_id: str) -> Dict[str, Any]:
+        """Transitional compatibility wrapper for the training query service."""
+        return self.query_service.get_history(session_id)
 
     def get_report(self, session_id: str) -> Dict[str, Any]:
+        """Transitional compatibility wrapper for the training query service."""
+        return self.query_service.get_report(session_id)
+
+    def get_diagnostics(self, session_id: str) -> Dict[str, Any]:
+        """Transitional compatibility wrapper for the training query service."""
+        return self.query_service.get_diagnostics(session_id)
+
+    # Transitional compatibility only:
+    # keep the legacy read-model builders private while local scripts migrate to
+    # the canonical query service entrypoints. Router and service public methods
+    # must continue to read through `TrainingQueryService`.
+    def _legacy_get_report(self, session_id: str) -> Dict[str, Any]:
         """获取报告（含历史回放与最终状态）。"""
         session = self._get_session_or_raise(session_id)
         rounds = self.training_store.get_training_rounds(session_id)
         evaluations = self.training_store.get_round_evaluations_by_session(session_id)
         kt_observations = self.training_store.get_kt_observations(session_id)
-        snapshot_bundle = self.session_snapshot_policy.ensure_session_snapshots(
+        snapshot_bundle = self.session_snapshot_policy.require_session_snapshots(
+            session_id=session_id,
             session=session,
-            training_store=self.training_store,
         )
-        session = snapshot_bundle.session or session
         scenario_payload_sequence = snapshot_bundle.scenario_payload_sequence
         scenario_payload_catalog = snapshot_bundle.scenario_payload_catalog
         scenario_title_map = self._build_report_scenario_title_map(scenario_payload_catalog)
@@ -726,7 +691,7 @@ class TrainingService:
             history=history,
         ).to_dict()
 
-    def get_diagnostics(self, session_id: str) -> Dict[str, Any]:
+    def _legacy_get_diagnostics(self, session_id: str) -> Dict[str, Any]:
         """获取训练诊断数据，聚合推荐日志、审计事件和 KT 结构化观测。"""
         session = self._get_session_or_raise(session_id)
         recommendation_logs = self.training_store.get_scenario_recommendation_logs(session_id)
@@ -759,15 +724,16 @@ class TrainingService:
 
     def _ensure_session_snapshot_state(
         self,
+        session_id: str,
         session: Any,
     ) -> tuple[Any, List[Dict[str, Any]], List[Dict[str, Any]]]:
-        """Load the persisted snapshot-backed scenario payloads for a session."""
-        snapshot_bundle = self.session_snapshot_policy.ensure_session_snapshots(
+        """Load persisted snapshot-backed scenario payloads without mutating storage."""
+        snapshot_bundle = self.session_snapshot_policy.require_session_snapshots(
+            session_id=session_id,
             session=session,
-            training_store=self.training_store,
         )
         return (
-            snapshot_bundle.session or session,
+            session,
             snapshot_bundle.scenario_payload_sequence,
             snapshot_bundle.scenario_payload_catalog,
         )
@@ -779,16 +745,14 @@ class TrainingService:
         session: Any,
     ) -> tuple[Any, List[Dict[str, str]], Any]:
         """Build the resumable scenario bundle from the session fact source."""
-        session, scenario_payload_sequence, scenario_payload_catalog = self._ensure_session_snapshot_state(session)
-        session_sequence = self._resolve_session_scenario_sequence(session)
-        if not session_sequence:
-            raise TrainingSessionRecoveryStateError(
-                session_id=session_id,
-                reason="scenario_sequence_empty",
-                details={
-                    "current_round_no": int(getattr(session, "current_round_no", 0) or 0),
-                },
-            )
+        session, scenario_payload_sequence, scenario_payload_catalog = self._ensure_session_snapshot_state(
+            session_id=session_id,
+            session=session,
+        )
+        session_sequence = self._read_persisted_session_sequence_or_raise(
+            session_id=session_id,
+            session=session,
+        )
 
         next_scenario_bundle = self.flow_policy.build_next_scenario_bundle(
             training_mode=self._normalize_session_training_mode(session),
@@ -817,15 +781,15 @@ class TrainingService:
         normalized_total_rounds = max(int(total_rounds), 0)
         remaining_rounds = max(normalized_total_rounds - completed_rounds, 0)
         next_round_no = None if is_completed or remaining_rounds == 0 else completed_rounds + 1
-        progress_percent = (
-            round(completed_rounds / normalized_total_rounds, 4) if normalized_total_rounds > 0 else 0.0
-        )
         return TrainingSessionProgressAnchorOutput(
             current_round_no=completed_rounds,
             total_rounds=normalized_total_rounds,
             completed_rounds=completed_rounds,
             remaining_rounds=remaining_rounds,
-            progress_percent=progress_percent,
+            progress_percent=calculate_progress_percent(
+                completed_rounds=completed_rounds,
+                total_rounds=normalized_total_rounds,
+            ),
             next_round_no=next_round_no,
         )
 
@@ -880,8 +844,22 @@ class TrainingService:
             scenario_title_map=scenario_title_map,
         )
 
-    def _resolve_session_scenario_sequence(self, session: Any) -> List[Dict[str, str]]:
-        return self.scenario_policy.resolve_session_sequence(session)
+    def _read_persisted_session_sequence_or_raise(
+        self,
+        *,
+        session_id: str,
+        session: Any,
+    ) -> List[Dict[str, str]]:
+        session_sequence = self.scenario_policy.read_persisted_session_sequence(session)
+        if session_sequence:
+            return session_sequence
+        raise TrainingSessionRecoveryStateError(
+            session_id=session_id,
+            reason="scenario_sequence_empty",
+            details={
+                "current_round_no": int(getattr(session, "current_round_no", 0) or 0),
+            },
+        )
 
     def _resolve_session_player_profile(
         self,
@@ -1063,7 +1041,10 @@ class TrainingService:
             return None
 
         session = self._get_session_or_raise(session_id)
-        session_sequence = self._resolve_session_scenario_sequence(session)
+        session_sequence = self._read_persisted_session_sequence_or_raise(
+            session_id=session_id,
+            session=session,
+        )
         evaluation_row = self.training_store.get_round_evaluation_by_round_id(round_row.round_id)
         ending_row = self.training_store.get_ending_result(session_id)
 

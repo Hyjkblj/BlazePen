@@ -1732,6 +1732,16 @@ class TrainingSessionProgressAnchorOutput:
         return payload
 
 
+def calculate_progress_percent(*, completed_rounds: int, total_rounds: int) -> float:
+    """Freeze progress_percent semantics to a real 0-100 percentage value."""
+    normalized_total_rounds = max(int(total_rounds), 0)
+    normalized_completed_rounds = max(int(completed_rounds), 0)
+    if normalized_total_rounds <= 0:
+        return 0.0
+    ratio = normalized_completed_rounds / normalized_total_rounds
+    return round(max(0.0, min(ratio, 1.0)) * 100, 2)
+
+
 @dataclass(slots=True)
 class TrainingSessionSummaryOutput:
     """Stable training session recovery summary."""
@@ -1768,6 +1778,46 @@ class TrainingSessionSummaryOutput:
             "resumable_scenario": _serialize_scenario(self.resumable_scenario),
             "scenario_candidates": _serialize_scenario_list(self.scenario_candidates) or [],
             "can_resume": self.can_resume,
+            "is_completed": self.is_completed,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "end_time": self.end_time,
+        }
+        if self.player_profile is not None:
+            payload["player_profile"] = _serialize_player_profile(self.player_profile)
+        if self.runtime_state is not None:
+            payload["runtime_state"] = _serialize_runtime_state(self.runtime_state)
+        return payload
+
+
+@dataclass(slots=True)
+class TrainingHistoryOutput:
+    """Stable training history read model."""
+
+    session_id: str
+    status: str
+    training_mode: str
+    current_round_no: int
+    total_rounds: int
+    progress_anchor: "TrainingSessionProgressAnchorOutput | Dict[str, Any]"
+    history: List["TrainingReportHistoryItemOutput"] = field(default_factory=list)
+    is_completed: bool = False
+    player_profile: Optional["TrainingPlayerProfileOutput | Dict[str, Any]"] = None
+    runtime_state: Optional["TrainingRuntimeStateOutput | Dict[str, Any]"] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    end_time: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Export the stable training history payload."""
+        payload = {
+            "session_id": self.session_id,
+            "status": self.status,
+            "training_mode": self.training_mode,
+            "current_round_no": self.current_round_no,
+            "total_rounds": self.total_rounds,
+            "progress_anchor": _serialize_progress_anchor(self.progress_anchor) or {},
+            "history": [item.to_dict() for item in self.history],
             "is_completed": self.is_completed,
             "created_at": self.created_at,
             "updated_at": self.updated_at,

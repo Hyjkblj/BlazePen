@@ -1,0 +1,41 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+- [Major] frontend/src/hooks/useTrainingSessionBootstrap.ts:162
+  问题：恢复路径把 `localStorage` 里的 `resumeTarget.sessionId` 放在内存 `activeSession.sessionId` 之前，自动恢复链路也沿用了相同优先级。
+  原因：`useTrainingSessionBootstrap` 与 `useTrainingMvpFlow` 共同形成了双事实源，缓存被抬成了当前训练会话的事实源，违反了 `storage` 只能做恢复辅助、不能覆盖服务端/内存权威会话的边界。
+  影响：刷新、重试、多标签页切换或用户重新进入训练页时，陈旧缓存可能把当前内存中的活动会话顶掉，导致恢复到错误的训练 session，后续 round 提交、进度展示和继续训练路径都会串话。
+  建议：把恢复优先级调整为 `options.sessionId -> activeSession.sessionId -> resumeTarget.sessionId`，只有在内存没有活动会话时才读取缓存；同时补一条 `resumeTarget.sessionId !== activeSession.sessionId` 的恢复优先级测试。
+- [Major] frontend/src/utils/trainingSession.ts:368
+  问题：`progressAnchor.progressPercent` 在 summary 归一化时直接透传 `progress_percent`，但本地 flow 在 `frontend/src/flows/useTrainingMvpFlow.ts:78` 对同一字段按 0-100 百分比计算。
+  原因：同一内部状态字段出现两套量纲，说明前端没有在 `services/utils` 层把服务端契约收敛成单一内部语义，契约差异已经泄漏到 `flow` 状态模型。
+  影响：同一 session 走“服务端 summary 恢复”和“本地继续训练”两条路径时会得到不同尺度的 `progressPercent`，一旦该字段被进度条、报告摘要或恢复判断复用，就会出现显示和逻辑错乱。
+  建议：统一前端内部量纲，建议在 `normalizeTrainingProgressAnchor` 中固定转换为 0-100，或同步推动后端契约统一为 0-100；并让 `trainingApi.test.ts`、`trainingSession.test.ts`、`Training.integration.test.tsx` 与后端 contract 使用同一尺度断言。
+
+## 后端 Findings
+- [Blocker] backend/training/training_query_service.py:149
+  问题：新拆出的查询服务在 GET 路径里仍通过 `_ensure_session_snapshot_state` 触发 `session_meta` 回写，读请求带有隐式写库副作用。
+  原因：`get_session_summary`、`get_progress`、`get_history`、`get_session_report` 都走了读取即修复路径，而 `backend/training/session_snapshot_policy.py:74` 与 `backend/training/session_snapshot_policy.py:122` 会把补齐后的 `session_meta` 整体写回；`backend/training/training_repository.py:134` 再直接覆盖字段。这让 query service 同时承担读模型组装和持久化修复，破坏了读写边界与单一事实源。
+  影响：GET 请求不再是安全读，缓存、重试、重放和审计语义都会失真；更严重的是并发场景下读请求可能用旧快照覆盖写路径刚更新的 `session_meta`，直接污染训练会话的恢复状态。
+  建议：把 snapshot backfill 移到显式迁移、初始化或写路径升级逻辑；query service 只读取持久化事实，缺少快照时返回 typed recovery error，不要在 GET 中修复数据。
+- [Major] backend/training/training_query_service.py:25
+  问题：`TrainingQueryService` 通过一个包含大量 `_...` 私有方法的 Protocol 直接借用 `TrainingService` 内部实现，服务拆分仍停留在外观层。
+  原因：查询服务没有形成独立的 read-model 依赖面，而是继续穿透巨型 `TrainingService` 的私有 helper，违反了 `services / policy / dto` 的职责分离目标，也会持续扩大跨边界隐式契约。
+  影响：后续任何查询需求都会继续把私有 helper 搬进 Protocol，读写逻辑仍被同一巨型 service 绑死，单元测试也只能围绕 `TrainingService` 搭环境，后端边界难以稳定。
+  建议：把 session 读取、snapshot 解析、history/report 组装、output factory 拆成显式协作者或纯函数模块，让 `TrainingQueryService` 只依赖公开接口，不再依赖 `TrainingService` 私有方法。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：缺少 `frontend/src/hooks/useTrainingSessionBootstrap.ts` 与 `frontend/src/flows/useTrainingMvpFlow.ts` 在 `activeSession` 和 `resumeTarget` 冲突时的恢复优先级测试，当前用例只覆盖“有缓存即可恢复”，没有覆盖“缓存比内存旧”的路径。
+- 前端：缺少 `frontend/src/utils/trainingSession.ts` 与 `frontend/src/flows/useTrainingMvpFlow.ts` 的 `progressPercent` 同量纲契约测试；现有 `frontend/src/services/trainingApi.test.ts`、`frontend/src/utils/trainingSession.test.ts`、`frontend/src/pages/Training.integration.test.tsx` 没有把前端 summary 归一化与后端 contract 尺度绑定在一起。
+- 后端：缺少 `backend/training/training_query_service.py` 的直接单元测试，尤其是 `get_session_summary`、`get_progress`、`get_history`、`get_session_report` 在缺快照、恢复损坏和并发读写场景下的行为。
+- 后端：缺少“GET 无副作用”的保护测试；当前 `backend/test_training_router.py` 与 `backend/test_training_service.py` 没有断言查询请求不会调用 `update_training_session` 或覆盖 `session_meta`。
+
+## Review Summary
+- 这批改动在训练查询能力和前端恢复链路上推进明显，但状态权威与读写边界还没有真正收紧。
+- 前端暂未发现阻塞性问题，但已经出现 `localStorage` 覆盖活动会话和 `progressPercent` 内部量纲不一致两个高风险设计点。
+- 后端存在一个明确的阻塞项：查询接口通过快照补齐逻辑隐式写库，读请求不再是安全读。
+- 另外，`TrainingQueryService` 仍紧耦合 `TrainingService` 私有 helper，当前拆分还不足以支撑后续稳定演进。
+- 当前后端回归测试可以通过，前端相关测试也能跑通，但都没有保护上述关键恢复与边界风险。
+- 结论是前端可以在修正状态优先级和契约统一后继续推进，后端应先去掉 GET 写入副作用再继续扩展查询面。

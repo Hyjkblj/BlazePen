@@ -51,6 +51,16 @@ export interface TrainingBranchTransition {
   matchedRule: Record<string, unknown>;
 }
 
+export interface TrainingBranchTransitionSummary {
+  sourceScenarioId: string;
+  targetScenarioId: string;
+  transitionType: string;
+  reason: string;
+  count: number;
+  roundNos: number[];
+  triggeredFlags: string[];
+}
+
 export interface TrainingRoundDecisionContext {
   mode: TrainingMode;
   selectionSource: string;
@@ -115,6 +125,153 @@ export interface TrainingConsequenceEvent {
   relatedFlag: string | null;
   stateBar: TrainingRuntimeStateBar | null;
   payload: Record<string, unknown>;
+}
+
+export interface TrainingDiagnosticsCountItem {
+  code: string;
+  count: number;
+}
+
+export interface TrainingMetricObservation {
+  code: string;
+  before: number;
+  delta: number;
+  after: number;
+  isTarget: boolean;
+}
+
+export interface TrainingKtObservation {
+  scenarioId: string;
+  scenarioTitle: string;
+  trainingMode: TrainingMode;
+  roundNo: number | null;
+  primarySkillCode: string | null;
+  primaryRiskFlag: string | null;
+  isHighRisk: boolean;
+  targetSkills: string[];
+  weakSkillsBefore: string[];
+  riskFlags: string[];
+  focusTags: string[];
+  evidence: string[];
+  skillObservations: TrainingMetricObservation[];
+  stateObservations: TrainingMetricObservation[];
+  observationSummary: string;
+}
+
+export interface TrainingRecommendationLog {
+  roundNo: number;
+  trainingMode: TrainingMode;
+  selectionSource: string | null;
+  recommendedScenarioId: string | null;
+  selectedScenarioId: string | null;
+  candidatePool: TrainingDecisionCandidate[];
+  recommendedRecommendation: TrainingScenarioRecommendation | null;
+  selectedRecommendation: TrainingScenarioRecommendation | null;
+  decisionContext: TrainingRoundDecisionContext | null;
+}
+
+export interface TrainingAuditEvent {
+  eventType: string;
+  payload: Record<string, unknown>;
+  roundNo: number | null;
+  timestamp: string | null;
+}
+
+export interface TrainingReportMetric {
+  code: string;
+  initial: number;
+  final: number;
+  delta: number;
+  weight: number | null;
+  isLowestFinal: boolean;
+  isHighestGain: boolean;
+}
+
+export interface TrainingReportCurvePoint {
+  roundNo: number;
+  scenarioId: string | null;
+  scenarioTitle: string;
+  kState: Record<string, number>;
+  sState: Record<string, number>;
+  weightedKScore: number;
+  isHighRisk: boolean;
+  riskFlags: string[];
+  primarySkillCode: string | null;
+  timestamp: string | null;
+}
+
+export interface TrainingReportHistoryItem {
+  roundNo: number;
+  scenarioId: string;
+  userInput: string;
+  selectedOption: string | null;
+  evaluation: TrainingEvaluation | null;
+  kStateBefore: Record<string, number>;
+  kStateAfter: Record<string, number>;
+  sStateBefore: Record<string, number>;
+  sStateAfter: Record<string, number>;
+  timestamp: string | null;
+  decisionContext: TrainingRoundDecisionContext | null;
+  ktObservation: TrainingKtObservation | null;
+  runtimeState: TrainingRuntimeState | null;
+  consequenceEvents: TrainingConsequenceEvent[];
+}
+
+export interface TrainingReportSummary {
+  weightedScoreInitial: number;
+  weightedScoreFinal: number;
+  weightedScoreDelta: number;
+  strongestImprovedSkillCode: string | null;
+  strongestImprovedSkillDelta: number;
+  weakestSkillCode: string | null;
+  weakestSkillScore: number;
+  dominantRiskFlag: string | null;
+  highRiskRoundCount: number;
+  highRiskRoundNos: number[];
+  panicTriggerRoundCount: number;
+  sourceExposedRoundCount: number;
+  editorLockedRoundCount: number;
+  highRiskPathRoundCount: number;
+  branchTransitionCount: number;
+  branchTransitionRounds: number[];
+  branchTransitions: TrainingBranchTransitionSummary[];
+  riskFlagCounts: TrainingDiagnosticsCountItem[];
+  completedScenarioIds: string[];
+  reviewSuggestions: string[];
+}
+
+export interface TrainingDiagnosticsSummary {
+  totalRecommendationLogs: number;
+  totalAuditEvents: number;
+  totalKtObservations: number;
+  highRiskRoundCount: number;
+  highRiskRoundNos: number[];
+  recommendedVsSelectedMismatchCount: number;
+  recommendedVsSelectedMismatchRounds: number[];
+  riskFlagCounts: TrainingDiagnosticsCountItem[];
+  primarySkillFocusCounts: TrainingDiagnosticsCountItem[];
+  topWeakSkills: TrainingDiagnosticsCountItem[];
+  selectionSourceCounts: TrainingDiagnosticsCountItem[];
+  eventTypeCounts: TrainingDiagnosticsCountItem[];
+  phaseTagCounts: TrainingDiagnosticsCountItem[];
+  phaseTransitionCount: number;
+  phaseTransitionRounds: number[];
+  panicTriggerRoundCount: number;
+  panicTriggerRounds: number[];
+  sourceExposedRoundCount: number;
+  sourceExposedRounds: number[];
+  editorLockedRoundCount: number;
+  editorLockedRounds: number[];
+  highRiskPathRoundCount: number;
+  highRiskPathRounds: number[];
+  branchTransitionCount: number;
+  branchTransitionRounds: number[];
+  branchTransitions: TrainingBranchTransitionSummary[];
+  lastPrimarySkillCode: string | null;
+  lastPrimaryRiskFlag: string | null;
+  lastEventType: string | null;
+  lastPhaseTags: string[];
+  lastBranchTransition: TrainingBranchTransition | null;
 }
 
 export interface TrainingRuntimeState {
@@ -182,4 +339,59 @@ export interface TrainingProgressResult {
   roundNo: number;
   totalRounds: number;
   runtimeState: TrainingRuntimeState;
+}
+
+export interface TrainingProgressAnchor {
+  roundNo: number;
+  totalRounds: number;
+  completedRounds: number;
+  remainingRounds: number;
+  progressPercent: number;
+  nextRoundNo: number | null;
+}
+
+export interface TrainingSessionSummaryResult {
+  sessionId: TrainingSessionId;
+  trainingMode: TrainingMode;
+  status: string;
+  roundNo: number;
+  totalRounds: number;
+  runtimeState: TrainingRuntimeState;
+  progressAnchor: TrainingProgressAnchor;
+  resumableScenario: TrainingScenario | null;
+  scenarioCandidates: TrainingScenario[];
+  canResume: boolean;
+  isCompleted: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+  endTime: string | null;
+}
+
+export interface TrainingReportResult {
+  sessionId: TrainingSessionId;
+  status: string;
+  rounds: number;
+  kStateFinal: Record<string, number>;
+  sStateFinal: Record<string, number>;
+  improvement: number;
+  playerProfile: TrainingPlayerProfile | null;
+  runtimeState: TrainingRuntimeState | null;
+  ending: Record<string, unknown> | null;
+  summary: TrainingReportSummary | null;
+  abilityRadar: TrainingReportMetric[];
+  stateRadar: TrainingReportMetric[];
+  growthCurve: TrainingReportCurvePoint[];
+  history: TrainingReportHistoryItem[];
+}
+
+export interface TrainingDiagnosticsResult {
+  sessionId: TrainingSessionId;
+  status: string;
+  roundNo: number;
+  playerProfile: TrainingPlayerProfile | null;
+  runtimeState: TrainingRuntimeState | null;
+  summary: TrainingDiagnosticsSummary | null;
+  recommendationLogs: TrainingRecommendationLog[];
+  auditEvents: TrainingAuditEvent[];
+  ktObservations: TrainingKtObservation[];
 }

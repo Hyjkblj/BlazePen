@@ -1,6 +1,6 @@
 """API数据模型（Pydantic Schemas）"""
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ApiResponse(BaseModel):
@@ -104,7 +104,13 @@ class RemoveBackgroundRequest(BaseModel):
     selected_index: Optional[int] = Field(None, description="选中的图片索引（0, 1, 2）")
 
 
-class TrainingPlayerProfileRequest(BaseModel):
+class _StrictTrainingRequestModel(BaseModel):
+    """Reject unknown fields so training request contracts stay explicit."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class TrainingPlayerProfileRequest(_StrictTrainingRequestModel):
     """训练玩家档案请求。"""
 
     name: Optional[str] = Field(None, description="玩家姓名")
@@ -112,11 +118,7 @@ class TrainingPlayerProfileRequest(BaseModel):
     identity: Optional[str] = Field(None, description="玩家身份")
     age: Optional[int] = Field(None, description="玩家年龄")
 
-    class Config:
-        extra = "allow"
-
-
-class TrainingInitRequest(BaseModel):
+class TrainingInitRequest(_StrictTrainingRequestModel):
     """初始化训练请求"""
     user_id: str = Field(..., description="用户ID")
     character_id: Optional[int] = Field(None, description="角色ID（可选）")
@@ -385,7 +387,7 @@ class TrainingInitResponse(BaseModel):
     scenario_candidates: Optional[List[TrainingScenarioResponse]] = None
 
 
-class TrainingScenarioNextRequest(BaseModel):
+class TrainingScenarioNextRequest(_StrictTrainingRequestModel):
     """获取下一场景请求"""
     session_id: str = Field(..., description="训练会话ID")
 
@@ -404,7 +406,7 @@ class TrainingScenarioNextResponse(BaseModel):
     ending: Optional[Dict[str, Any]] = None
 
 
-class TrainingRoundSubmitRequest(BaseModel):
+class TrainingRoundSubmitRequest(_StrictTrainingRequestModel):
     """提交训练回合请求"""
     session_id: str = Field(..., description="训练会话ID")
     scenario_id: str = Field(..., description="场景ID")
@@ -446,7 +448,7 @@ class TrainingSessionProgressAnchorResponse(BaseModel):
     total_rounds: int
     completed_rounds: int
     remaining_rounds: int
-    progress_percent: float = 0.0
+    progress_percent: float = Field(0.0, description="训练进度百分比，范围 0-100")
     next_round_no: Optional[int] = None
 
 
@@ -488,6 +490,24 @@ class TrainingReportHistoryItemResponse(BaseModel):
     kt_observation: Optional[TrainingKtObservationResponse] = None
     runtime_state: Optional[TrainingRuntimeStateResponse] = None
     consequence_events: List[TrainingConsequenceEventResponse] = Field(default_factory=list)
+
+
+class TrainingHistoryResponse(BaseModel):
+    """Stable training session history response."""
+
+    session_id: str
+    status: str
+    training_mode: str
+    current_round_no: int
+    total_rounds: int
+    progress_anchor: TrainingSessionProgressAnchorResponse
+    history: List[TrainingReportHistoryItemResponse] = Field(default_factory=list)
+    is_completed: bool = False
+    player_profile: Optional[TrainingPlayerProfileResponse] = None
+    runtime_state: Optional[TrainingRuntimeStateResponse] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    end_time: Optional[str] = None
 
 
 class TrainingReportMetricResponse(BaseModel):
@@ -594,6 +614,12 @@ class TrainingSessionSummaryApiResponse(ApiResponse):
     """Training session summary API response envelope."""
 
     data: Optional[TrainingSessionSummaryResponse] = None
+
+
+class TrainingHistoryApiResponse(ApiResponse):
+    """Training history API response envelope."""
+
+    data: Optional[TrainingHistoryResponse] = None
 
 
 class TrainingReportApiResponse(ApiResponse):

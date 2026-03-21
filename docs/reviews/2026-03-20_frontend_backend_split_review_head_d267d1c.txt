@@ -1,0 +1,29 @@
+## 前端 Findings
+- [Major] frontend/src/services/trainingApi.ts:32
+  问题：前端训练服务层没有接入后端新增的 `TRAINING_SESSION_RECOVERY_STATE_CORRUPTED`，会把恢复态损坏错误降级成通用未知错误。
+  原因：后端已经在 `backend/api/error_codes.py:20` 定义并在 `backend/api/routers/training.py:92-101` 显式返回该稳定错误码，但前端 `TRAINING_ERROR_CODES` 白名单和 `frontend/src/services/serviceError.ts:14-18` 的 `ServiceErrorCode` 联合类型都没有同步更新，违反了“契约优先、恢复语义集中在 service 层消费”的边界要求。
+  影响：`/v1/training/scenario/next` 等恢复敏感路径一旦返回会话恢复损坏，page/flow 只能拿到 `UNKNOWN_ERROR`，既无法做定向恢复提示，也无法和普通网络失败区分，恢复链路会退化。
+  建议：在 `serviceError.ts` 和 `trainingApi.ts` 中补齐 `TRAINING_SESSION_RECOVERY_STATE_CORRUPTED`，由 service 层统一映射；同时补前端契约测试，禁止该错误码再次退化为通用错误。
+
+## 后端 Findings
+- [Blocker] backend/api/routers/training.py:199
+  问题：`/v1/training/round/submit` 仍把真实的场景冲突/候选集失效路径压成 `ValueError + message`，最终退化为通用 `VALIDATION_ERROR`。
+  原因：`backend/training/round_flow_policy.py:168-236` 明确会抛出 `scenario mismatch: expected=...`、`allowed=...` 这类业务冲突；`backend/test_training_service.py:1614-1633` 也证明“self-paced 下重复提交已完成候选题目”是现实路径。但路由层在 `backend/api/routers/training.py:199-205` 只按 `ValueError` 兜底，并通过 `backend/api/error_codes.py:55-67` 的 message 推断函数返回默认 `VALIDATION_ERROR`，把业务语义继续放在 message 文本里，违反了稳定 DTO / 错误码契约要求。
+  影响：前端无法稳定判断这是“需要刷新候选题目/强制重选”的业务冲突，还是普通字段校验失败，只能读 message 或一律弹通用错误；这会直接破坏训练主线的提交恢复能力，也会把契约兼容逻辑重新推回页面层。
+  建议：把场景冲突提升为显式训练域异常并分配稳定错误码，例如 `TRAINING_SCENARIO_MISMATCH` 或 `TRAINING_SCENARIO_RESELECT_REQUIRED`；路由层显式映射该异常，前端只消费错误码，不解析 message。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：`frontend/src/services/trainingApi.test.ts` 只覆盖了 `TRAINING_SESSION_NOT_FOUND`、`TRAINING_SESSION_COMPLETED`、`TRAINING_ROUND_DUPLICATE`，没有覆盖 `TRAINING_SESSION_RECOVERY_STATE_CORRUPTED` 的保真映射，也没有校验 conflict 状态下训练错误码仍被稳定保留。
+- 前端：`frontend/src/pages/Training.integration.test.tsx` 目前只验证 shell 渲染和清空状态，没有覆盖训练会话恢复失败、下一题加载失败、提交冲突这三类真正会驱动 page/flow 分支的路径。
+- 后端：`backend/test_training_router.py` 与 `backend/test_api_contract_standardization.py` 没有覆盖 `/v1/training/round/submit` 在 stale candidate / `scenario mismatch` 情况下应返回什么稳定错误码，导致该核心提交路径继续依赖 message 语义也不会被测试拦住。
+- 后端：`backend/test_training_router.py` 没有覆盖 `/v1/training/scenario/next` 返回 `TRAINING_SESSION_RECOVERY_STATE_CORRUPTED` 的 envelope；当前只测了 `/sessions/{session_id}`，恢复分支的路由契约仍不完整。
+
+## Review Summary
+- 本次 review 以 `HEAD d267d1c` 为范围。
+- 这批改动在前后端职责拆分上方向基本正确，训练 context、DTO normalizer、story query/service 拆分都比之前更清晰。
+- 但前端服务层没有跟上新增恢复错误码，后端提交主路径也还在用 message 文本承载业务冲突语义，这两点都直接削弱契约稳定性和恢复能力。
+- 其中提交冲突契约问题属于 Blocker；在它仍然是 `VALIDATION_ERROR + scenario mismatch message` 的状态下，不建议按“训练后端已完成”口径合并。
+- 其余风险主要集中在恢复分支和冲突分支测试覆盖不足，后续前端真正接入训练提交流程时很容易再次把兼容逻辑散落到 page/flow 层。

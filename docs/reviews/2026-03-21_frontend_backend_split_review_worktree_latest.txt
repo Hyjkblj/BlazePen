@@ -1,0 +1,37 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+- [Major] frontend/src/hooks/useTrainingReadQuery.ts:24
+  问题：训练报告、进度、诊断页在 `TRAINING_SESSION_NOT_FOUND` 或 `TRAINING_SESSION_RECOVERY_STATE_CORRUPTED` 时只展示错误文案，不会清理失效的 `activeSession` / `resumeTarget`。
+  原因：训练主页的恢复链路已经把终态恢复错误视为需要清空本地入口的恢复失败，但新的 read-query 入口没有复用这套恢复语义，仍会继续让 `useTrainingSessionReadTarget` 从内存或 localStorage 里反复解析同一个失效 `sessionId`。
+  影响：用户从 [frontend/src/pages/Training.tsx:70](frontend/src/pages/Training.tsx) 跳到 report/progress/diagnostics 页后，一旦命中会话不存在或恢复状态损坏，页面会停留在“可重试但永远重复失败”的状态；刷新后仍会重新命中同一个坏会话，恢复路径不稳定。
+  建议：把终态恢复错误清理逻辑下沉到 read-query 公共层，统一在 `useTrainingReadQuery` 或独立 recovery helper 中清除 `activeSession` 与 `resumeTarget`，并在 insight 页测试中覆盖“坏会话被清理后不再重复读取”的路径。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+- [Major] backend/api/services/training_service.py:365
+  问题：`get_next_scenario` / `submit_round` 仍会在会话缺少 `scenario_payload_sequence` 或 `scenario_payload_catalog` 时，静默回填快照并继续处理。
+  原因：虽然新的 `TrainingQueryService` 已经把 GET 查询改成“缺快照即 typed recovery error”，但写路径仍通过 `SessionScenarioSnapshotPolicy.ensure_session_snapshots(...)` 在运行时从当前场景仓库重建快照并回写 `session_meta`，把“会话事实损坏”继续当成“可首触自动修复”。这使恢复模型在 query 路径和 write 路径之间不一致，也让历史会话事实继续依赖当前仓库内容而不是持久化快照。
+  影响：旧会话如果缺少快照，`scenario/next` 或 `submit_round` 可能用当前版本的场景定义补写历史会话，导致同一会话的恢复结果随发布时间漂移；同时 GET 会报损坏、POST 却能偷偷修复，运维和排障行为不一致。
+  建议：把缺快照会话统一视为显式 repair/migration 问题，而不是在主链路运行时回填；`get_next_scenario`、`submit_round` 与 query service 应共享同一套损坏判定，缺快照时返回 typed recovery error，由独立修复任务或迁移脚本补齐。
+- [Major] backend/training/training_query_service.py:427
+  问题：`progress_percent` 仍按 `0-1` 比例输出，而字段名与前端内部模型都按“百分比”语义消费。
+  原因：当前后端契约测试已经把 `0.1667` 这种比例值固化为标准返回，但前端 normalizer 只能额外做“`<=1` 时乘以 100”的兼容处理来维持页面正确显示。这说明契约语义没有冻结，只是被客户端兼容逻辑掩盖了。
+  影响：当前 Web 前端能通过 normalizer 自救，但其他客户端、脚本或后续页面如果直接消费 `progress_percent`，会得到和字段名不一致的含义；契约一旦外扩，就会出现进度显示和统计口径错乱。
+  建议：尽快冻结这一字段语义，要么后端统一输出 `0-100`，要么显式改名为 `progress_ratio`；同步更新 schema、contract test 和文档，避免继续把契约歧义留给客户端补丁处理。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：缺少 `frontend/src/hooks/useTrainingReadQuery.ts` 与 `frontend/src/pages/TrainingInsights.integration.test.tsx` 对终态恢复错误的清理回归测试。当前只验证了错误文案和 retry 按钮，没有验证坏 `sessionId` 会被从 `activeSession` / `resumeTarget` 中移除。
+- 前端：缺少 report/progress/diagnostics 三个只读页在“缓存会话损坏后刷新”的恢复测试，当前没有证明 insight 页能够从坏缓存中自恢复。
+- 后端：缺少 `backend/api/services/training_service.py` 对 `get_next_scenario` / `submit_round` 在缺少快照时返回 typed recovery error 的回归测试；现有测试反而把静默 backfill 锁成了预期行为。
+- 后端：缺少 `progress_percent` 契约语义测试。当前测试只冻结了数值 `0.1667`，没有冻结“这个字段到底是 ratio 还是 percent”的语义，后续仍容易继续靠客户端兼容掩盖问题。
+
+## Review Summary
+- 这轮改动已经把训练 query service 的 GET 副作用问题收掉了，后端查询边界比上一轮清晰得多。
+- 前端也补上了 `progress_percent` 的本地归一化和报告/诊断/进度读页壳层，训练前端确实在成型。
+- 但新的 insight 读页没有继承训练主页的终态恢复清理语义，坏会话仍会在本地入口里反复复用。
+- 后端则还保留了“缺快照会话在主链路首触时静默 backfill”的旧行为，恢复模型在 GET 和 POST 之间不一致。
+- 另外，`progress_percent` 的契约语义仍未冻结，当前只是由前端 normalizer 兜底。
+- 整体看，这批改动已经不再被阻塞性问题卡住，但还没有彻底达到“恢复模型单一、契约语义稳定”的收口状态。

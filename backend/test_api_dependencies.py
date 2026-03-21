@@ -22,6 +22,7 @@ class DependencyWiringTestCase(unittest.TestCase):
         dependencies._tts_service = None
         dependencies._session_manager = None
         dependencies._training_service = None
+        dependencies._training_query_service = None
         dependencies._story_image_executor = None
         dependencies._story_session_query_policy = None
         dependencies._story_service_bundle = None
@@ -169,6 +170,25 @@ class DependencyWiringTestCase(unittest.TestCase):
             story_history_service=story_history_service,
             image_executor=image_executor,
         )
+
+    def test_get_training_query_service_should_share_training_runtime_bundle(self):
+        training_service = object()
+        training_query_service = object()
+
+        with patch(
+            "api.services.training_service.TrainingService",
+            return_value=training_service,
+        ) as training_service_cls, patch(
+            "training.training_query_service.TrainingQueryService.from_runtime",
+            return_value=training_query_service,
+        ) as query_service_factory:
+            result = dependencies.get_training_query_service()
+            cached_result = dependencies.get_training_query_service()
+
+        self.assertIs(result, training_query_service)
+        self.assertIs(cached_result, training_query_service)
+        training_service_cls.assert_called_once_with()
+        query_service_factory.assert_called_once_with(training_service)
 
 
 class GameServiceCompositionTestCase(unittest.TestCase):

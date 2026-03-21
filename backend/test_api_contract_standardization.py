@@ -7,7 +7,8 @@ import unittest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.dependencies import get_game_service, get_training_service
+from api.dependencies import get_game_service, get_training_query_service, get_training_service
+from api.middleware.error_handler import install_common_exception_handlers
 from api.routers import characters, game, training
 from story.exceptions import (
     StorySessionAccessDeniedError,
@@ -342,7 +343,7 @@ class _FakeTrainingService:
                 "total_rounds": 6,
                 "completed_rounds": 1,
                 "remaining_rounds": 5,
-                "progress_percent": 0.1667,
+                "progress_percent": 16.67,
                 "next_round_no": 2,
             },
             "resumable_scenario": {"id": "S2", "title": "Resume Scenario"},
@@ -359,6 +360,32 @@ class _FakeTrainingService:
             "total_rounds": 6,
             "k_state": {"K1": 0.5},
             "s_state": {"credibility": 0.7},
+        }
+
+    def get_history(self, session_id):
+        if session_id == "missing":
+            raise TrainingSessionNotFoundError(session_id=session_id)
+        if session_id == "corrupted":
+            raise TrainingSessionRecoveryStateError(
+                session_id=session_id,
+                reason="scenario_sequence_empty",
+            )
+        return {
+            "session_id": session_id,
+            "status": "in_progress",
+            "training_mode": "self-paced",
+            "current_round_no": 1,
+            "total_rounds": 6,
+            "progress_anchor": {
+                "current_round_no": 1,
+                "total_rounds": 6,
+                "completed_rounds": 1,
+                "remaining_rounds": 5,
+                "progress_percent": 16.67,
+                "next_round_no": 2,
+            },
+            "history": [],
+            "is_completed": False,
         }
 
     def get_report(self, session_id):
@@ -386,11 +413,14 @@ class _FakeTrainingService:
 class ApiContractStandardizationTestCase(unittest.TestCase):
     def setUp(self):
         self.app = FastAPI()
+        install_common_exception_handlers(self.app)
         self.app.include_router(game.router, prefix="/api")
         self.app.include_router(characters.router, prefix="/api")
         self.app.include_router(training.router, prefix="/api")
         self.app.dependency_overrides[get_game_service] = lambda: _FakeGameService()
-        self.app.dependency_overrides[get_training_service] = lambda: _FakeTrainingService()
+        fake_training_service = _FakeTrainingService()
+        self.app.dependency_overrides[get_training_service] = lambda: fake_training_service
+        self.app.dependency_overrides[get_training_query_service] = lambda: fake_training_service
         self.client = TestClient(self.app)
 
     def tearDown(self):
@@ -573,6 +603,7 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["session_id"], "s-001")
         self.assertEqual(payload["data"]["training_mode"], "self-paced")
         self.assertEqual(payload["data"]["progress_anchor"]["next_round_no"], 2)
+        self.assertEqual(payload["data"]["progress_anchor"]["progress_percent"], 16.67)
         self.assertEqual(payload["data"]["resumable_scenario"]["id"], "S2")
 
     def test_training_session_summary_route_returns_stable_recovery_conflict(self):
@@ -585,6 +616,27 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         self.assertEqual(payload["error"]["details"]["recovery_reason"], "scenario_sequence_empty")
         self.assertTrue(payload["error"]["traceId"])
 
+    def test_training_history_route_returns_stable_envelope(self):
+        response = self.client.get("/api/v1/training/sessions/s-001/history")
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["data"]["session_id"], "s-001")
+        self.assertEqual(payload["data"]["training_mode"], "self-paced")
+        self.assertEqual(payload["data"]["progress_anchor"]["next_round_no"], 2)
+        self.assertEqual(payload["data"]["progress_anchor"]["progress_percent"], 16.67)
+        self.assertEqual(payload["data"]["history"], [])
+
+    def test_training_history_route_returns_stable_recovery_conflict(self):
+        response = self.client.get("/api/v1/training/sessions/corrupted/history")
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(payload["error"]["code"], "TRAINING_SESSION_RECOVERY_STATE_CORRUPTED")
+        self.assertEqual(payload["error"]["details"]["route"], "training.history")
+        self.assertEqual(payload["error"]["details"]["recovery_reason"], "scenario_sequence_empty")
+        self.assertTrue(payload["error"]["traceId"])
+
     def test_training_init_invalid_mode_returns_validation_error(self):
         response = self.client.post(
             "/api/v1/training/init",
@@ -594,6 +646,69 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         payload = response.json()
         self.assertEqual(response.status_code, 400)
         self.assertEqual(payload["error"]["code"], "VALIDATION_ERROR")
+        self.assertTrue(payload["error"]["traceId"])
+
+    def test_training_request_validation_rejects_story_fields_with_stable_error_envelope(self):
+        cases = (
+            (
+                "/api/v1/training/init",
+                {
+                    "user_id": "u-001",
+                    "training_mode": "guided",
+                    "thread_id": "thread-legacy",
+                },
+            ),
+            (
+                "/api/v1/training/scenario/next",
+                {
+                    "session_id": "s-001",
+                    "thread_id": "thread-legacy",
+                },
+            ),
+            (
+                "/api/v1/training/round/submit",
+                {
+                    "session_id": "s-001",
+                    "scenario_id": "S1",
+                    "user_input": "继续",
+                    "thread_id": "thread-legacy",
+                },
+            ),
+        )
+
+        for route_path, payload in cases:
+            response = self.client.post(route_path, json=payload)
+
+            error_payload = response.json()
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(error_payload["error"]["code"], "VALIDATION_ERROR")
+            self.assertEqual(error_payload["error"]["details"]["path"], route_path)
+            self.assertEqual(error_payload["error"]["details"]["method"], "POST")
+            self.assertEqual(error_payload["error"]["details"]["errors"][0]["source"], "body")
+            self.assertEqual(error_payload["error"]["details"]["errors"][0]["field"], "thread_id")
+            self.assertEqual(error_payload["error"]["details"]["errors"][0]["type"], "extra_forbidden")
+            self.assertTrue(error_payload["error"]["traceId"])
+
+    def test_training_init_validation_reports_nested_unknown_player_profile_field(self):
+        response = self.client.post(
+            "/api/v1/training/init",
+            json={
+                "user_id": "u-001",
+                "training_mode": "guided",
+                "player_profile": {
+                    "name": "Li Min",
+                    "nickname": "legacy-field",
+                },
+            },
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(payload["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(payload["error"]["details"]["path"], "/api/v1/training/init")
+        self.assertEqual(payload["error"]["details"]["errors"][0]["source"], "body")
+        self.assertEqual(payload["error"]["details"]["errors"][0]["field"], "player_profile.nickname")
+        self.assertEqual(payload["error"]["details"]["errors"][0]["type"], "extra_forbidden")
         self.assertTrue(payload["error"]["traceId"])
 
     def test_training_next_not_found_returns_stable_error_code(self):

@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from story.story_session_query_policy import StorySessionQueryPolicy
     from story.story_session_service import StorySessionService
     from story.story_turn_service import StoryTurnService
+    from training.training_query_service import TrainingQueryService
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,7 @@ _image_service: Optional[ImageService] = None
 _tts_service: Optional[TTSService] = None
 _session_manager: Optional[GameSessionManager] = None
 _training_service: Optional[TrainingService] = None
+_training_query_service: Optional[TrainingQueryService] = None
 _story_image_executor: Optional[Executor] = None
 _story_session_query_policy: Optional[StorySessionQueryPolicy] = None
 _story_service_bundle: Optional[_StoryServiceBundle] = None
@@ -200,3 +202,12 @@ def get_training_service() -> TrainingService:
 
         _training_service = TrainingService()
     return _training_service
+
+
+def get_training_query_service() -> TrainingQueryService:
+    global _training_query_service
+    if _training_query_service is None:
+        from training.training_query_service import TrainingQueryService
+
+        _training_query_service = TrainingQueryService.from_runtime(get_training_service())
+    return _training_query_service

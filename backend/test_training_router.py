@@ -7,7 +7,8 @@ import unittest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.dependencies import get_training_service
+from api.dependencies import get_training_query_service, get_training_service
+from api.middleware.error_handler import install_common_exception_handlers
 from api.routers import training
 from training.exceptions import TrainingSessionNotFoundError, TrainingSessionRecoveryStateError
 
@@ -163,7 +164,7 @@ class _FakeTrainingService:
                 "total_rounds": 6,
                 "completed_rounds": 1,
                 "remaining_rounds": 5,
-                "progress_percent": 0.1667,
+                "progress_percent": 16.67,
                 "next_round_no": 2,
             },
             "player_profile": {"name": "Li Min", "identity": "Reporter"},
@@ -222,6 +223,60 @@ class _FakeTrainingService:
                     "source_safety": 0.68,
                 },
             },
+        }
+
+    def get_history(self, session_id):
+        return {
+            "session_id": session_id,
+            "status": "in_progress",
+            "training_mode": "self-paced",
+            "current_round_no": 1,
+            "total_rounds": 6,
+            "progress_anchor": {
+                "current_round_no": 1,
+                "total_rounds": 6,
+                "completed_rounds": 1,
+                "remaining_rounds": 5,
+                "progress_percent": 16.67,
+                "next_round_no": 2,
+            },
+            "player_profile": {"name": "Li Min", "identity": "Reporter"},
+            "runtime_state": {
+                "current_round_no": 1,
+                "current_scene_id": "S1",
+                "k_state": {"K1": 0.5},
+                "s_state": {"credibility": 0.7},
+                "runtime_flags": {
+                    "panic_triggered": False,
+                    "source_exposed": False,
+                    "editor_locked": False,
+                    "high_risk_path": False,
+                },
+                "state_bar": {
+                    "editor_trust": 0.62,
+                    "public_stability": 0.74,
+                    "source_safety": 0.68,
+                },
+            },
+            "history": [
+                {
+                    "round_no": 1,
+                    "scenario_id": "S1",
+                    "user_input": "hello",
+                    "selected_option": None,
+                    "evaluation": {"eval_mode": "rules_only"},
+                    "k_state_before": {"K1": 0.4},
+                    "k_state_after": {"K1": 0.5},
+                    "s_state_before": {"credibility": 0.6},
+                    "s_state_after": {"credibility": 0.7},
+                    "timestamp": "2026-03-16T00:00:00",
+                    "consequence_events": [],
+                }
+            ],
+            "is_completed": False,
+            "created_at": "2026-03-20T10:00:00",
+            "updated_at": "2026-03-20T10:05:00",
+            "end_time": None,
         }
 
     def get_report(self, session_id):
@@ -474,8 +529,11 @@ class TrainingRouterTestCase(unittest.TestCase):
 
     def setUp(self):
         self.app = FastAPI()
+        install_common_exception_handlers(self.app)
         self.app.include_router(training.router, prefix="/api")
-        self.app.dependency_overrides[get_training_service] = lambda: _FakeTrainingService()
+        fake_service = _FakeTrainingService()
+        self.app.dependency_overrides[get_training_service] = lambda: fake_service
+        self.app.dependency_overrides[get_training_query_service] = lambda: fake_service
         self.client = TestClient(self.app)
 
     def tearDown(self):
@@ -515,6 +573,59 @@ class TrainingRouterTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["player_profile"]["name"], "李敏")
         self.assertEqual(payload["data"]["player_profile"]["identity"], "战地记者")
 
+    def test_init_route_should_reject_story_thread_id_field(self):
+        response = self.client.post(
+            "/api/v1/training/init",
+            json={
+                "user_id": "u-router",
+                "training_mode": "self-paced",
+                "thread_id": "thread-legacy",
+            },
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(payload["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(payload["error"]["details"]["path"], "/api/v1/training/init")
+        self.assertEqual(payload["error"]["details"]["errors"][0]["field"], "thread_id")
+        self.assertEqual(payload["error"]["details"]["errors"][0]["type"], "extra_forbidden")
+
+    def test_init_route_should_reject_unknown_player_profile_fields(self):
+        response = self.client.post(
+            "/api/v1/training/init",
+            json={
+                "user_id": "u-router",
+                "training_mode": "self-paced",
+                "player_profile": {
+                    "name": "Li Min",
+                    "nickname": "legacy-field",
+                },
+            },
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(payload["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(payload["error"]["details"]["path"], "/api/v1/training/init")
+        self.assertEqual(payload["error"]["details"]["errors"][0]["field"], "player_profile.nickname")
+        self.assertEqual(payload["error"]["details"]["errors"][0]["type"], "extra_forbidden")
+
+    def test_next_route_should_reject_story_thread_id_field(self):
+        response = self.client.post(
+            "/api/v1/training/scenario/next",
+            json={
+                "session_id": "s-test",
+                "thread_id": "thread-legacy",
+            },
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(payload["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(payload["error"]["details"]["path"], "/api/v1/training/scenario/next")
+        self.assertEqual(payload["error"]["details"]["errors"][0]["field"], "thread_id")
+        self.assertEqual(payload["error"]["details"]["errors"][0]["type"], "extra_forbidden")
+
     def test_next_route_should_keep_completed_payload_shape_stable(self):
         """下一场景接口在 completed 状态下也应返回稳定字段。"""
         response = self.client.post(
@@ -539,12 +650,13 @@ class TrainingRouterTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["session_id"], "s-test")
         self.assertEqual(payload["data"]["training_mode"], "self-paced")
         self.assertEqual(payload["data"]["progress_anchor"]["next_round_no"], 2)
+        self.assertEqual(payload["data"]["progress_anchor"]["progress_percent"], 16.67)
         self.assertEqual(payload["data"]["resumable_scenario"]["id"], "S2")
         self.assertEqual(len(payload["data"]["scenario_candidates"]), 2)
         self.assertTrue(payload["data"]["can_resume"])
 
     def test_session_summary_route_should_return_not_found_error_code(self):
-        self.app.dependency_overrides[get_training_service] = lambda: _MissingSessionTrainingService()
+        self.app.dependency_overrides[get_training_query_service] = lambda: _MissingSessionTrainingService()
 
         response = self.client.get("/api/v1/training/sessions/missing-session")
 
@@ -554,7 +666,7 @@ class TrainingRouterTestCase(unittest.TestCase):
         self.assertEqual(payload["error"]["details"]["route"], "training.session_summary")
 
     def test_session_summary_route_should_return_conflict_for_corrupted_recovery_state(self):
-        self.app.dependency_overrides[get_training_service] = lambda: _CorruptedSessionTrainingService()
+        self.app.dependency_overrides[get_training_query_service] = lambda: _CorruptedSessionTrainingService()
 
         response = self.client.get("/api/v1/training/sessions/s-corrupted")
 
@@ -563,6 +675,29 @@ class TrainingRouterTestCase(unittest.TestCase):
         self.assertEqual(payload["error"]["code"], "TRAINING_SESSION_RECOVERY_STATE_CORRUPTED")
         self.assertEqual(payload["error"]["details"]["recovery_reason"], "scenario_sequence_empty")
         self.assertEqual(payload["error"]["details"]["route"], "training.session_summary")
+
+    def test_history_route_should_return_canonical_history_payload(self):
+        response = self.client.get("/api/v1/training/sessions/s-test/history")
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["code"], 200)
+        self.assertEqual(payload["data"]["session_id"], "s-test")
+        self.assertEqual(payload["data"]["training_mode"], "self-paced")
+        self.assertEqual(payload["data"]["progress_anchor"]["next_round_no"], 2)
+        self.assertEqual(payload["data"]["progress_anchor"]["progress_percent"], 16.67)
+        self.assertEqual(payload["data"]["history"][0]["scenario_id"], "S1")
+        self.assertFalse(payload["data"]["is_completed"])
+
+    def test_history_route_should_return_conflict_for_corrupted_recovery_state(self):
+        self.app.dependency_overrides[get_training_query_service] = lambda: _CorruptedSessionTrainingService()
+
+        response = self.client.get("/api/v1/training/sessions/s-corrupted/history")
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(payload["error"]["code"], "TRAINING_SESSION_RECOVERY_STATE_CORRUPTED")
+        self.assertEqual(payload["error"]["details"]["route"], "training.history")
 
     def test_init_route_should_return_400_for_invalid_training_mode(self):
         """初始化接口遇到训练模式校验失败时应返回 400。"""
@@ -599,6 +734,24 @@ class TrainingRouterTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["consequence_events"][0]["event_type"], "editor_trust_recovered")
         self.assertEqual(payload["data"]["runtime_state"]["state_bar"]["editor_trust"], 0.62)
 
+    def test_submit_route_should_reject_story_thread_id_field(self):
+        response = self.client.post(
+            "/api/v1/training/round/submit",
+            json={
+                "session_id": "s-test",
+                "scenario_id": "S1",
+                "user_input": "hello",
+                "thread_id": "thread-legacy",
+            },
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(payload["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(payload["error"]["details"]["path"], "/api/v1/training/round/submit")
+        self.assertEqual(payload["error"]["details"]["errors"][0]["field"], "thread_id")
+        self.assertEqual(payload["error"]["details"]["errors"][0]["type"], "extra_forbidden")
+
     def test_report_route_should_expose_decision_context_in_history(self):
         """训练报告接口应把历史回放中的决策上下文透传给前端。"""
         response = self.client.get("/api/v1/training/report/s-test")
@@ -632,9 +785,18 @@ class _MissingSessionTrainingService:
     def get_session_summary(self, session_id):
         raise TrainingSessionNotFoundError(session_id=session_id)
 
+    def get_history(self, session_id):
+        raise TrainingSessionNotFoundError(session_id=session_id)
+
 
 class _CorruptedSessionTrainingService:
     def get_session_summary(self, session_id):
+        raise TrainingSessionRecoveryStateError(
+            session_id=session_id,
+            reason="scenario_sequence_empty",
+        )
+
+    def get_history(self, session_id):
         raise TrainingSessionRecoveryStateError(
             session_id=session_id,
             reason="scenario_sequence_empty",

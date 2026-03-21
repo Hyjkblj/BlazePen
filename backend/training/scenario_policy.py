@@ -75,6 +75,13 @@ class ScenarioPolicy:
                 return sequence
         return list(self._default_sequence)
 
+    def read_persisted_session_sequence(self, session: Any) -> List[Dict[str, str]]:
+        """只读取持久化会话序列，不对缺失数据做默认兜底。"""
+        session_meta = getattr(session, "session_meta", None)
+        if isinstance(session_meta, dict):
+            return self._normalize_sequence(session_meta.get("scenario_sequence"))
+        return []
+
     def resolve_session_payload_sequence(self, session: Any) -> List[Dict[str, Any]]:
         """优先读取会话冻结的完整场景快照。"""
         session_meta = getattr(session, "session_meta", None)

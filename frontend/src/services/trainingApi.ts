@@ -3,17 +3,23 @@ import type { ServiceErrorCode } from '@/services/serviceError';
 import { ServiceError, toServiceError } from '@/services/serviceError';
 import type {
   ApiErrorData,
+  TrainingDiagnosticsResponse,
   TrainingInitRequest,
   TrainingInitResponse,
   TrainingProgressResponse,
+  TrainingReportResponse,
   TrainingRoundSubmitRequest,
   TrainingRoundSubmitResponse,
   TrainingScenarioNextRequest,
   TrainingScenarioNextResponse,
+  TrainingSessionSummaryResponse,
 } from '@/types/api';
 import type {
+  TrainingDiagnosticsResult,
   TrainingInitResult,
   TrainingProgressResult,
+  TrainingReportResult,
+  TrainingSessionSummaryResult,
   TrainingRoundSubmitParams,
   TrainingRoundSubmitResult,
   TrainingScenarioNextParams,
@@ -21,17 +27,21 @@ import type {
   TrainingSessionInitParams,
 } from '@/types/training';
 import {
+  normalizeTrainingDiagnosticsPayload,
   normalizeTrainingInitPayload,
   normalizeTrainingMode,
   normalizeTrainingProgressPayload,
+  normalizeTrainingReportPayload,
   normalizeTrainingRoundSubmitPayload,
   normalizeTrainingScenarioNextPayload,
+  normalizeTrainingSessionSummaryPayload,
 } from '@/utils/trainingSession';
 import { logger } from '@/utils/logger';
 
 const TRAINING_ERROR_CODES = new Set<ServiceErrorCode>([
   'TRAINING_SESSION_NOT_FOUND',
   'TRAINING_SESSION_COMPLETED',
+  'TRAINING_SESSION_RECOVERY_STATE_CORRUPTED',
   'TRAINING_ROUND_DUPLICATE',
 ]);
 
@@ -291,6 +301,78 @@ export const getTrainingProgress = async (
       error,
       'Failed to load training progress.',
       'Training progress request timed out.'
+    );
+  }
+};
+
+export const getTrainingSessionSummary = async (
+  sessionId: string
+): Promise<TrainingSessionSummaryResult> => {
+  const normalizedSessionId = requireString(sessionId, 'sessionId');
+
+  try {
+    const response = await httpClient.get(`/v1/training/sessions/${normalizedSessionId}`, {
+      timeout: 30000,
+    });
+    const result = normalizeTrainingSessionSummaryPayload(
+      unwrapApiData<TrainingSessionSummaryResponse>(response)
+    );
+
+    assertSessionId(result.sessionId, 'training session summary');
+    return result;
+  } catch (error: unknown) {
+    throw toTrainingServiceError(
+      error,
+      'Failed to restore training session.',
+      'Training session restore timed out.'
+    );
+  }
+};
+
+export const getTrainingReport = async (
+  sessionId: string
+): Promise<TrainingReportResult> => {
+  const normalizedSessionId = requireString(sessionId, 'sessionId');
+
+  try {
+    const response = await httpClient.get(`/v1/training/report/${normalizedSessionId}`, {
+      timeout: 30000,
+    });
+    const result = normalizeTrainingReportPayload(
+      unwrapApiData<TrainingReportResponse>(response)
+    );
+
+    assertSessionId(result.sessionId, 'training report');
+    return result;
+  } catch (error: unknown) {
+    throw toTrainingServiceError(
+      error,
+      'Failed to load training report.',
+      'Training report request timed out.'
+    );
+  }
+};
+
+export const getTrainingDiagnostics = async (
+  sessionId: string
+): Promise<TrainingDiagnosticsResult> => {
+  const normalizedSessionId = requireString(sessionId, 'sessionId');
+
+  try {
+    const response = await httpClient.get(`/v1/training/diagnostics/${normalizedSessionId}`, {
+      timeout: 30000,
+    });
+    const result = normalizeTrainingDiagnosticsPayload(
+      unwrapApiData<TrainingDiagnosticsResponse>(response)
+    );
+
+    assertSessionId(result.sessionId, 'training diagnostics');
+    return result;
+  } catch (error: unknown) {
+    throw toTrainingServiceError(
+      error,
+      'Failed to load training diagnostics.',
+      'Training diagnostics request timed out.'
     );
   }
 };

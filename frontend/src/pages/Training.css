@@ -3,11 +3,12 @@
   padding: 48px 24px 64px;
   background:
     radial-gradient(circle at top left, rgba(255, 214, 153, 0.35), transparent 34%),
-    linear-gradient(180deg, #fff8eb 0%, #f6efe0 100%);
+    radial-gradient(circle at bottom right, rgba(96, 170, 214, 0.16), transparent 28%),
+    linear-gradient(180deg, #fff8eb 0%, #f3eee3 100%);
 }
 
 .training-shell {
-  width: min(960px, 100%);
+  width: min(1200px, 100%);
   margin: 0 auto;
   padding: 36px;
   border: 1px solid rgba(95, 65, 23, 0.12);
@@ -35,7 +36,7 @@
 }
 
 .training-shell__description {
-  max-width: 720px;
+  max-width: 820px;
   margin: 18px 0 0;
   color: #5f472f;
   font-size: 16px;
@@ -49,8 +50,16 @@
   margin-top: 28px;
 }
 
+.training-shell__subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
 .training-shell__link,
-.training-shell__clear-button {
+.training-shell__clear-button,
+.training-shell__subnav-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -72,8 +81,18 @@
   box-shadow: 0 10px 24px rgba(156, 87, 26, 0.24);
 }
 
+.training-shell__subnav-link {
+  border: 1px solid rgba(18, 65, 95, 0.16);
+  color: #12415f;
+  background: rgba(237, 248, 255, 0.92);
+  box-shadow: 0 10px 24px rgba(18, 65, 95, 0.08);
+}
+
 .training-shell__link:hover,
-.training-shell__clear-button:hover {
+.training-shell__subnav-link:hover,
+.training-shell__clear-button:hover,
+.training-shell__primary-button:hover,
+.training-shell__secondary-button:hover {
   transform: translateY(-1px);
 }
 
@@ -85,9 +104,51 @@
   cursor: pointer;
 }
 
-.training-shell__panels {
+.training-shell__banner {
+  margin-top: 24px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: rgba(255, 242, 216, 0.96);
+  color: #7b5116;
+  font-weight: 700;
+}
+
+.training-shell__alert,
+.training-shell__notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 14px 18px;
+  border-radius: 16px;
+}
+
+.training-shell__alert {
+  background: rgba(107, 16, 27, 0.9);
+  color: #fff4f4;
+}
+
+.training-shell__notice {
+  background: rgba(13, 76, 112, 0.92);
+  color: #f2fbff;
+}
+
+.training-shell__alert button,
+.training-shell__notice button {
+  flex-shrink: 0;
+  min-height: 38px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: inherit;
+  cursor: pointer;
+}
+
+.training-shell__workspace {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 320px minmax(0, 1fr) 320px;
   gap: 18px;
   margin-top: 32px;
 }
@@ -97,6 +158,12 @@
   border: 1px solid rgba(95, 65, 23, 0.1);
   border-radius: 20px;
   background: linear-gradient(180deg, rgba(255, 250, 242, 0.95), rgba(248, 240, 226, 0.9));
+}
+
+.training-shell__panel--primary {
+  background:
+    linear-gradient(180deg, rgba(255, 252, 246, 0.98), rgba(245, 238, 225, 0.96)),
+    radial-gradient(circle at top right, rgba(141, 204, 255, 0.12), transparent 28%);
 }
 
 .training-shell__panel h2 {
@@ -137,11 +204,229 @@
   line-height: 1.7;
 }
 
-.training-shell__list {
+.training-shell__mode-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.training-shell__mode-card {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border: 1px solid rgba(95, 65, 23, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.56);
+  cursor: pointer;
+}
+
+.training-shell__mode-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.training-shell__mode-card span {
+  color: #2f2014;
+  font-weight: 700;
+}
+
+.training-shell__mode-card small {
+  color: #6a5138;
+  line-height: 1.6;
+}
+
+.training-shell__mode-card--active {
+  border-color: rgba(34, 97, 137, 0.44);
+  background: linear-gradient(180deg, rgba(228, 245, 255, 0.88), rgba(246, 250, 255, 0.92));
+  box-shadow: 0 12px 28px rgba(28, 85, 123, 0.14);
+}
+
+.training-shell__form-grid {
+  display: grid;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.training-shell__field {
+  display: grid;
+  gap: 8px;
+}
+
+.training-shell__field span {
+  color: #6a5138;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.training-shell__field input,
+.training-shell__field textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(95, 65, 23, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #2f2014;
+  font: inherit;
+}
+
+.training-shell__field textarea {
+  resize: vertical;
+  min-height: 140px;
+}
+
+.training-shell__field--textarea {
+  margin-top: 20px;
+}
+
+.training-shell__primary-button,
+.training-shell__secondary-button {
+  min-height: 46px;
+  padding: 0 20px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.training-shell__primary-button {
+  margin-top: 22px;
+  border: 0;
+  color: #fff9f0;
+  background: linear-gradient(135deg, #9c571a, #be7620);
+  box-shadow: 0 12px 26px rgba(156, 87, 26, 0.28);
+}
+
+.training-shell__secondary-button {
+  border: 1px solid rgba(34, 97, 137, 0.22);
+  color: #12415f;
+  background: linear-gradient(180deg, rgba(237, 248, 255, 0.96), rgba(224, 242, 252, 0.9));
+  box-shadow: 0 10px 24px rgba(18, 65, 95, 0.1);
+}
+
+.training-shell__primary-button:disabled,
+.training-shell__secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
+}
+
+.training-shell__stack-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.training-shell__scenario-meta {
+  margin: -8px 0 0;
+  color: #6a5138;
+}
+
+.training-shell__scenario-brief {
+  margin: 18px 0 0;
+  color: #423023;
+  line-height: 1.7;
+}
+
+.training-shell__scenario-grid,
+.training-shell__state-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.training-shell__scenario-grid > div,
+.training-shell__state-grid > div {
+  padding: 16px;
+  border: 1px solid rgba(95, 65, 23, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.training-shell__scenario-grid h3,
+.training-shell__state-grid h3 {
+  margin: 0 0 8px;
+  color: #2f2014;
+  font-size: 15px;
+}
+
+.training-shell__scenario-grid p,
+.training-shell__state-grid p {
   margin: 0;
-  padding-left: 20px;
+  color: #5f472f;
+  line-height: 1.6;
+}
+
+.training-shell__option-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.training-shell__option {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid rgba(95, 65, 23, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.74);
+  color: #2f2014;
+  text-align: left;
+  cursor: pointer;
+}
+
+.training-shell__option strong {
+  font-size: 15px;
+}
+
+.training-shell__option span {
+  color: #6a5138;
+  font-size: 13px;
+}
+
+.training-shell__option--active {
+  border-color: rgba(156, 87, 26, 0.38);
+  background: linear-gradient(180deg, rgba(255, 242, 221, 0.96), rgba(255, 248, 238, 0.92));
+}
+
+.training-shell__submission-preview {
+  margin: 14px 0 0;
+  color: #12415f;
+  font-weight: 700;
+}
+
+.training-shell__metric-list {
+  margin: 0;
+  padding-left: 18px;
   color: #5f472f;
   line-height: 1.7;
+}
+
+.training-shell__json-card {
+  overflow: auto;
+  margin: 18px 0 0;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(35, 26, 17, 0.92);
+  color: #fbf5ed;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1100px) {
+  .training-shell__workspace {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .training-shell__panel--primary {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 768px) {
@@ -154,7 +439,11 @@
     border-radius: 22px;
   }
 
-  .training-shell__panels {
+  .training-shell__workspace,
+  .training-shell__scenario-grid,
+  .training-shell__state-grid,
+  .training-shell__alert,
+  .training-shell__notice {
     grid-template-columns: 1fr;
   }
 }

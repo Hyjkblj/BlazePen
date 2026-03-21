@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  normalizeTrainingDiagnosticsPayload,
   normalizeTrainingInitPayload,
   normalizeTrainingMode,
   normalizeTrainingProgressPayload,
+  normalizeTrainingReportPayload,
   normalizeTrainingRoundSubmitPayload,
+  normalizeTrainingSessionSummaryPayload,
 } from './trainingSession';
 
 describe('trainingSession normalizers', () => {
@@ -241,6 +244,308 @@ describe('trainingSession normalizers', () => {
         },
         playerProfile: null,
       },
+    });
+  });
+
+  it('normalizes the training session summary into a resumable frontend read model', () => {
+    const summaryResult = normalizeTrainingSessionSummaryPayload({
+      session_id: 'session-restore',
+      status: 'in_progress',
+      training_mode: 'guided',
+      current_round_no: '2',
+      total_rounds: '6',
+      k_state: {
+        K2: '0.61',
+      },
+      s_state: {
+        source_safety: '0.88',
+      },
+      progress_anchor: {
+        current_round_no: '2',
+        total_rounds: '6',
+        completed_rounds: '2',
+        remaining_rounds: '4',
+        progress_percent: '0.3333',
+        next_round_no: '3',
+      },
+      resumable_scenario: {
+        id: 'scenario-2',
+        title: 'Investigate the leak',
+      },
+      scenario_candidates: [
+        {
+          id: 'scenario-2',
+          title: 'Investigate the leak',
+        },
+      ],
+      runtime_state: {
+        current_round_no: '2',
+        current_scene_id: 'scenario-2',
+      },
+      can_resume: true,
+      is_completed: false,
+      updated_at: '2026-03-20T09:00:00Z',
+    });
+
+    expect(summaryResult).toMatchObject({
+      sessionId: 'session-restore',
+      trainingMode: 'guided',
+      status: 'in_progress',
+      roundNo: 2,
+      totalRounds: 6,
+      runtimeState: {
+        currentRoundNo: 2,
+        currentSceneId: 'scenario-2',
+        kState: {
+          K2: 0.61,
+        },
+        sState: {
+          source_safety: 0.88,
+        },
+        runtimeFlags: {
+          panicTriggered: false,
+          sourceExposed: false,
+          editorLocked: false,
+          highRiskPath: false,
+        },
+        stateBar: {
+          editorTrust: 0,
+          publicStability: 0,
+          sourceSafety: 0,
+        },
+        playerProfile: null,
+      },
+      progressAnchor: {
+        roundNo: 2,
+        totalRounds: 6,
+        completedRounds: 2,
+        remainingRounds: 4,
+        nextRoundNo: 3,
+      },
+      resumableScenario: {
+        id: 'scenario-2',
+        title: 'Investigate the leak',
+        eraDate: '',
+        location: '',
+        brief: '',
+        mission: '',
+        decisionFocus: '',
+        targetSkills: [],
+        riskTags: [],
+        briefing: '',
+        options: [],
+        completionHint: '',
+        recommendation: null,
+      },
+      scenarioCandidates: [
+        {
+          id: 'scenario-2',
+          title: 'Investigate the leak',
+          eraDate: '',
+          location: '',
+          brief: '',
+          mission: '',
+          decisionFocus: '',
+          targetSkills: [],
+          riskTags: [],
+          briefing: '',
+          options: [],
+          completionHint: '',
+          recommendation: null,
+        },
+      ],
+      canResume: true,
+      isCompleted: false,
+      createdAt: null,
+      updatedAt: '2026-03-20T09:00:00Z',
+      endTime: null,
+    });
+    expect(summaryResult.progressAnchor.progressPercent).toBeCloseTo(33.33, 2);
+  });
+
+  it('normalizes the training report payload into a display-first read model', () => {
+    const reportResult = normalizeTrainingReportPayload({
+      session_id: 'session-report',
+      status: 'completed',
+      rounds: '3',
+      improvement: '0.27',
+      summary: {
+        weighted_score_final: '0.76',
+        strongest_improved_skill_code: 'K1',
+        risk_flag_counts: [
+          {
+            code: 'source_exposure_risk',
+            count: '1',
+          },
+        ],
+        branch_transitions: [
+          {
+            source_scenario_id: 'S1',
+            target_scenario_id: 'S2',
+            count: '1',
+            triggered_flags: ['source_warning'],
+          },
+        ],
+        review_suggestions: ['优先补练来源保护'],
+      },
+      ability_radar: [
+        {
+          code: 'K1',
+          initial: '0.2',
+          final: '0.55',
+          delta: '0.35',
+          is_highest_gain: true,
+        },
+      ],
+      growth_curve: [
+        {
+          round_no: 0,
+          scenario_title: '初始状态',
+          weighted_k_score: '0.2',
+        },
+      ],
+      history: [
+        {
+          round_no: 1,
+          scenario_id: 'S1',
+          user_input: 'Protect the source',
+          decision_context: {
+            mode: 'guided',
+            selection_source: 'manual',
+            selected_scenario_id: 'S1',
+          },
+        },
+      ],
+    });
+
+    expect(reportResult).toMatchObject({
+      sessionId: 'session-report',
+      status: 'completed',
+      rounds: 3,
+      improvement: 0.27,
+      summary: {
+        weightedScoreFinal: 0.76,
+        strongestImprovedSkillCode: 'K1',
+        riskFlagCounts: [
+          {
+            code: 'source_exposure_risk',
+            count: 1,
+          },
+        ],
+        branchTransitions: [
+          {
+            sourceScenarioId: 'S1',
+            targetScenarioId: 'S2',
+            count: 1,
+            triggeredFlags: ['source_warning'],
+          },
+        ],
+        reviewSuggestions: ['优先补练来源保护'],
+      },
+      abilityRadar: [
+        {
+          code: 'K1',
+          delta: 0.35,
+          isHighestGain: true,
+        },
+      ],
+      growthCurve: [
+        {
+          roundNo: 0,
+          scenarioTitle: '初始状态',
+        },
+      ],
+      history: [
+        {
+          roundNo: 1,
+          scenarioId: 'S1',
+          userInput: 'Protect the source',
+          decisionContext: {
+            selectionSource: 'manual',
+            selectedScenarioId: 'S1',
+          },
+        },
+      ],
+    });
+  });
+
+  it('normalizes the training diagnostics payload into an explainable read model', () => {
+    const diagnosticsResult = normalizeTrainingDiagnosticsPayload({
+      session_id: 'session-diagnostics',
+      status: 'completed',
+      round_no: '3',
+      summary: {
+        total_recommendation_logs: '2',
+        recommended_vs_selected_mismatch_count: '1',
+        risk_flag_counts: [
+          {
+            code: 'source_exposure_risk',
+            count: '1',
+          },
+        ],
+      },
+      recommendation_logs: [
+        {
+          round_no: 1,
+          training_mode: 'guided',
+          selection_source: 'candidate_pool',
+          selected_scenario_id: 'S1',
+        },
+      ],
+      kt_observations: [
+        {
+          scenario_id: 'S1',
+          scenario_title: 'Initial Briefing',
+          training_mode: 'guided',
+          round_no: 1,
+          observation_summary: 'Need stronger verification.',
+        },
+      ],
+      audit_events: [
+        {
+          event_type: 'decision_trace',
+          round_no: 1,
+          timestamp: '2026-03-20T09:00:00Z',
+        },
+      ],
+    });
+
+    expect(diagnosticsResult).toMatchObject({
+      sessionId: 'session-diagnostics',
+      status: 'completed',
+      roundNo: 3,
+      summary: {
+        totalRecommendationLogs: 2,
+        recommendedVsSelectedMismatchCount: 1,
+        riskFlagCounts: [
+          {
+            code: 'source_exposure_risk',
+            count: 1,
+          },
+        ],
+      },
+      recommendationLogs: [
+        {
+          roundNo: 1,
+          trainingMode: 'guided',
+          selectionSource: 'candidate_pool',
+          selectedScenarioId: 'S1',
+        },
+      ],
+      ktObservations: [
+        {
+          scenarioId: 'S1',
+          scenarioTitle: 'Initial Briefing',
+          observationSummary: 'Need stronger verification.',
+        },
+      ],
+      auditEvents: [
+        {
+          eventType: 'decision_trace',
+          roundNo: 1,
+          timestamp: '2026-03-20T09:00:00Z',
+        },
+      ],
     });
   });
 });

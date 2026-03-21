@@ -15,8 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api.exceptions import ServiceException
-from api.middleware.error_handler import general_exception_handler, service_exception_handler
+from api.middleware.error_handler import install_common_exception_handlers
 from api.routers import training
 from database.db_manager import DatabaseManager
 from utils.logger import setup_logger
@@ -57,8 +56,7 @@ app = FastAPI(
 )
 
 # 训练专用应用也复用统一异常处理，保证独立部署后返回形态不漂移。
-app.add_exception_handler(ServiceException, service_exception_handler)
-app.add_exception_handler(Exception, general_exception_handler)
+install_common_exception_handlers(app)
 
 
 @app.on_event("startup")

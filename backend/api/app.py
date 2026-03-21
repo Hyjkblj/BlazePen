@@ -5,8 +5,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from api.routers import characters, game, vector_db_admin, tts, training
 from database.db_manager import DatabaseManager
-from api.exceptions import ServiceException
-from api.middleware.error_handler import service_exception_handler, general_exception_handler
+from api.middleware.error_handler import install_common_exception_handlers
 from api.request_context import reset_trace_id, set_trace_id
 from utils.logger import setup_logger
 import uvicorn
@@ -25,8 +24,7 @@ app = FastAPI(
 )
 
 # 注册异常处理器
-app.add_exception_handler(ServiceException, service_exception_handler)
-app.add_exception_handler(Exception, general_exception_handler)
+install_common_exception_handlers(app)
 
 
 @app.middleware("http")

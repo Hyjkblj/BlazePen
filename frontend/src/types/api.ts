@@ -424,3 +424,234 @@ export interface TrainingProgressResponse extends GenericApiRecord {
   player_profile?: TrainingPlayerProfileApi | null;
   runtime_state?: TrainingRuntimeStateApiResponse | null;
 }
+
+export interface TrainingSessionProgressAnchorResponse extends GenericApiRecord {
+  current_round_no?: number | string | null;
+  total_rounds?: number | string | null;
+  completed_rounds?: number | string | null;
+  remaining_rounds?: number | string | null;
+  progress_percent?: number | string | null;
+  next_round_no?: number | string | null;
+}
+
+export interface TrainingSessionSummaryResponse extends GenericApiRecord {
+  session_id?: string;
+  status?: string | null;
+  training_mode?: string | null;
+  current_round_no?: number | string | null;
+  total_rounds?: number | string | null;
+  k_state?: Record<string, unknown> | null;
+  s_state?: Record<string, unknown> | null;
+  progress_anchor?: TrainingSessionProgressAnchorResponse | null;
+  player_profile?: TrainingPlayerProfileApi | null;
+  runtime_state?: TrainingRuntimeStateApiResponse | null;
+  resumable_scenario?: TrainingScenarioApiResponse | null;
+  scenario_candidates?: TrainingScenarioApiResponse[] | null;
+  can_resume?: boolean;
+  is_completed?: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+  end_time?: string | null;
+}
+
+export interface TrainingReportHistoryItemApiResponse extends GenericApiRecord {
+  round_no?: number | string | null;
+  scenario_id?: string | null;
+  user_input?: string | null;
+  selected_option?: string | null;
+  evaluation?: TrainingEvaluationApiResponse | null;
+  k_state_before?: Record<string, unknown> | null;
+  k_state_after?: Record<string, unknown> | null;
+  s_state_before?: Record<string, unknown> | null;
+  s_state_after?: Record<string, unknown> | null;
+  timestamp?: string | null;
+  decision_context?: TrainingRoundDecisionContextApiResponse | null;
+  kt_observation?: TrainingKtObservationApiResponse | null;
+  runtime_state?: TrainingRuntimeStateApiResponse | null;
+  consequence_events?: TrainingConsequenceEventApiResponse[] | null;
+}
+
+export interface TrainingHistoryResponse extends GenericApiRecord {
+  session_id?: string;
+  status?: string | null;
+  training_mode?: string | null;
+  current_round_no?: number | string | null;
+  total_rounds?: number | string | null;
+  progress_anchor?: TrainingSessionProgressAnchorResponse | null;
+  history?: TrainingReportHistoryItemApiResponse[] | null;
+  is_completed?: boolean;
+  player_profile?: TrainingPlayerProfileApi | null;
+  runtime_state?: TrainingRuntimeStateApiResponse | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  end_time?: string | null;
+}
+
+export interface TrainingReportMetricApiResponse extends GenericApiRecord {
+  code?: string;
+  initial?: number | string | null;
+  final?: number | string | null;
+  delta?: number | string | null;
+  weight?: number | string | null;
+  is_lowest_final?: boolean;
+  is_highest_gain?: boolean;
+}
+
+export interface TrainingReportCurvePointApiResponse extends GenericApiRecord {
+  round_no?: number | string | null;
+  scenario_id?: string | null;
+  scenario_title?: string | null;
+  k_state?: Record<string, unknown> | null;
+  s_state?: Record<string, unknown> | null;
+  weighted_k_score?: number | string | null;
+  is_high_risk?: boolean;
+  risk_flags?: string[] | null;
+  primary_skill_code?: string | null;
+  timestamp?: string | null;
+}
+
+export interface TrainingMetricObservationApiResponse extends GenericApiRecord {
+  code?: string;
+  before?: number | string | null;
+  delta?: number | string | null;
+  after?: number | string | null;
+  is_target?: boolean;
+}
+
+export interface TrainingKtObservationApiResponse extends GenericApiRecord {
+  scenario_id?: string;
+  scenario_title?: string | null;
+  training_mode?: string | null;
+  round_no?: number | string | null;
+  primary_skill_code?: string | null;
+  primary_risk_flag?: string | null;
+  is_high_risk?: boolean;
+  target_skills?: string[] | null;
+  weak_skills_before?: string[] | null;
+  risk_flags?: string[] | null;
+  focus_tags?: string[] | null;
+  evidence?: string[] | null;
+  skill_observations?: TrainingMetricObservationApiResponse[] | null;
+  state_observations?: TrainingMetricObservationApiResponse[] | null;
+  observation_summary?: string | null;
+}
+
+export interface TrainingRecommendationLogApiResponse extends GenericApiRecord {
+  round_no?: number | string | null;
+  training_mode?: string | null;
+  selection_source?: string | null;
+  recommended_scenario_id?: string | null;
+  selected_scenario_id?: string | null;
+  candidate_pool?: TrainingDecisionCandidateApiResponse[] | null;
+  recommended_recommendation?: TrainingScenarioRecommendationApiResponse | null;
+  selected_recommendation?: TrainingScenarioRecommendationApiResponse | null;
+  decision_context?: TrainingRoundDecisionContextApiResponse | null;
+}
+
+export interface TrainingAuditEventApiResponse extends GenericApiRecord {
+  event_type?: string;
+  payload?: Record<string, unknown> | null;
+  round_no?: number | string | null;
+  timestamp?: string | null;
+}
+
+export interface TrainingDiagnosticsCountItemApiResponse extends GenericApiRecord {
+  code?: string;
+  count?: number | string | null;
+}
+
+export interface TrainingBranchTransitionSummaryApiResponse extends GenericApiRecord {
+  source_scenario_id?: string;
+  target_scenario_id?: string;
+  transition_type?: string | null;
+  reason?: string | null;
+  count?: number | string | null;
+  round_nos?: Array<number | string> | null;
+  triggered_flags?: string[] | null;
+}
+
+export interface TrainingDiagnosticsSummaryApiResponse extends GenericApiRecord {
+  total_recommendation_logs?: number | string | null;
+  total_audit_events?: number | string | null;
+  total_kt_observations?: number | string | null;
+  high_risk_round_count?: number | string | null;
+  high_risk_round_nos?: Array<number | string> | null;
+  recommended_vs_selected_mismatch_count?: number | string | null;
+  recommended_vs_selected_mismatch_rounds?: Array<number | string> | null;
+  risk_flag_counts?: TrainingDiagnosticsCountItemApiResponse[] | null;
+  primary_skill_focus_counts?: TrainingDiagnosticsCountItemApiResponse[] | null;
+  top_weak_skills?: TrainingDiagnosticsCountItemApiResponse[] | null;
+  selection_source_counts?: TrainingDiagnosticsCountItemApiResponse[] | null;
+  event_type_counts?: TrainingDiagnosticsCountItemApiResponse[] | null;
+  phase_tag_counts?: TrainingDiagnosticsCountItemApiResponse[] | null;
+  phase_transition_count?: number | string | null;
+  phase_transition_rounds?: Array<number | string> | null;
+  panic_trigger_round_count?: number | string | null;
+  panic_trigger_rounds?: Array<number | string> | null;
+  source_exposed_round_count?: number | string | null;
+  source_exposed_rounds?: Array<number | string> | null;
+  editor_locked_round_count?: number | string | null;
+  editor_locked_rounds?: Array<number | string> | null;
+  high_risk_path_round_count?: number | string | null;
+  high_risk_path_rounds?: Array<number | string> | null;
+  branch_transition_count?: number | string | null;
+  branch_transition_rounds?: Array<number | string> | null;
+  branch_transitions?: TrainingBranchTransitionSummaryApiResponse[] | null;
+  last_primary_skill_code?: string | null;
+  last_primary_risk_flag?: string | null;
+  last_event_type?: string | null;
+  last_phase_tags?: string[] | null;
+  last_branch_transition?: TrainingBranchTransitionApiResponse | null;
+}
+
+export interface TrainingReportSummaryApiResponse extends GenericApiRecord {
+  weighted_score_initial?: number | string | null;
+  weighted_score_final?: number | string | null;
+  weighted_score_delta?: number | string | null;
+  strongest_improved_skill_code?: string | null;
+  strongest_improved_skill_delta?: number | string | null;
+  weakest_skill_code?: string | null;
+  weakest_skill_score?: number | string | null;
+  dominant_risk_flag?: string | null;
+  high_risk_round_count?: number | string | null;
+  high_risk_round_nos?: Array<number | string> | null;
+  panic_trigger_round_count?: number | string | null;
+  source_exposed_round_count?: number | string | null;
+  editor_locked_round_count?: number | string | null;
+  high_risk_path_round_count?: number | string | null;
+  branch_transition_count?: number | string | null;
+  branch_transition_rounds?: Array<number | string> | null;
+  branch_transitions?: TrainingBranchTransitionSummaryApiResponse[] | null;
+  risk_flag_counts?: TrainingDiagnosticsCountItemApiResponse[] | null;
+  completed_scenario_ids?: string[] | null;
+  review_suggestions?: string[] | null;
+}
+
+export interface TrainingReportResponse extends GenericApiRecord {
+  session_id?: string;
+  status?: string | null;
+  rounds?: number | string | null;
+  k_state_final?: Record<string, unknown> | null;
+  s_state_final?: Record<string, unknown> | null;
+  improvement?: number | string | null;
+  player_profile?: TrainingPlayerProfileApi | null;
+  runtime_state?: TrainingRuntimeStateApiResponse | null;
+  ending?: Record<string, unknown> | null;
+  summary?: TrainingReportSummaryApiResponse | null;
+  ability_radar?: TrainingReportMetricApiResponse[] | null;
+  state_radar?: TrainingReportMetricApiResponse[] | null;
+  growth_curve?: TrainingReportCurvePointApiResponse[] | null;
+  history?: TrainingReportHistoryItemApiResponse[] | null;
+}
+
+export interface TrainingDiagnosticsResponse extends GenericApiRecord {
+  session_id?: string;
+  status?: string | null;
+  round_no?: number | string | null;
+  player_profile?: TrainingPlayerProfileApi | null;
+  runtime_state?: TrainingRuntimeStateApiResponse | null;
+  summary?: TrainingDiagnosticsSummaryApiResponse | null;
+  recommendation_logs?: TrainingRecommendationLogApiResponse[] | null;
+  audit_events?: TrainingAuditEventApiResponse[] | null;
+  kt_observations?: TrainingKtObservationApiResponse[] | null;
+}

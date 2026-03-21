@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from api.dependencies import get_training_service
+from api.dependencies import get_training_query_service, get_training_service
 from api.error_codes import (
     INTERNAL_ERROR,
     TRAINING_ROUND_DUPLICATE,
@@ -17,6 +17,7 @@ from api.error_codes import (
 from api.response import build_success_payload, error_response, not_found_response
 from api.schemas import (
     TrainingDiagnosticsApiResponse,
+    TrainingHistoryApiResponse,
     TrainingInitApiResponse,
     TrainingInitRequest,
     TrainingProgressApiResponse,
@@ -28,6 +29,7 @@ from api.schemas import (
     TrainingSessionSummaryApiResponse,
 )
 from api.services.training_service import TrainingService
+from training.training_query_service import TrainingQueryService
 from training.exceptions import (
     DuplicateRoundSubmissionError,
     TrainingSessionCompletedError,
@@ -225,12 +227,12 @@ async def submit_round(
 @router.get("/sessions/{session_id}", response_model=TrainingSessionSummaryApiResponse)
 async def get_session_summary(
     session_id: str,
-    training_service: TrainingService = Depends(get_training_service),
+    training_query_service: TrainingQueryService = Depends(get_training_query_service),
 ):
     """Get the recovery summary for a training session."""
 
     try:
-        result = training_service.get_session_summary(session_id)
+        result = training_query_service.get_session_summary(session_id)
         return build_success_payload(data=result)
     except (TrainingSessionNotFoundError, TrainingSessionRecoveryStateError) as exc:
         return _build_training_domain_error_response(
@@ -251,14 +253,14 @@ async def get_session_summary(
 @router.get("/progress/{session_id}", response_model=TrainingProgressApiResponse)
 async def get_progress(
     session_id: str,
-    training_service: TrainingService = Depends(get_training_service),
+    training_query_service: TrainingQueryService = Depends(get_training_query_service),
 ):
     """Get training progress."""
 
     try:
-        result = training_service.get_progress(session_id)
+        result = training_query_service.get_progress(session_id)
         return build_success_payload(data=result)
-    except TrainingSessionNotFoundError as exc:
+    except (TrainingSessionNotFoundError, TrainingSessionRecoveryStateError) as exc:
         return _build_training_domain_error_response(
             exc,
             route_name="training.progress",
@@ -281,17 +283,43 @@ async def get_progress(
         )
 
 
+@router.get("/sessions/{session_id}/history", response_model=TrainingHistoryApiResponse)
+async def get_history(
+    session_id: str,
+    training_query_service: TrainingQueryService = Depends(get_training_query_service),
+):
+    """Get the canonical training history read model."""
+
+    try:
+        result = training_query_service.get_history(session_id)
+        return build_success_payload(data=result)
+    except (TrainingSessionNotFoundError, TrainingSessionRecoveryStateError) as exc:
+        return _build_training_domain_error_response(
+            exc,
+            route_name="training.history",
+            session_id=session_id,
+        )
+    except Exception as exc:
+        logger.error("failed to get training history: %s", str(exc), exc_info=True)
+        return error_response(
+            code=500,
+            message="failed to get training history",
+            error_code=INTERNAL_ERROR,
+            details={"route": "training.history", "session_id": session_id},
+        )
+
+
 @router.get("/report/{session_id}", response_model=TrainingReportApiResponse)
 async def get_report(
     session_id: str,
-    training_service: TrainingService = Depends(get_training_service),
+    training_query_service: TrainingQueryService = Depends(get_training_query_service),
 ):
     """Get training report."""
 
     try:
-        result = training_service.get_report(session_id)
+        result = training_query_service.get_report(session_id)
         return build_success_payload(data=result)
-    except TrainingSessionNotFoundError as exc:
+    except (TrainingSessionNotFoundError, TrainingSessionRecoveryStateError) as exc:
         return _build_training_domain_error_response(
             exc,
             route_name="training.report",
@@ -317,14 +345,14 @@ async def get_report(
 @router.get("/diagnostics/{session_id}", response_model=TrainingDiagnosticsApiResponse)
 async def get_diagnostics(
     session_id: str,
-    training_service: TrainingService = Depends(get_training_service),
+    training_query_service: TrainingQueryService = Depends(get_training_query_service),
 ):
     """Get training diagnostics."""
 
     try:
-        result = training_service.get_diagnostics(session_id)
+        result = training_query_service.get_diagnostics(session_id)
         return build_success_payload(data=result)
-    except TrainingSessionNotFoundError as exc:
+    except (TrainingSessionNotFoundError, TrainingSessionRecoveryStateError) as exc:
         return _build_training_domain_error_response(
             exc,
             route_name="training.diagnostics",

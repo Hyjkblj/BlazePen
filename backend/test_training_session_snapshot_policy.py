@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 
+from training.exceptions import TrainingSessionRecoveryStateError
 from training.scenario_repository import ScenarioRepository
 from training.session_snapshot_policy import SessionScenarioSnapshotPolicy
 
@@ -93,6 +94,27 @@ class SessionScenarioSnapshotPolicyTestCase(unittest.TestCase):
         self.assertTrue(bundle.scenario_payload_catalog)
         self.assertIn("scenario_payload_sequence", session.session_meta)
         self.assertIn("scenario_payload_catalog", session.session_meta)
+
+    def test_require_session_snapshots_should_raise_typed_error_when_payloads_are_missing(self):
+        session = SimpleNamespace(
+            session_id="s-corrupted",
+            current_round_no=1,
+            session_meta={
+                "scenario_sequence": [
+                    {"id": "S1", "title": "卢沟桥"},
+                    {"id": "S2", "title": "淞沪"},
+                ]
+            },
+        )
+
+        with self.assertRaises(TrainingSessionRecoveryStateError) as cm:
+            self.policy.require_session_snapshots(session_id="s-corrupted", session=session)
+
+        self.assertEqual(cm.exception.reason, "scenario_snapshots_missing")
+        self.assertEqual(
+            cm.exception.details["missing_fields"],
+            ["scenario_payload_sequence", "scenario_payload_catalog"],
+        )
 
     def test_resolve_scenario_payload_by_id_should_prefer_catalog_without_repository_fallback(self):
         """目录快照存在时，应直接从目录解析分支场景，不回退实时仓储。"""

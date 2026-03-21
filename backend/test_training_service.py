@@ -179,7 +179,7 @@ class _SpySessionSnapshotPolicy:
     def __init__(self, delegate):
         self.delegate = delegate
         self.freeze_call_count = 0
-        self.ensure_call_count = 0
+        self.require_call_count = 0
         self.resolve_call_count = 0
 
     def freeze_session_snapshots(self, session_sequence):
@@ -187,8 +187,11 @@ class _SpySessionSnapshotPolicy:
         return self.delegate.freeze_session_snapshots(session_sequence)
 
     def ensure_session_snapshots(self, *, session, training_store):
-        self.ensure_call_count += 1
         return self.delegate.ensure_session_snapshots(session=session, training_store=training_store)
+
+    def require_session_snapshots(self, *, session_id, session):
+        self.require_call_count += 1
+        return self.delegate.require_session_snapshots(session_id=session_id, session=session)
 
     def resolve_scenario_payload_by_id(self, *, scenario_id, scenario_payload_sequence, scenario_payload_catalog=None):
         self.resolve_call_count += 1
@@ -1181,7 +1184,7 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertEqual(report["growth_curve"][1]["scenario_id"], "S1")
 
     def test_service_should_delegate_session_snapshot_lifecycle_to_injected_policy(self):
-        """注入自定义快照策略后，服务层应通过策略完成冻结、回填与场景解析。"""
+        """注入自定义快照策略后，服务层应通过策略完成冻结、快照校验与场景解析。"""
         repository = ScenarioRepository()
         scenario_policy = ScenarioPolicy(default_sequence=TrainingService._SCENARIO_SEQUENCE)
         spy_snapshot_policy = _SpySessionSnapshotPolicy(
@@ -1208,7 +1211,7 @@ class TrainingServiceTestCase(unittest.TestCase):
         )
 
         self.assertGreaterEqual(spy_snapshot_policy.freeze_call_count, 1)
-        self.assertGreaterEqual(spy_snapshot_policy.ensure_call_count, 2)
+        self.assertGreaterEqual(spy_snapshot_policy.require_call_count, 2)
         self.assertGreaterEqual(spy_snapshot_policy.resolve_call_count, 1)
 
     def test_service_should_delegate_round_decision_context_to_injected_policy(self):
@@ -1478,33 +1481,38 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertEqual(result["scenario"]["briefing"], init_result["next_scenario"]["briefing"])
         self.assertNotEqual(result["scenario"]["briefing"], "这是变更后的最新场景正文")
 
-    def test_get_next_scenario_should_backfill_missing_scenario_payload_catalog(self):
-        """历史会话缺少分支目录时，应在首次读取时惰性补齐并回写 session_meta。"""
+    def test_get_next_scenario_should_raise_typed_error_when_snapshot_catalog_is_missing(self):
+        """主链路遇到缺快照会话时，应返回 typed recovery error，而不是静默回填。"""
         init_result = self.service.init_training(user_id="u10-backfill-catalog")
         session_id = init_result["session_id"]
         session_row = self.service.db_manager.sessions[session_id]
         session_row.session_meta.pop("scenario_payload_catalog", None)
 
-        result = self.service.get_next_scenario(session_id)
-        catalog_ids = [item["id"] for item in session_row.session_meta["scenario_payload_catalog"]]
+        with self.assertRaises(TrainingSessionRecoveryStateError) as cm:
+            self.service.get_next_scenario(session_id)
 
-        self.assertEqual(result["scenario"]["id"], init_result["next_scenario"]["id"])
-        self.assertIn("S2B", catalog_ids)
-        self.assertIn("S3R", catalog_ids)
+        self.assertEqual(cm.exception.reason, "scenario_snapshots_missing")
+        self.assertEqual(cm.exception.details["missing_fields"], ["scenario_payload_catalog"])
+        self.assertNotIn("scenario_payload_catalog", session_row.session_meta)
 
-    def test_get_next_scenario_should_backfill_missing_payload_sequence_and_catalog(self):
-        """更老的历史会话只有摘要序列时，也应一次性补齐完整快照与分支目录。"""
+    def test_get_next_scenario_should_raise_typed_error_when_payload_sequence_and_catalog_are_missing(self):
+        """更老的历史会话缺少快照事实时，不应在运行时偷偷补写。"""
         init_result = self.service.init_training(user_id="u10-backfill-all")
         session_id = init_result["session_id"]
         session_row = self.service.db_manager.sessions[session_id]
         session_row.session_meta.pop("scenario_payload_sequence", None)
         session_row.session_meta.pop("scenario_payload_catalog", None)
 
-        result = self.service.get_next_scenario(session_id)
+        with self.assertRaises(TrainingSessionRecoveryStateError) as cm:
+            self.service.get_next_scenario(session_id)
 
-        self.assertEqual(result["scenario"]["id"], init_result["next_scenario"]["id"])
-        self.assertTrue(session_row.session_meta["scenario_payload_sequence"])
-        self.assertTrue(session_row.session_meta["scenario_payload_catalog"])
+        self.assertEqual(cm.exception.reason, "scenario_snapshots_missing")
+        self.assertEqual(
+            cm.exception.details["missing_fields"],
+            ["scenario_payload_sequence", "scenario_payload_catalog"],
+        )
+        self.assertNotIn("scenario_payload_sequence", session_row.session_meta)
+        self.assertNotIn("scenario_payload_catalog", session_row.session_meta)
 
     def test_get_next_scenario_should_return_normalized_state_shape(self):
         """读取下一场景时，应补齐老会话可能缺失的状态字段。"""
@@ -1786,6 +1794,7 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertEqual(summary["current_round_no"], 0)
         self.assertEqual(summary["progress_anchor"]["next_round_no"], 1)
         self.assertEqual(summary["progress_anchor"]["remaining_rounds"], 2)
+        self.assertEqual(summary["progress_anchor"]["progress_percent"], 0.0)
         self.assertEqual(summary["resumable_scenario"]["id"], init_result["next_scenario"]["id"])
         self.assertEqual(summary["scenario_candidates"][0]["id"], init_result["scenario_candidates"][0]["id"])
         self.assertTrue(summary["can_resume"])
@@ -1809,6 +1818,7 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertFalse(summary["can_resume"])
         self.assertIsNone(summary["resumable_scenario"])
         self.assertEqual(summary["scenario_candidates"], [])
+        self.assertEqual(summary["progress_anchor"]["progress_percent"], 100.0)
         self.assertNotIn("next_round_no", summary["progress_anchor"])
         self.assertIsNotNone(summary["end_time"])
 
@@ -1828,6 +1838,7 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertEqual(summary["resumable_scenario"]["id"], "S2B")
         self.assertEqual(summary["runtime_state"]["current_scene_id"], "S2B")
         self.assertTrue(summary["runtime_state"]["runtime_flags"]["panic_triggered"])
+        self.assertEqual(summary["progress_anchor"]["progress_percent"], 16.67)
         self.assertEqual(summary["progress_anchor"]["next_round_no"], 2)
 
     def test_get_session_summary_should_raise_typed_error_when_recovery_state_is_corrupted(self):
@@ -1843,6 +1854,148 @@ class TrainingServiceTestCase(unittest.TestCase):
 
         self.assertEqual(cm.exception.reason, "scenario_sequence_empty")
         self.assertEqual(cm.exception.session_id, session_id)
+
+    def test_get_next_scenario_should_raise_typed_error_when_persisted_sequence_is_missing(self):
+        service = TrainingService(db_manager=_FakeDbManager(), evaluator=self.evaluator)
+        init_result = service.init_training(user_id="u17-corrupted-next")
+        session_id = init_result["session_id"]
+        session_row = service.db_manager.sessions[session_id]
+        session_row.session_meta["scenario_sequence"] = []
+
+        with self.assertRaises(TrainingSessionRecoveryStateError) as cm:
+            service.get_next_scenario(session_id)
+
+        self.assertEqual(cm.exception.reason, "scenario_sequence_empty")
+        self.assertEqual(cm.exception.session_id, session_id)
+
+    def test_get_history_should_return_canonical_history_read_model(self):
+        service = TrainingService(
+            db_manager=_FakeDbManager(),
+            evaluator=self.evaluator,
+            scenario_sequence=[
+                {"id": "S1", "title": "Intro"},
+                {"id": "S2", "title": "Follow Up"},
+            ],
+        )
+        init_result = service.init_training(user_id="u17-history", training_mode="self-paced")
+        session_id = init_result["session_id"]
+
+        service.submit_round(
+            session_id=session_id,
+            scenario_id="S1",
+            user_input="hello",
+        )
+        history = service.get_history(session_id)
+
+        self.assertEqual(history["session_id"], session_id)
+        self.assertEqual(history["training_mode"], "self-paced")
+        self.assertEqual(history["progress_anchor"]["next_round_no"], 2)
+        self.assertEqual(history["progress_anchor"]["progress_percent"], 50.0)
+        self.assertEqual(history["history"][0]["scenario_id"], "S1")
+        self.assertEqual(history["history"][0]["round_no"], 1)
+        self.assertFalse(history["is_completed"])
+
+    def test_submit_round_should_raise_typed_error_when_session_snapshots_are_missing(self):
+        service = TrainingService(
+            db_manager=_FakeDbManager(),
+            evaluator=self.evaluator,
+            scenario_sequence=[
+                {"id": "S1", "title": "Intro"},
+                {"id": "S2", "title": "Follow Up"},
+            ],
+        )
+        init_result = service.init_training(user_id="u17-submit-missing-snapshots", training_mode="self-paced")
+        session_id = init_result["session_id"]
+        session_row = service.db_manager.sessions[session_id]
+        session_row.session_meta.pop("scenario_payload_sequence", None)
+        session_row.session_meta.pop("scenario_payload_catalog", None)
+
+        with self.assertRaises(TrainingSessionRecoveryStateError) as cm:
+            service.submit_round(
+                session_id=session_id,
+                scenario_id="S1",
+                user_input="hello",
+            )
+
+        self.assertEqual(cm.exception.reason, "scenario_snapshots_missing")
+        self.assertEqual(
+            cm.exception.details["missing_fields"],
+            ["scenario_payload_sequence", "scenario_payload_catalog"],
+        )
+        self.assertEqual(service.db_manager.sessions[session_id].current_round_no, 0)
+        self.assertEqual(service.training_store.get_training_rounds(session_id), [])
+
+    def test_submit_round_should_raise_typed_error_when_persisted_sequence_is_missing(self):
+        service = TrainingService(
+            db_manager=_FakeDbManager(),
+            evaluator=self.evaluator,
+            scenario_sequence=[
+                {"id": "S1", "title": "Intro"},
+                {"id": "S2", "title": "Follow Up"},
+            ],
+        )
+        init_result = service.init_training(user_id="u17-submit-missing-sequence", training_mode="self-paced")
+        session_id = init_result["session_id"]
+        service.db_manager.sessions[session_id].session_meta["scenario_sequence"] = []
+
+        with self.assertRaises(TrainingSessionRecoveryStateError) as cm:
+            service.submit_round(
+                session_id=session_id,
+                scenario_id="S1",
+                user_input="hello",
+            )
+
+        self.assertEqual(cm.exception.reason, "scenario_sequence_empty")
+        self.assertEqual(service.db_manager.sessions[session_id].current_round_no, 0)
+        self.assertEqual(service.training_store.get_training_rounds(session_id), [])
+
+    def test_service_should_delegate_all_read_models_to_injected_query_service(self):
+        class _SpyQueryService:
+            def __init__(self):
+                self.calls = []
+
+            def get_session_summary(self, session_id):
+                self.calls.append(("summary", session_id))
+                return {"source": "query", "kind": "summary", "session_id": session_id}
+
+            def get_progress(self, session_id):
+                self.calls.append(("progress", session_id))
+                return {"source": "query", "kind": "progress", "session_id": session_id}
+
+            def get_history(self, session_id):
+                self.calls.append(("history", session_id))
+                return {"source": "query", "kind": "history", "session_id": session_id}
+
+            def get_report(self, session_id):
+                self.calls.append(("report", session_id))
+                return {"source": "query", "kind": "report", "session_id": session_id}
+
+            def get_diagnostics(self, session_id):
+                self.calls.append(("diagnostics", session_id))
+                return {"source": "query", "kind": "diagnostics", "session_id": session_id}
+
+        spy_query_service = _SpyQueryService()
+        service = TrainingService(
+            db_manager=_FakeDbManager(),
+            evaluator=self.evaluator,
+            query_service=spy_query_service,
+        )
+
+        self.assertEqual(service.get_session_summary("s-summary")["kind"], "summary")
+        self.assertEqual(service.get_progress("s-progress")["kind"], "progress")
+        self.assertEqual(service.get_history("s-history")["kind"], "history")
+        self.assertEqual(service.get_report("s-report")["kind"], "report")
+        self.assertEqual(service.get_diagnostics("s-diagnostics")["kind"], "diagnostics")
+        self.assertEqual(
+            spy_query_service.calls,
+            [
+                ("summary", "s-summary"),
+                ("progress", "s-progress"),
+                ("history", "s-history"),
+                ("report", "s-report"),
+                ("diagnostics", "s-diagnostics"),
+            ],
+        )
 
     def test_service_should_support_training_store_adapter_injection(self):
         """服务层应依赖训练存储接口，而不是硬绑具体 DBManager。"""

@@ -1,11 +1,24 @@
 import type {
+  TrainingAuditEventApiResponse,
   TrainingBranchTransitionApiResponse,
+  TrainingBranchTransitionSummaryApiResponse,
   TrainingConsequenceEventApiResponse,
   TrainingDecisionCandidateApiResponse,
+  TrainingDiagnosticsCountItemApiResponse,
+  TrainingDiagnosticsResponse,
+  TrainingDiagnosticsSummaryApiResponse,
   TrainingEvaluationApiResponse,
   TrainingInitResponse,
+  TrainingKtObservationApiResponse,
+  TrainingMetricObservationApiResponse,
   TrainingPlayerProfileApi,
   TrainingProgressResponse,
+  TrainingRecommendationLogApiResponse,
+  TrainingReportCurvePointApiResponse,
+  TrainingReportHistoryItemApiResponse,
+  TrainingReportMetricApiResponse,
+  TrainingReportResponse,
+  TrainingReportSummaryApiResponse,
   TrainingRoundDecisionContextApiResponse,
   TrainingRoundSubmitResponse,
   TrainingRuntimeFlagsApiResponse,
@@ -15,16 +28,31 @@ import type {
   TrainingScenarioNextResponse,
   TrainingScenarioOptionApiResponse,
   TrainingScenarioRecommendationApiResponse,
+  TrainingSessionProgressAnchorResponse,
+  TrainingSessionSummaryResponse,
 } from '@/types/api';
 import type {
+  TrainingAuditEvent,
   TrainingBranchTransition,
+  TrainingBranchTransitionSummary,
   TrainingConsequenceEvent,
+  TrainingDiagnosticsCountItem,
+  TrainingDiagnosticsResult,
+  TrainingDiagnosticsSummary,
   TrainingDecisionCandidate,
   TrainingEvaluation,
   TrainingInitResult,
+  TrainingKtObservation,
+  TrainingMetricObservation,
   TrainingMode,
   TrainingPlayerProfile,
   TrainingProgressResult,
+  TrainingRecommendationLog,
+  TrainingReportCurvePoint,
+  TrainingReportHistoryItem,
+  TrainingReportMetric,
+  TrainingReportResult,
+  TrainingReportSummary,
   TrainingRoundDecisionContext,
   TrainingRoundSubmitResult,
   TrainingRuntimeFlags,
@@ -34,6 +62,8 @@ import type {
   TrainingScenarioNextResult,
   TrainingScenarioOption,
   TrainingScenarioRecommendation,
+  TrainingProgressAnchor,
+  TrainingSessionSummaryResult,
 } from '@/types/training';
 import { ServiceError } from '@/services/serviceError';
 
@@ -349,6 +379,34 @@ const normalizeTrainingRuntimeState = (
   };
 };
 
+const normalizeTrainingProgressAnchor = (
+  payload: TrainingSessionProgressAnchorResponse | null | undefined,
+  roundNo: number,
+  totalRounds: number
+): TrainingProgressAnchor => {
+  const fallbackProgressPercent = totalRounds > 0 ? (roundNo / totalRounds) * 100 : 0;
+  const rawProgressPercent = normalizeNumber(
+    payload?.progress_percent,
+    fallbackProgressPercent
+  );
+  const progressPercent =
+    rawProgressPercent >= 0 && rawProgressPercent <= 1
+      ? rawProgressPercent * 100
+      : rawProgressPercent;
+
+  return {
+    roundNo: normalizeNumber(payload?.current_round_no, roundNo),
+    totalRounds: normalizeNumber(payload?.total_rounds, totalRounds),
+    completedRounds: normalizeNumber(payload?.completed_rounds, roundNo),
+    remainingRounds: normalizeNumber(
+      payload?.remaining_rounds,
+      Math.max(totalRounds - roundNo, 0)
+    ),
+    progressPercent,
+    nextRoundNo: normalizeOptionalNumber(payload?.next_round_no),
+  };
+};
+
 const normalizeTrainingEvaluation = (
   payload: TrainingEvaluationApiResponse | null | undefined
 ): TrainingEvaluation => ({
@@ -382,6 +440,340 @@ const normalizeTrainingConsequenceEvent = (
     relatedFlag: normalizeOptionalString(payload?.related_flag),
     stateBar: payload?.state_bar ? normalizeTrainingRuntimeStateBar(payload.state_bar) : null,
     payload: cloneRecord(payload?.payload),
+  };
+};
+
+const normalizeNumberArray = (value: unknown): number[] =>
+  Array.isArray(value)
+    ? value
+        .map((item) => normalizeOptionalNumber(item))
+        .filter((item): item is number => item !== null)
+    : [];
+
+const normalizeTrainingDiagnosticsCountItem = (
+  payload: TrainingDiagnosticsCountItemApiResponse | null | undefined
+): TrainingDiagnosticsCountItem | null => {
+  const code = normalizeOptionalString(payload?.code);
+  if (!code) {
+    return null;
+  }
+
+  return {
+    code,
+    count: normalizeNumber(payload?.count),
+  };
+};
+
+const normalizeTrainingMetricObservation = (
+  payload: TrainingMetricObservationApiResponse | null | undefined
+): TrainingMetricObservation | null => {
+  const code = normalizeOptionalString(payload?.code);
+  if (!code) {
+    return null;
+  }
+
+  return {
+    code,
+    before: normalizeNumber(payload?.before),
+    delta: normalizeNumber(payload?.delta),
+    after: normalizeNumber(payload?.after),
+    isTarget: payload?.is_target === true,
+  };
+};
+
+const normalizeTrainingKtObservation = (
+  payload: TrainingKtObservationApiResponse | null | undefined
+): TrainingKtObservation | null => {
+  const scenarioId = normalizeOptionalString(payload?.scenario_id);
+  if (!scenarioId) {
+    return null;
+  }
+
+  return {
+    scenarioId,
+    scenarioTitle: normalizeOptionalString(payload?.scenario_title) ?? '',
+    trainingMode: parseTrainingModeFromResponse(payload?.training_mode, 'kt_observation.training_mode'),
+    roundNo: normalizeOptionalNumber(payload?.round_no),
+    primarySkillCode: normalizeOptionalString(payload?.primary_skill_code),
+    primaryRiskFlag: normalizeOptionalString(payload?.primary_risk_flag),
+    isHighRisk: payload?.is_high_risk === true,
+    targetSkills: normalizeStringArray(payload?.target_skills),
+    weakSkillsBefore: normalizeStringArray(payload?.weak_skills_before),
+    riskFlags: normalizeStringArray(payload?.risk_flags),
+    focusTags: normalizeStringArray(payload?.focus_tags),
+    evidence: normalizeStringArray(payload?.evidence),
+    skillObservations: Array.isArray(payload?.skill_observations)
+      ? payload.skill_observations
+          .map((item) => normalizeTrainingMetricObservation(item))
+          .filter((item): item is TrainingMetricObservation => item !== null)
+      : [],
+    stateObservations: Array.isArray(payload?.state_observations)
+      ? payload.state_observations
+          .map((item) => normalizeTrainingMetricObservation(item))
+          .filter((item): item is TrainingMetricObservation => item !== null)
+      : [],
+    observationSummary: normalizeOptionalString(payload?.observation_summary) ?? '',
+  };
+};
+
+const normalizeTrainingRecommendationLog = (
+  payload: TrainingRecommendationLogApiResponse | null | undefined
+): TrainingRecommendationLog | null => {
+  const roundNo = normalizeOptionalNumber(payload?.round_no);
+  if (roundNo === null) {
+    return null;
+  }
+
+  return {
+    roundNo,
+    trainingMode: parseTrainingModeFromResponse(
+      payload?.training_mode,
+      'recommendation_log.training_mode'
+    ),
+    selectionSource: normalizeOptionalString(payload?.selection_source),
+    recommendedScenarioId: normalizeOptionalString(payload?.recommended_scenario_id),
+    selectedScenarioId: normalizeOptionalString(payload?.selected_scenario_id),
+    candidatePool: Array.isArray(payload?.candidate_pool)
+      ? payload.candidate_pool
+          .map((item) => normalizeTrainingDecisionCandidate(item))
+          .filter((item): item is TrainingDecisionCandidate => item !== null)
+      : [],
+    recommendedRecommendation: normalizeTrainingScenarioRecommendation(
+      payload?.recommended_recommendation
+    ),
+    selectedRecommendation: normalizeTrainingScenarioRecommendation(
+      payload?.selected_recommendation
+    ),
+    decisionContext: normalizeTrainingRoundDecisionContext(payload?.decision_context),
+  };
+};
+
+const normalizeTrainingAuditEvent = (
+  payload: TrainingAuditEventApiResponse | null | undefined
+): TrainingAuditEvent | null => {
+  const eventType = normalizeOptionalString(payload?.event_type);
+  if (!eventType) {
+    return null;
+  }
+
+  return {
+    eventType,
+    payload: cloneRecord(payload?.payload),
+    roundNo: normalizeOptionalNumber(payload?.round_no),
+    timestamp: normalizeOptionalString(payload?.timestamp),
+  };
+};
+
+const normalizeTrainingReportMetric = (
+  payload: TrainingReportMetricApiResponse | null | undefined
+): TrainingReportMetric | null => {
+  const code = normalizeOptionalString(payload?.code);
+  if (!code) {
+    return null;
+  }
+
+  return {
+    code,
+    initial: normalizeNumber(payload?.initial),
+    final: normalizeNumber(payload?.final),
+    delta: normalizeNumber(payload?.delta),
+    weight: normalizeOptionalNumber(payload?.weight),
+    isLowestFinal: payload?.is_lowest_final === true,
+    isHighestGain: payload?.is_highest_gain === true,
+  };
+};
+
+const normalizeTrainingReportCurvePoint = (
+  payload: TrainingReportCurvePointApiResponse | null | undefined
+): TrainingReportCurvePoint | null => {
+  const roundNo = normalizeOptionalNumber(payload?.round_no);
+  if (roundNo === null) {
+    return null;
+  }
+
+  return {
+    roundNo,
+    scenarioId: normalizeOptionalString(payload?.scenario_id),
+    scenarioTitle: normalizeOptionalString(payload?.scenario_title) ?? '',
+    kState: normalizeNumberMap(payload?.k_state),
+    sState: normalizeNumberMap(payload?.s_state),
+    weightedKScore: normalizeNumber(payload?.weighted_k_score),
+    isHighRisk: payload?.is_high_risk === true,
+    riskFlags: normalizeStringArray(payload?.risk_flags),
+    primarySkillCode: normalizeOptionalString(payload?.primary_skill_code),
+    timestamp: normalizeOptionalString(payload?.timestamp),
+  };
+};
+
+const normalizeTrainingBranchTransitionSummary = (
+  payload: TrainingBranchTransitionSummaryApiResponse | null | undefined
+): TrainingBranchTransitionSummary | null => {
+  const sourceScenarioId = normalizeOptionalString(payload?.source_scenario_id);
+  const targetScenarioId = normalizeOptionalString(payload?.target_scenario_id);
+  if (!sourceScenarioId || !targetScenarioId) {
+    return null;
+  }
+
+  return {
+    sourceScenarioId,
+    targetScenarioId,
+    transitionType: normalizeOptionalString(payload?.transition_type) ?? 'branch',
+    reason: normalizeOptionalString(payload?.reason) ?? '',
+    count: normalizeNumber(payload?.count),
+    roundNos: normalizeNumberArray(payload?.round_nos),
+    triggeredFlags: normalizeStringArray(payload?.triggered_flags),
+  };
+};
+
+const normalizeTrainingReportHistoryItem = (
+  payload: TrainingReportHistoryItemApiResponse | null | undefined
+): TrainingReportHistoryItem | null => {
+  const roundNo = normalizeOptionalNumber(payload?.round_no);
+  const scenarioId = normalizeOptionalString(payload?.scenario_id);
+  if (roundNo === null || !scenarioId) {
+    return null;
+  }
+
+  const ktObservation = normalizeTrainingKtObservation(payload?.kt_observation);
+  const runtimeState = payload?.runtime_state
+    ? normalizeTrainingRuntimeState(payload.runtime_state, {
+        roundNo,
+        sceneId: scenarioId,
+      })
+    : null;
+
+  return {
+    roundNo,
+    scenarioId,
+    userInput: normalizeOptionalString(payload?.user_input) ?? '',
+    selectedOption: normalizeOptionalString(payload?.selected_option),
+    evaluation: payload?.evaluation ? normalizeTrainingEvaluation(payload.evaluation) : null,
+    kStateBefore: normalizeNumberMap(payload?.k_state_before),
+    kStateAfter: normalizeNumberMap(payload?.k_state_after),
+    sStateBefore: normalizeNumberMap(payload?.s_state_before),
+    sStateAfter: normalizeNumberMap(payload?.s_state_after),
+    timestamp: normalizeOptionalString(payload?.timestamp),
+    decisionContext: normalizeTrainingRoundDecisionContext(payload?.decision_context),
+    ktObservation,
+    runtimeState,
+    consequenceEvents: Array.isArray(payload?.consequence_events)
+      ? payload.consequence_events
+          .map((item) => normalizeTrainingConsequenceEvent(item))
+          .filter((item): item is TrainingConsequenceEvent => item !== null)
+      : [],
+  };
+};
+
+const normalizeTrainingReportSummary = (
+  payload: TrainingReportSummaryApiResponse | null | undefined
+): TrainingReportSummary | null => {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  return {
+    weightedScoreInitial: normalizeNumber(payload?.weighted_score_initial),
+    weightedScoreFinal: normalizeNumber(payload?.weighted_score_final),
+    weightedScoreDelta: normalizeNumber(payload?.weighted_score_delta),
+    strongestImprovedSkillCode: normalizeOptionalString(payload?.strongest_improved_skill_code),
+    strongestImprovedSkillDelta: normalizeNumber(payload?.strongest_improved_skill_delta),
+    weakestSkillCode: normalizeOptionalString(payload?.weakest_skill_code),
+    weakestSkillScore: normalizeNumber(payload?.weakest_skill_score),
+    dominantRiskFlag: normalizeOptionalString(payload?.dominant_risk_flag),
+    highRiskRoundCount: normalizeNumber(payload?.high_risk_round_count),
+    highRiskRoundNos: normalizeNumberArray(payload?.high_risk_round_nos),
+    panicTriggerRoundCount: normalizeNumber(payload?.panic_trigger_round_count),
+    sourceExposedRoundCount: normalizeNumber(payload?.source_exposed_round_count),
+    editorLockedRoundCount: normalizeNumber(payload?.editor_locked_round_count),
+    highRiskPathRoundCount: normalizeNumber(payload?.high_risk_path_round_count),
+    branchTransitionCount: normalizeNumber(payload?.branch_transition_count),
+    branchTransitionRounds: normalizeNumberArray(payload?.branch_transition_rounds),
+    branchTransitions: Array.isArray(payload?.branch_transitions)
+      ? payload.branch_transitions
+          .map((item) => normalizeTrainingBranchTransitionSummary(item))
+          .filter((item): item is TrainingBranchTransitionSummary => item !== null)
+      : [],
+    riskFlagCounts: Array.isArray(payload?.risk_flag_counts)
+      ? payload.risk_flag_counts
+          .map((item) => normalizeTrainingDiagnosticsCountItem(item))
+          .filter((item): item is TrainingDiagnosticsCountItem => item !== null)
+      : [],
+    completedScenarioIds: normalizeStringArray(payload?.completed_scenario_ids),
+    reviewSuggestions: normalizeStringArray(payload?.review_suggestions),
+  };
+};
+
+const normalizeTrainingDiagnosticsSummary = (
+  payload: TrainingDiagnosticsSummaryApiResponse | null | undefined
+): TrainingDiagnosticsSummary | null => {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  return {
+    totalRecommendationLogs: normalizeNumber(payload?.total_recommendation_logs),
+    totalAuditEvents: normalizeNumber(payload?.total_audit_events),
+    totalKtObservations: normalizeNumber(payload?.total_kt_observations),
+    highRiskRoundCount: normalizeNumber(payload?.high_risk_round_count),
+    highRiskRoundNos: normalizeNumberArray(payload?.high_risk_round_nos),
+    recommendedVsSelectedMismatchCount: normalizeNumber(
+      payload?.recommended_vs_selected_mismatch_count
+    ),
+    recommendedVsSelectedMismatchRounds: normalizeNumberArray(
+      payload?.recommended_vs_selected_mismatch_rounds
+    ),
+    riskFlagCounts: Array.isArray(payload?.risk_flag_counts)
+      ? payload.risk_flag_counts
+          .map((item) => normalizeTrainingDiagnosticsCountItem(item))
+          .filter((item): item is TrainingDiagnosticsCountItem => item !== null)
+      : [],
+    primarySkillFocusCounts: Array.isArray(payload?.primary_skill_focus_counts)
+      ? payload.primary_skill_focus_counts
+          .map((item) => normalizeTrainingDiagnosticsCountItem(item))
+          .filter((item): item is TrainingDiagnosticsCountItem => item !== null)
+      : [],
+    topWeakSkills: Array.isArray(payload?.top_weak_skills)
+      ? payload.top_weak_skills
+          .map((item) => normalizeTrainingDiagnosticsCountItem(item))
+          .filter((item): item is TrainingDiagnosticsCountItem => item !== null)
+      : [],
+    selectionSourceCounts: Array.isArray(payload?.selection_source_counts)
+      ? payload.selection_source_counts
+          .map((item) => normalizeTrainingDiagnosticsCountItem(item))
+          .filter((item): item is TrainingDiagnosticsCountItem => item !== null)
+      : [],
+    eventTypeCounts: Array.isArray(payload?.event_type_counts)
+      ? payload.event_type_counts
+          .map((item) => normalizeTrainingDiagnosticsCountItem(item))
+          .filter((item): item is TrainingDiagnosticsCountItem => item !== null)
+      : [],
+    phaseTagCounts: Array.isArray(payload?.phase_tag_counts)
+      ? payload.phase_tag_counts
+          .map((item) => normalizeTrainingDiagnosticsCountItem(item))
+          .filter((item): item is TrainingDiagnosticsCountItem => item !== null)
+      : [],
+    phaseTransitionCount: normalizeNumber(payload?.phase_transition_count),
+    phaseTransitionRounds: normalizeNumberArray(payload?.phase_transition_rounds),
+    panicTriggerRoundCount: normalizeNumber(payload?.panic_trigger_round_count),
+    panicTriggerRounds: normalizeNumberArray(payload?.panic_trigger_rounds),
+    sourceExposedRoundCount: normalizeNumber(payload?.source_exposed_round_count),
+    sourceExposedRounds: normalizeNumberArray(payload?.source_exposed_rounds),
+    editorLockedRoundCount: normalizeNumber(payload?.editor_locked_round_count),
+    editorLockedRounds: normalizeNumberArray(payload?.editor_locked_rounds),
+    highRiskPathRoundCount: normalizeNumber(payload?.high_risk_path_round_count),
+    highRiskPathRounds: normalizeNumberArray(payload?.high_risk_path_rounds),
+    branchTransitionCount: normalizeNumber(payload?.branch_transition_count),
+    branchTransitionRounds: normalizeNumberArray(payload?.branch_transition_rounds),
+    branchTransitions: Array.isArray(payload?.branch_transitions)
+      ? payload.branch_transitions
+          .map((item) => normalizeTrainingBranchTransitionSummary(item))
+          .filter((item): item is TrainingBranchTransitionSummary => item !== null)
+      : [],
+    lastPrimarySkillCode: normalizeOptionalString(payload?.last_primary_skill_code),
+    lastPrimaryRiskFlag: normalizeOptionalString(payload?.last_primary_risk_flag),
+    lastEventType: normalizeOptionalString(payload?.last_event_type),
+    lastPhaseTags: normalizeStringArray(payload?.last_phase_tags),
+    lastBranchTransition: normalizeTrainingBranchTransition(payload?.last_branch_transition),
   };
 };
 
@@ -488,5 +880,124 @@ export const normalizeTrainingProgressPayload = (
       sState: normalizeNumberMap(payload?.s_state),
       playerProfile,
     }),
+  };
+};
+
+export const normalizeTrainingSessionSummaryPayload = (
+  payload: TrainingSessionSummaryResponse | null | undefined
+): TrainingSessionSummaryResult => {
+  const roundNo = normalizeNumber(payload?.current_round_no);
+  const totalRounds = normalizeNumber(payload?.total_rounds);
+  const playerProfile = normalizeTrainingPlayerProfile(payload?.player_profile);
+  const resumableScenario = normalizeTrainingScenario(payload?.resumable_scenario);
+
+  return {
+    sessionId: normalizeOptionalString(payload?.session_id) ?? '',
+    trainingMode: parseTrainingModeFromResponse(payload?.training_mode, 'training_mode'),
+    status: normalizeOptionalString(payload?.status) ?? 'initialized',
+    roundNo,
+    totalRounds,
+    runtimeState: normalizeTrainingRuntimeState(payload?.runtime_state, {
+      roundNo,
+      sceneId: resumableScenario?.id ?? null,
+      kState: normalizeNumberMap(payload?.k_state),
+      sState: normalizeNumberMap(payload?.s_state),
+      playerProfile,
+    }),
+    progressAnchor: normalizeTrainingProgressAnchor(payload?.progress_anchor, roundNo, totalRounds),
+    resumableScenario,
+    scenarioCandidates: Array.isArray(payload?.scenario_candidates)
+      ? payload.scenario_candidates
+          .map((item) => normalizeTrainingScenario(item))
+          .filter((item): item is TrainingScenario => item !== null)
+      : [],
+    canResume: payload?.can_resume === true,
+    isCompleted: payload?.is_completed === true,
+    createdAt: normalizeOptionalString(payload?.created_at),
+    updatedAt: normalizeOptionalString(payload?.updated_at),
+    endTime: normalizeOptionalString(payload?.end_time),
+  };
+};
+
+export const normalizeTrainingReportPayload = (
+  payload: TrainingReportResponse | null | undefined
+): TrainingReportResult => {
+  const rounds = normalizeNumber(payload?.rounds);
+  const playerProfile = normalizeTrainingPlayerProfile(payload?.player_profile);
+
+  return {
+    sessionId: normalizeOptionalString(payload?.session_id) ?? '',
+    status: normalizeOptionalString(payload?.status) ?? 'completed',
+    rounds,
+    kStateFinal: normalizeNumberMap(payload?.k_state_final),
+    sStateFinal: normalizeNumberMap(payload?.s_state_final),
+    improvement: normalizeNumber(payload?.improvement),
+    playerProfile,
+    runtimeState: payload?.runtime_state
+      ? normalizeTrainingRuntimeState(payload.runtime_state, {
+          roundNo: rounds,
+          kState: normalizeNumberMap(payload?.k_state_final),
+          sState: normalizeNumberMap(payload?.s_state_final),
+          playerProfile,
+        })
+      : null,
+    ending: asRecord(payload?.ending) ? cloneRecord(payload?.ending) : null,
+    summary: normalizeTrainingReportSummary(payload?.summary),
+    abilityRadar: Array.isArray(payload?.ability_radar)
+      ? payload.ability_radar
+          .map((item) => normalizeTrainingReportMetric(item))
+          .filter((item): item is TrainingReportMetric => item !== null)
+      : [],
+    stateRadar: Array.isArray(payload?.state_radar)
+      ? payload.state_radar
+          .map((item) => normalizeTrainingReportMetric(item))
+          .filter((item): item is TrainingReportMetric => item !== null)
+      : [],
+    growthCurve: Array.isArray(payload?.growth_curve)
+      ? payload.growth_curve
+          .map((item) => normalizeTrainingReportCurvePoint(item))
+          .filter((item): item is TrainingReportCurvePoint => item !== null)
+      : [],
+    history: Array.isArray(payload?.history)
+      ? payload.history
+          .map((item) => normalizeTrainingReportHistoryItem(item))
+          .filter((item): item is TrainingReportHistoryItem => item !== null)
+      : [],
+  };
+};
+
+export const normalizeTrainingDiagnosticsPayload = (
+  payload: TrainingDiagnosticsResponse | null | undefined
+): TrainingDiagnosticsResult => {
+  const roundNo = normalizeNumber(payload?.round_no);
+  const playerProfile = normalizeTrainingPlayerProfile(payload?.player_profile);
+
+  return {
+    sessionId: normalizeOptionalString(payload?.session_id) ?? '',
+    status: normalizeOptionalString(payload?.status) ?? 'completed',
+    roundNo,
+    playerProfile,
+    runtimeState: payload?.runtime_state
+      ? normalizeTrainingRuntimeState(payload.runtime_state, {
+          roundNo,
+          playerProfile,
+        })
+      : null,
+    summary: normalizeTrainingDiagnosticsSummary(payload?.summary),
+    recommendationLogs: Array.isArray(payload?.recommendation_logs)
+      ? payload.recommendation_logs
+          .map((item) => normalizeTrainingRecommendationLog(item))
+          .filter((item): item is TrainingRecommendationLog => item !== null)
+      : [],
+    auditEvents: Array.isArray(payload?.audit_events)
+      ? payload.audit_events
+          .map((item) => normalizeTrainingAuditEvent(item))
+          .filter((item): item is TrainingAuditEvent => item !== null)
+      : [],
+    ktObservations: Array.isArray(payload?.kt_observations)
+      ? payload.kt_observations
+          .map((item) => normalizeTrainingKtObservation(item))
+          .filter((item): item is TrainingKtObservation => item !== null)
+      : [],
   };
 };

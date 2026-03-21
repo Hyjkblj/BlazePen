@@ -2,8 +2,9 @@
 
 这一层专门负责：
 1. 冻结新会话的主线场景快照与分支目录
-2. 给历史会话做惰性回填
-3. 在会话级冻结快照中解析具体场景
+2. 显式校验会话是否具备可恢复快照事实
+3. 给历史会话执行独立 repair/backfill（不走主链路热路径）
+4. 在会话级冻结快照中解析具体场景
 
 这样可以把 `TrainingService` 里的快照生命周期管理职责独立出来，
 避免服务层继续膨胀。
@@ -14,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
+from training.exceptions import TrainingSessionRecoveryStateError
 from training.scenario_policy import ScenarioPolicy
 from training.scenario_repository import ScenarioRepository
 from training.training_store import TrainingStoreProtocol
@@ -57,7 +59,11 @@ class SessionScenarioSnapshotPolicy:
         session: Any,
         training_store: TrainingStoreProtocol,
     ) -> SessionScenarioSnapshotBundle:
-        """确保会话已经持久化主线快照与分支目录。"""
+        """显式修复缺失的会话快照并持久化回填结果。
+
+        该入口只应由 repair/migration 任务调用。请求热路径必须改用
+        `require_session_snapshots(...)`，避免运行时静默修复损坏会话。
+        """
         scenario_payload_sequence = self.scenario_policy.resolve_session_payload_sequence(session)
         scenario_payload_catalog = self.scenario_policy.resolve_session_payload_catalog(session)
         if scenario_payload_sequence and scenario_payload_catalog:
@@ -86,6 +92,42 @@ class SessionScenarioSnapshotPolicy:
             session=updated_session,
             scenario_payload_sequence=scenario_payload_sequence,
             scenario_payload_catalog=scenario_payload_catalog,
+        )
+
+    def require_session_snapshots(
+        self,
+        *,
+        session_id: str,
+        session: Any,
+    ) -> SessionScenarioSnapshotBundle:
+        """Read persisted session snapshots and fail when recovery facts are missing."""
+        snapshot_bundle = self.read_session_snapshots(session=session)
+        missing_fields: List[str] = []
+        if not snapshot_bundle.scenario_payload_sequence:
+            missing_fields.append("scenario_payload_sequence")
+        if not snapshot_bundle.scenario_payload_catalog:
+            missing_fields.append("scenario_payload_catalog")
+        if missing_fields:
+            raise TrainingSessionRecoveryStateError(
+                session_id=session_id,
+                reason="scenario_snapshots_missing",
+                details={
+                    "current_round_no": int(getattr(session, "current_round_no", 0) or 0),
+                    "missing_fields": missing_fields,
+                },
+            )
+        return snapshot_bundle
+
+    def read_session_snapshots(
+        self,
+        *,
+        session: Any,
+    ) -> SessionScenarioSnapshotBundle:
+        """只读取已持久化的会话快照，不做任何修复或回写。"""
+        return SessionScenarioSnapshotBundle(
+            session=session,
+            scenario_payload_sequence=self.scenario_policy.resolve_session_payload_sequence(session),
+            scenario_payload_catalog=self.scenario_policy.resolve_session_payload_catalog(session),
         )
 
     def resolve_scenario_payload_by_id(

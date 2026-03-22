@@ -2,10 +2,13 @@ import { useCallback } from 'react';
 import type { FeedbackContextValue } from '@/contexts/feedbackCore';
 import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
 import { submitStoryTurn } from '@/services/storyTurnService';
-import { getServiceErrorMessage, isServiceError } from '@/services/serviceError';
-import type { GameMessage, GameTurnResult, PlayerOption } from '@/types/game';
+import type { GameMessage, PlayerOption } from '@/types/game';
 import { logger } from '@/utils/logger';
-import { resolveSceneDisplayName, resolveStorySceneVisual } from '@/utils/storyScene';
+import {
+  applyStoryTurnReselectState,
+  applyStoryTurnResponseState,
+  handleStoryTurnSubmissionError,
+} from './storyTurnSubmissionExecutor';
 import type { GameSessionActions } from './useGameState';
 
 interface StoryTurnSubmissionState {
@@ -73,66 +76,12 @@ export function useStoryTurnSubmission({
     setCharacterImage(preferredCharacterId);
   }, [characterImageUrl, preferredCharacterId, setCharacterImage]);
 
-  const applyResponseVisual = useCallback(
-    (responseData: GameTurnResult) => {
-      if (responseData.sceneId && responseData.sceneId !== currentScene) {
-        actions.enterScene(
-          responseData.sceneId,
-          resolveSceneDisplayName(responseData.sceneId) ?? responseData.sceneId,
-          'advance'
-        );
-      }
-
-      const visual = resolveStorySceneVisual(responseData);
-      if (visual.kind === 'composite') {
-        actions.applyCompositeScene(visual.imageUrl);
-      } else if (responseData.sceneId || responseData.sceneImageUrl) {
-        actions.applySceneVisual({ sceneImageUrl: visual.imageUrl });
-        ensureCharacterImage();
-      }
-    },
-    [actions, currentScene, ensureCharacterImage]
-  );
-
-  const applyGameResponse = useCallback(
-    (responseData: GameTurnResult) => {
-      applyResponseVisual(responseData);
-
-      if (responseData.characterDialogue) {
-        actions.setDialogue(responseData.characterDialogue);
-        actions.appendMessage({
-          role: 'assistant',
-          content: responseData.characterDialogue,
-        });
-      }
-
-      actions.setOptions(responseData.playerOptions);
-      actions.setGameFinished(responseData.isGameFinished);
-
-      if (responseData.isGameFinished) {
-        feedback.info('Story finished.');
-      }
-    },
-    [actions, applyResponseVisual, feedback]
-  );
-
   const restorePreviousTurnState = useCallback(() => {
     actions.setDialogue(currentDialogue);
     actions.setOptions(currentOptions);
     actions.setGameFinished(isGameFinished);
     actions.rollbackPendingUserMessage();
   }, [actions, currentDialogue, currentOptions, isGameFinished]);
-
-  const applyReselectResponse = useCallback(
-    (responseData: GameTurnResult) => {
-      actions.rollbackPendingUserMessage();
-      applyResponseVisual(responseData);
-      actions.setDialogue(responseData.characterDialogue);
-      actions.setOptions(responseData.playerOptions);
-      actions.setGameFinished(responseData.isGameFinished);
-    },
-    [actions, applyResponseVisual]
-  );
 
   const selectOption = useCallback(
     async (optionIndex: number) => {
@@ -186,7 +135,12 @@ export function useStoryTurnSubmission({
 
         if (response.needReselectOption) {
           feedback.warning('Game session restored. Please choose an option again.');
-          applyReselectResponse(response);
+          applyStoryTurnReselectState({
+            response,
+            currentScene,
+            ensureCharacterImage,
+            actions,
+          });
           return;
         }
 
@@ -194,7 +148,13 @@ export function useStoryTurnSubmission({
           feedback.info('Game session restored.');
         }
 
-        applyGameResponse(response);
+        applyStoryTurnResponseState({
+          response,
+          currentScene,
+          ensureCharacterImage,
+          feedback,
+          actions,
+        });
       } catch (error: unknown) {
         trackFrontendTelemetry({
           domain: 'story',
@@ -205,40 +165,25 @@ export function useStoryTurnSubmission({
         });
         logger.error('Failed to process game option:', error);
 
-        if (isServiceError(error) && error.code === 'STORY_SESSION_RESTORE_FAILED') {
-          feedback.error('Game session could not be recovered. Please restart the story.');
-          persistReadOnlySnapshot(threadId, messages);
-          restorePreviousTurnState();
-          syncActiveSession(null);
-          actions.setOptions([]);
-        } else if (
-          isServiceError(error) &&
-          (error.code === 'STORY_SESSION_EXPIRED' ||
-            error.code === 'STORY_SESSION_NOT_FOUND' ||
-            error.code === 'SESSION_EXPIRED')
-        ) {
-          feedback.error('Story session expired. Please restart the story.');
-          persistReadOnlySnapshot(threadId, messages);
-          restorePreviousTurnState();
-          syncActiveSession(null);
-          actions.setOptions([]);
-        } else if (isServiceError(error) && error.code === 'REQUEST_TIMEOUT') {
-          feedback.error('Processing timed out. Please retry in a moment.');
-          restorePreviousTurnState();
-        } else {
-          feedback.error(getServiceErrorMessage(error, 'Failed to process the selected option.'));
-          restorePreviousTurnState();
-        }
+        handleStoryTurnSubmissionError({
+          error,
+          threadId,
+          messages,
+          feedback,
+          actions,
+          restorePreviousTurnState,
+          syncActiveSession,
+          persistReadOnlySnapshot,
+        });
       } finally {
         actions.stopLoading();
       }
     },
     [
       actions,
-      applyGameResponse,
-      applyReselectResponse,
       currentScene,
       currentOptions,
+      ensureCharacterImage,
       feedback,
       loading,
       messages,

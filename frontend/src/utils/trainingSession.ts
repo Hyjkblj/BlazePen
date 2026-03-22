@@ -136,6 +136,11 @@ const cloneRecord = (value: unknown): Record<string, unknown> => {
   return record ? { ...record } : {};
 };
 
+const readLegacyScenarioBriefing = (value: unknown): string | null => {
+  const record = asRecord(value);
+  return normalizeOptionalString(record?.briefing);
+};
+
 const normalizeTrainingRequestModeInput = (value: unknown): string | null => {
   const normalized = normalizeOptionalString(value)?.toLowerCase();
   if (!normalized) {
@@ -320,7 +325,7 @@ const normalizeTrainingScenario = (
     location: normalizeOptionalString(payload?.location) ?? '',
     brief:
       normalizeOptionalString(payload?.brief) ??
-      normalizeOptionalString(payload?.briefing) ??
+      readLegacyScenarioBriefing(payload) ??
       '',
     mission: normalizeOptionalString(payload?.mission) ?? '',
     decisionFocus: normalizeOptionalString(payload?.decision_focus) ?? '',

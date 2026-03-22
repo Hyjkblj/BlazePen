@@ -1,0 +1,33 @@
+BlazePen 训练/故事拆分 PR Worktree Detailed Review
+Review date: 2026-03-22
+Review scope: current worktree on top of HEAD 1794ee4
+Verification:
+- Backend: python -m pytest backend/test_training_standalone_app.py backend/test_api_entrypoint_boundaries.py backend/test_api_entry_common_middleware.py backend/test_api_cors_config.py -q -> passed
+- Frontend: cd frontend && npm exec vitest run vite.app.config.test.ts src/apps/AppShell.integration.test.tsx src/hooks/useTrainingReadQuery.test.tsx src/pages/TrainingInsights.integration.test.tsx -> passed
+
+## 前端 Findings
+- 未发现阻塞性问题。
+
+## 后端 Findings
+- [Minor] backend/api/training_app.py:31
+  问题：training 独立入口对外返回的根路由元数据把 service_scope 写成了 training_only，但共享 app factory 内部真正使用的 service_scope 仍是 training。
+  原因：backend/api/app_factory.py:70-95 已经把 service_scope 作为共享装配、CORS scope 和应用状态的权威输入；backend/api/training_app.py:26 传入的是 training，但 backend/api/training_app.py:31 又通过 root_extra 额外暴露了另一套 service_scope 文案。这样同一个入口同时存在两套 scope 词汇，违反单一事实源，也会让“入口身份”和“领域 scope”混在一起。
+  影响：现在测试 backend/test_api_entry_common_middleware.py:37 也把 training_only 固化成了根路由契约。后续只要联调脚本、自检脚本、部署说明或监控探针开始读取根路由元数据做分流，就可能出现“运行时按 training，说明文档按 training_only”的漂移，拖慢 PR-BE-SPLIT-05 的运维收口，并增加 story/training 双入口配置歧义。
+  建议：统一 scope 口径。若 service_scope 要表达领域边界，就只保留 training；若还需要表达“训练专用入口”这一部署身份，就新增独立字段，例如 entrypoint_kind=training_only，而不要再复用 service_scope 这个词。
+
+## Open Questions
+- 根路由里的 service_scope 是否打算作为对外稳定契约给联调脚本或运维自检消费？如果是，必须和 app.state.service_scope、CORS scope、文档口径统一；如果不是，建议移除，避免外部系统误绑定到临时字段。
+
+## 测试缺口
+- 前端：本轮没有新增前端运行时代码问题，但仍缺少 frontend/src/pages/Training.integration.test.tsx 对“训练主页跳转到 progress/report/diagnostics 时使用的 sessionId 与读页实际读取的 sessionId 完全一致”的回归。当前 PR-FE-SPLIT-02 仍未被这条真实用户路径锁住。
+- 前端：仍缺少 canonical brief 契约测试。frontend/src/utils/trainingSession.ts 还在做 briefing -> brief 归一，但没有一条页面级或服务级测试会在 briefing 再次泄漏到页面层时报警。
+- 后端：backend/test_api_entry_common_middleware.py 目前只验证了带 Origin 的简单 GET 请求，没有覆盖浏览器真正依赖的 OPTIONS 预检路径，尤其缺少 access-control-allow-methods 和 access-control-allow-headers 的入口级断言。当前 CORS helper 是绿的，但入口级预检行为仍未锁死。
+- 后端：当前有 backend/test_training_standalone_app.py，但没有对称的 story standalone 最小测试。story 侧仍缺少“独立启动、健康检查、基础根路由元数据、边界隔离”的对称验证，PR-BE-SPLIT-05 还不能算真正完成双后端运维闭环。
+- 后端：当前也没有 story/training 领域 import 边界测试。PR-BE-SPLIT-04 的核心风险不是入口暴露，而是后续实现层再次互相穿透；如果没有静态边界检查，拆分状态很容易在后续提交中回退。
+
+## Review Summary
+- 这轮改动在后端入口装配上是正向的，app factory 已经把 story/training 的公共 runtime wiring 真正收成了一处。
+- 我没有发现阻塞合并的功能性回归；训练 standalone、入口边界、共享中间件和配置级测试都已通过。
+- 当前最实际的问题不是代码跑不起来，而是 training 根路由的 service_scope 命名已经开始和内部权威 scope 漂移。
+- 真正还没关门的工作仍然是 PR-FE-SPLIT-02、PR-BE-SPLIT-04、PR-BE-SPLIT-05，其中后两者的重点分别是领域实现对称拆分和双后端运维契约收口。
+- 如果这批改动要继续推进，建议先把 scope 命名统一，再补入口级 CORS 预检测试和 story standalone 对称验证。

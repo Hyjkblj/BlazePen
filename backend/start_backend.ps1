@@ -34,4 +34,4 @@ Write-Host ""
 Write-Host "[3/3] Starting backend service..." -ForegroundColor Yellow
 Write-Host "Press Ctrl+C to stop the service" -ForegroundColor Cyan
 Write-Host ""
-python .\run_api.py
+python .\run_story_api.py

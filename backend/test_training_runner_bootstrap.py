@@ -4,13 +4,62 @@ import argparse
 import unittest
 from unittest.mock import MagicMock, patch
 
+import backend_runner_bootstrap
 import run_training_service_cli as cli_runner
 import run_training_service_local as local_runner
 import training_runner_bootstrap
 
 
-class TrainingRunnerBootstrapTestCase(unittest.TestCase):
+class BackendRunnerBootstrapTestCase(unittest.TestCase):
     def test_bootstrap_database_should_run_explicit_scripts_before_connection_check(self):
+        fake_db_manager = MagicMock()
+
+        with patch.object(backend_runner_bootstrap, "run_init_db_script") as init_db_mock:
+            with patch.object(
+                backend_runner_bootstrap,
+                "run_check_database_status_script",
+            ) as check_db_mock:
+                with patch.object(
+                    backend_runner_bootstrap,
+                    "DatabaseManager",
+                    return_value=fake_db_manager,
+                ):
+                    result = backend_runner_bootstrap.bootstrap_database(
+                        skip_init_db=False,
+                        check_db_status=True,
+                    )
+
+        self.assertIs(result, fake_db_manager)
+        init_db_mock.assert_called_once_with()
+        check_db_mock.assert_called_once_with()
+        fake_db_manager.check_connection.assert_called_once_with()
+
+    def test_bootstrap_database_should_skip_scripts_but_still_check_connection(self):
+        fake_db_manager = MagicMock()
+
+        with patch.object(backend_runner_bootstrap, "run_init_db_script") as init_db_mock:
+            with patch.object(
+                backend_runner_bootstrap,
+                "run_check_database_status_script",
+            ) as check_db_mock:
+                with patch.object(
+                    backend_runner_bootstrap,
+                    "DatabaseManager",
+                    return_value=fake_db_manager,
+                ):
+                    result = backend_runner_bootstrap.bootstrap_database(
+                        skip_init_db=True,
+                        check_db_status=False,
+                    )
+
+        self.assertIs(result, fake_db_manager)
+        init_db_mock.assert_not_called()
+        check_db_mock.assert_not_called()
+        fake_db_manager.check_connection.assert_called_once_with()
+
+
+class TrainingRunnerBootstrapCompatibilityTestCase(unittest.TestCase):
+    def test_legacy_bootstrap_should_remain_compatible_for_existing_importers(self):
         fake_db_manager = MagicMock()
 
         with patch.object(training_runner_bootstrap, "run_init_db_script") as init_db_mock:
@@ -31,29 +80,6 @@ class TrainingRunnerBootstrapTestCase(unittest.TestCase):
         self.assertIs(result, fake_db_manager)
         init_db_mock.assert_called_once_with()
         check_db_mock.assert_called_once_with()
-        fake_db_manager.check_connection.assert_called_once_with()
-
-    def test_bootstrap_database_should_skip_scripts_but_still_check_connection(self):
-        fake_db_manager = MagicMock()
-
-        with patch.object(training_runner_bootstrap, "run_init_db_script") as init_db_mock:
-            with patch.object(
-                training_runner_bootstrap,
-                "run_check_database_status_script",
-            ) as check_db_mock:
-                with patch.object(
-                    training_runner_bootstrap,
-                    "DatabaseManager",
-                    return_value=fake_db_manager,
-                ):
-                    result = training_runner_bootstrap.bootstrap_database(
-                        skip_init_db=True,
-                        check_db_status=False,
-                    )
-
-        self.assertIs(result, fake_db_manager)
-        init_db_mock.assert_not_called()
-        check_db_mock.assert_not_called()
         fake_db_manager.check_connection.assert_called_once_with()
 
 

@@ -300,6 +300,7 @@ export function useTrainingMvpFlow() {
     retryRestore,
     clearWorkspace,
     sessionView,
+    insightSessionId: sessionViewModel.currentSessionId,
     latestOutcome,
     selectedOptionId,
     selectOption: setSelectedOptionId,

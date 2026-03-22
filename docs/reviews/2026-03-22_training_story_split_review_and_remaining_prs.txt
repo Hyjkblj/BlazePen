@@ -1,0 +1,222 @@
+BlazePen 训练/故事拆分 Review 与剩余 PR 总览
+Date: 2026-03-22
+Baseline: current worktree on top of HEAD 1794ee4
+
+一、当前结论
+
+当前项目不是“只差前后端接口对接”。
+
+更准确的判断是：
+1. 训练前端到训练后端的基础接口调用链路已经存在。
+2. story/training 双入口、双端口、双后端边界已经基本建立。
+3. 当前剩余工作主要是契约收口、会话事实源收口、story/training 后端实现层对称拆分、双后端运维与 smoke 收口。
+4. 因此项目已经跨过“有没有接口”阶段，但还没有进入“只剩联调一下就结束”的阶段。
+
+已验证：
+- Backend:
+  - python -m pytest backend/test_training_standalone_app.py backend/test_api_entrypoint_boundaries.py backend/test_api_entry_common_middleware.py backend/test_api_cors_config.py -q -> passed
+  - python -m pytest backend/test_story_standalone_app.py backend/test_training_standalone_app.py backend/test_api_entrypoint_boundaries.py backend/test_domain_import_boundaries.py -q -> passed
+  - python -m pytest backend/test_story_route_smoke.py backend/test_training_route_smoke.py -q -> passed
+- Frontend:
+  - cd frontend && npm exec vitest run vite.app.config.test.ts src/apps/AppShell.integration.test.tsx src/hooks/useTrainingReadQuery.test.tsx src/pages/TrainingInsights.integration.test.tsx -> passed
+
+二、为什么不能判断为“只差接口对接”
+
+1. 训练接口本身已经接上
+- frontend/src/services/trainingApi.ts 已经直接调用：
+  - POST /v1/training/init
+  - POST /v1/training/scenario/next
+  - POST /v1/training/round/submit
+  - GET /v1/training/progress/{sessionId}
+  - GET /v1/training/sessions/{sessionId}
+  - GET /v1/training/report/{sessionId}
+  - GET /v1/training/diagnostics/{sessionId}
+- backend/api/routers/training.py 已经提供对应训练路由。
+- frontend/vite.training.config.ts 默认已指向 http://localhost:8010。
+
+2. 剩余问题是架构与契约问题，不只是联调问题
+- 训练前端 sessionId 事实源还没有完全收死，仍存在 explicit / active-session / resume-target 三套入口。
+- 训练 DTO 契约还没有完全冻结，backend/api/schemas.py 仍保留 briefing，前端 normalizer 仍在兼容历史字段。
+- 故事后端拆分仍处于过渡态，api/services/game_service.py 仍是 story 域兼容 facade，不是最终形态。
+- 双后端运行配置和 CORS 运维口径还在继续收口，不是“接口一打通就完事”。
+
+三、当前 Review
+
+## 前端 Findings
+- [Major] frontend/src/hooks/useTrainingSessionReadTarget.ts:107
+  问题：训练读链路仍允许 explicit / active-session / resume-target 三套 sessionId 来源并存。
+  原因：这说明训练页面和训练读页的会话事实源还没有完全定成单一规则，不属于接口未打通，而属于状态边界未收口。
+  影响：即使接口全通，刷新恢复、多标签页、主页跳转到 progress/report/diagnostics 仍可能发生身份漂移。
+  建议：在 PR-FE-SPLIT-02 中把训练主页和 3 个读页统一到一套 sessionId 决策规则，并用测试锁死优先级。
+
+- [Major] frontend/src/utils/trainingSession.ts:141
+  问题：前端 normalizer 仍在兼容 briefing -> brief 的历史字段。
+  原因：这说明前后端契约已经对接，但还没有完全定型。
+  影响：后续后端字段正式收口时，前端还会继续跟着调整，不能视为“只剩联调”。
+  建议：确认 brief 为唯一 canonical 字段，清理 briefing 残留，并补页面级契约测试。
+
+## 后端 Findings
+- [Major] backend/api/services/game_service.py:20
+  问题：GameService 仍然是 story 域过渡 facade，story/training 后端实现层还没完全对称拆开。
+  原因：这属于领域实现边界问题，不是接口对接问题。
+  影响：即使前端全部接好，后端 story 域仍会继续带着过渡层运行，后续维护和拆分成本继续存在。
+  建议：继续推进 PR-BE-SPLIT-04，把 story 领域实现彻底收成与 training 对称的结构。
+
+- [Minor] backend/api/training_app.py:31
+  问题：training 根路由元数据把 service_scope 对外写成 training_only，但 app factory 内部真正使用的是 training。
+  原因：同一入口同时存在两套 scope 词汇，破坏单一事实源。
+  影响：联调脚本、自检脚本和运维文档如果读取根路由元数据，可能出现“运行时按 training，说明按 training_only”的漂移。
+  建议：统一 service_scope 口径；若要表达“训练专用入口”，新增独立字段，不再复用 service_scope。
+
+四、Open Questions
+
+- PR-FE-SPLIT-02 的正式目标到底是：
+  - 显式 sessionId 为严格必需
+  - 还是显式优先，但允许 active/resume fallback 作为正式契约
+- 根路由里的 service_scope 是否打算作为对外稳定契约给联调脚本或运维自检消费？
+
+五、测试缺口
+
+- 前端：
+  - 缺少 frontend/src/pages/Training.integration.test.tsx 对“训练主页跳转到读页时使用的 sessionId 与读页实际读取 sessionId 完全一致”的锁定。
+  - 缺少 canonical brief 契约测试，无法在 briefing 再次泄漏到页面层时立刻报警。
+- 后端：
+  - backend/test_api_entry_common_middleware.py 还没有入口级 OPTIONS 预检测试，CORS 预检行为未锁死。
+  - 仍需持续补强 story/training 双后端独立 smoke 与运维验证。
+  - 仍需保留并强化 domain import boundary 测试，防止 story/training 再次互相穿透。
+
+六、当前 PR 状态
+
+- 基本完成：
+  - PR-BE-SPLIT-01 共享 app factory 收口
+  - PR-BE-SPLIT-02 training-only 后端入口
+  - PR-BE-SPLIT-03 story 主入口移除 training 暴露
+  - PR-FE-SPLIT-01 前端双入口/双端口壳层
+- 部分完成：
+  - PR-FE-SPLIT-02 训练显式 sessionId 读链路
+  - PR-BE-SPLIT-05 双后端运维、CORS、smoke、文档收口
+- 未完成：
+  - PR-BE-SPLIT-04 story/training 领域实现对称拆分
+
+七、剩余任务 PR
+
+## PR-FE-SPLIT-02
+
+目标：
+- 统一训练主页和 progress/report/diagnostics 的 session target 决策。
+- 明确 sessionId 是否是训练读链路的严格契约。
+
+当前问题：
+- frontend/src/pages/Training.tsx 仍自己拼 sessionView?.sessionId ?? resumeTarget?.sessionId。
+- 训练主页与读页没有完全复用同一套 target 解析。
+- briefing -> brief 仍停留在 normalizer 和历史契约兼容层。
+
+必做任务：
+- 把训练主页 insight 跳转目标统一改为消费 useTrainingSessionReadTarget 或等价单一 selector。
+- 移除训练主页自己维护的 sessionId fallback 拼装逻辑。
+- 明确读页契约：
+  - 若目标是严格显式 sessionId，则无 query sessionId 时直接空态。
+  - 若允许 fallback，则把 fallback 固化为正式契约并补测试。
+- 清理 briefing 历史 alias：
+  - 前端 API 类型不再暴露 briefing 给页面消费层。
+  - TrainingScenario 只保留 brief。
+  - 页面层禁止再出现 brief || briefing。
+
+测试补齐：
+- frontend/src/pages/Training.integration.test.tsx
+- frontend/src/pages/TrainingInsights.integration.test.tsx
+- frontend/src/utils/trainingSession.test.ts
+
+合并门槛：
+- 训练主页和 3 个读页只使用一套 sessionId 决策规则。
+- 页面层不再消费 briefing。
+- 相关 Vitest 全绿。
+
+## PR-BE-SPLIT-04
+
+目标：
+- 让 story/training 真正完成实现层对称拆分，而不是只完成入口拆分。
+
+当前问题：
+- backend/story/* 已出现，但 api/services/game_service.py 仍是过渡 facade。
+- api/dependencies.py 仍承担较重的 story 装配责任。
+- 需要继续靠边界测试防止 story/training 实现层互相 import。
+
+必做任务：
+- 定义 story 域最终目录结构。
+- 继续下沉 GameService 的 story 逻辑，让 facade 只保留短期兼容职责。
+- 明确 story 域内部职责：
+  - session query
+  - session restore
+  - turn submit
+  - history read
+  - ending read
+  - asset/image orchestration
+- 收紧 api/dependencies.py，只负责 story bundle 组装，不再混入领域逻辑。
+- 保持并补强 import boundary 测试。
+- 给 GameService 定义退出条件，避免过渡层永久化。
+
+测试补齐：
+- story 域回归测试
+- domain import boundary 测试
+- 入口边界测试持续通过
+
+合并门槛：
+- story/training 领域实现边界清晰。
+- api/dependencies.py 不再继续长成巨型领域编排器。
+- story/training 互相直接依赖实现的路径被测试或脚本锁死。
+
+## PR-BE-SPLIT-05
+
+目标：
+- 把双后端的运维事实源收成一处。
+- 完成 story/training 双入口下的 CORS、smoke、启动方式、环境变量、文档统一。
+
+当前问题：
+- 新实现使用 backend/api/cors_config.py 的双 scope 设计。
+- backend/config_manager.py 虽已向单一事实源靠拢，但仍需把双后端运维口径和旧配置说明彻底收口。
+- 入口级 CORS 预检测试仍未补齐。
+
+必做任务：
+- 统一环境变量说明：
+  - STORY_ALLOWED_ORIGINS
+  - TRAINING_ALLOWED_ORIGINS
+  - ALLOWED_ORIGINS 是否只作为共享 fallback
+- 新增或补强入口级 CORS 行为测试：
+  - story app
+  - training app
+  - OPTIONS 预检
+- 统一 story/training 启动文档：
+  - 本地开发启动
+  - 联调端口
+  - 健康检查
+  - smoke 运行方式
+- 补齐双后端最小 smoke：
+  - story smoke
+  - training smoke
+  - 成功条件写清楚
+- 统一根路由元数据和运行配置口径，避免 training / training_only 再次漂移。
+
+测试补齐：
+- 入口级 CORS 预检测试
+- story/training 双 smoke
+- story/training standalone app 对称验证
+
+合并门槛：
+- CORS 配置只有一套权威语义。
+- story/training 都有独立启动、独立 smoke、独立排障说明。
+- 文档和代码不再混用单后端时代的 origin、端口和 scope 口径。
+
+八、推荐顺序
+
+1. 先收 PR-FE-SPLIT-02
+2. 再推 PR-BE-SPLIT-04
+3. 最后关 PR-BE-SPLIT-05
+
+九、最终判断
+
+当前项目已经不是“缺接口”状态，而是“接口已基本具备，但仍需完成契约、恢复边界、领域拆分和双后端运维收口”状态。
+
+因此：
+- 如果问题是“训练前后端有没有基础接口对接能力”：有。
+- 如果问题是“项目当前是不是只差把前后端接口对接一下”：不是。

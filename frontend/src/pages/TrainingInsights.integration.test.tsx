@@ -296,6 +296,58 @@ describe('Training insight routes', () => {
     expect(screen.getByText('source_exposure_risk: 1')).toBeTruthy();
   });
 
+  it('treats dirty query sessionId as absent and keeps insight navigation canonical', async () => {
+    trainingApiMocks.getTrainingReport.mockResolvedValueOnce({
+      sessionId: 'training-session-active',
+      status: 'completed',
+      rounds: 2,
+      kStateFinal: {
+        K1: 0.6,
+      },
+      sStateFinal: {
+        source_safety: 0.9,
+      },
+      improvement: 0.2,
+      playerProfile: null,
+      runtimeState: createRuntimeState('scenario-active', 2),
+      ending: null,
+      summary: null,
+      abilityRadar: [],
+      stateRadar: [],
+      growthCurve: [],
+      history: [],
+    });
+
+    renderInsightRoute(`${ROUTES.TRAINING_REPORT}?sessionId=%20UNDEFINED%20`, {
+      activeSession: {
+        sessionId: 'training-session-active',
+        trainingMode: 'adaptive',
+        characterId: '42',
+        status: 'in_progress',
+        roundNo: 2,
+        totalRounds: 6,
+        runtimeState: createRuntimeState('scenario-active', 2),
+      },
+    });
+
+    await waitFor(() => {
+      expect(trainingApiMocks.getTrainingReport).toHaveBeenCalledWith(
+        'training-session-active'
+      );
+    });
+
+    expect(await screen.findByText('Training Report')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '训练进度' }).getAttribute('href')).toBe(
+      ROUTES.TRAINING_PROGRESS
+    );
+    expect(screen.getByRole('link', { name: '训练报告' }).getAttribute('href')).toBe(
+      ROUTES.TRAINING_REPORT
+    );
+    expect(screen.getByRole('link', { name: '训练诊断' }).getAttribute('href')).toBe(
+      ROUTES.TRAINING_DIAGNOSTICS
+    );
+  });
+
   it('keeps the last successful report visible when reloading the same session times out', async () => {
     trainingApiMocks.getTrainingReport
       .mockResolvedValueOnce({

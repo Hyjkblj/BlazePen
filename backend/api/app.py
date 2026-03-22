@@ -1,13 +1,7 @@
 """FastAPI应用主文件"""
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from api.app_runtime import install_trace_context_middleware
+from api.app_factory import create_api_app
 from api.routers import characters, game, vector_db_admin, tts
-from api.cors_config import build_cors_middleware_options
-from database.db_manager import DatabaseManager
-from api.middleware.error_handler import install_common_exception_handlers
 from utils.logger import setup_logger
 import uvicorn
 import os
@@ -17,35 +11,14 @@ import config
 logger = setup_logger(__name__)
 
 # 创建FastAPI应用
-app = FastAPI(
+app = create_api_app(
     title="无限流剧情游戏API",
     description="无限流剧情游戏后端API接口",
-    version="1.0.0"
-)
-
-# 注册异常处理器
-install_common_exception_handlers(app)
-
-
-install_trace_context_middleware(app)
-
-# 应用启动时只检查数据库连接，不再隐式补表。
-# 数据库 schema 的创建和升级统一交给显式脚本处理，避免不同环境启动时出现“偷偷改库”。
-@app.on_event("startup")
-async def startup_event():
-    """应用启动时执行"""
-    try:
-        logger.info("正在检查数据库连接...")
-        db_manager = DatabaseManager()
-        db_manager.check_connection()
-        logger.info("数据库连接检查通过")
-    except Exception as e:
-        logger.error(f"数据库连接检查失败: {e}", exc_info=True)
-        # 不阻止应用启动，但会记录错误，真正的建库建表请先执行 scripts/init_db.py
-
-app.add_middleware(
-    CORSMiddleware,
-    **build_cors_middleware_options(service_scope="story"),
+    version="1.0.0",
+    service_scope="story",
+    logger=logger,
+    health_message="服务正常运行",
+    root_message="无限流剧情游戏API",
 )
 
 # 注册路由
@@ -147,25 +120,6 @@ try:
     logger.info(f"管理页面静态文件服务已配置: {admin_dir} -> /admin")
 except Exception as e:
     logger.warning(f"配置管理页面静态文件服务失败: {e}")
-
-
-@app.get("/health")
-async def check_server_health():
-    """健康检查"""
-    return JSONResponse(
-        status_code=200,
-        content={"status": "healthy", "message": "服务正常运行"}
-    )
-
-
-@app.get("/")
-async def root():
-    """根路径"""
-    return {
-        "message": "无限流剧情游戏API",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
 
 
 if __name__ == "__main__":

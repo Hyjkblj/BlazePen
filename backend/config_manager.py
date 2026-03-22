@@ -3,6 +3,7 @@ import os
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 from model_config import get_text_llm_model
+from api.cors_config import build_allowed_origins
 
 load_dotenv()
 
@@ -101,21 +102,17 @@ class Config:
         self.composite_image_save_dir = _resolve_config_path('COMPOSITE_IMAGE_SAVE_DIR', './images/composite', _BACKEND_DIR)
         self.image_save_enabled = os.getenv('IMAGE_SAVE_ENABLED', 'true').lower() == 'true'
         
-        # CORS配置
-        if self.env == 'prod':
-            allowed_origins_str = os.getenv('ALLOWED_ORIGINS', '')
-            if not allowed_origins_str:
-                raise ValueError("生产环境必须设置 ALLOWED_ORIGINS 环境变量")
-            self.allowed_origins = [origin.strip() for origin in allowed_origins_str.split(',')]
-        else:
-            self.allowed_origins = [
-                "http://localhost:3000",
-                "http://localhost:5173",
-                "http://127.0.0.1:3000",
-                "http://127.0.0.1:5173"
-            ]
-            if os.getenv('ALLOWED_ORIGINS'):
-                self.allowed_origins.extend([origin.strip() for origin in os.getenv('ALLOWED_ORIGINS').split(',')])
+        # CORS配置（单一事实源：api.cors_config）
+        self.story_allowed_origins = build_allowed_origins(
+            service_scope='story',
+            env_name=self.env,
+        )
+        self.training_allowed_origins = build_allowed_origins(
+            service_scope='training',
+            env_name=self.env,
+        )
+        # 向后兼容：旧代码读取 allowed_origins 时，返回 story 入口 allowlist。
+        self.allowed_origins = list(self.story_allowed_origins)
     
     def get_absolute_path(self, relative_path: str) -> str:
         """将相对路径转换为绝对路径
@@ -170,3 +167,6 @@ SCENE_IMAGE_SAVE_DIR = _default_config.scene_image_save_dir
 SMALL_SCENE_IMAGE_SAVE_DIR = _default_config.small_scene_image_save_dir
 COMPOSITE_IMAGE_SAVE_DIR = _default_config.composite_image_save_dir
 IMAGE_SAVE_ENABLED = _default_config.image_save_enabled
+ALLOWED_ORIGINS = _default_config.allowed_origins
+STORY_ALLOWED_ORIGINS = _default_config.story_allowed_origins
+TRAINING_ALLOWED_ORIGINS = _default_config.training_allowed_origins

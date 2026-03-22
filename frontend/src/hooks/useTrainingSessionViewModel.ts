@@ -46,6 +46,7 @@ export interface TrainingSessionRestoreIdentity {
 
 export interface TrainingSessionWorkspaceSeed {
   currentSessionId: string | null;
+  currentSessionSource: TrainingSessionRestoreSource;
   autoRestoreSessionId: string | null;
   preferredTrainingMode: TrainingMode | null;
   preferredCharacterId: string | null;
@@ -236,16 +237,27 @@ export const resolveTrainingSessionWorkspaceSeed = ({
   activeSession,
   resumeTarget,
 }: UseTrainingSessionViewModelOptions): TrainingSessionWorkspaceSeed => {
+  if (sessionView) {
+    return {
+      currentSessionId: sessionView.sessionId,
+      currentSessionSource: 'session-view',
+      autoRestoreSessionId: null,
+      preferredTrainingMode: sessionView.trainingMode,
+      preferredCharacterId: sessionView.characterId,
+    };
+  }
+
   const sessionTarget = resolveTrainingSessionReadTarget({
     activeSession,
     resumeTarget,
   });
 
   return {
-    currentSessionId: sessionView?.sessionId ?? sessionTarget.sessionId,
-    autoRestoreSessionId: sessionView ? null : sessionTarget.sessionId,
-    preferredTrainingMode: sessionView?.trainingMode ?? sessionTarget.trainingMode,
-    preferredCharacterId: sessionView?.characterId ?? sessionTarget.characterId,
+    currentSessionId: sessionTarget.sessionId,
+    currentSessionSource: sessionTarget.source,
+    autoRestoreSessionId: sessionTarget.sessionId,
+    preferredTrainingMode: sessionTarget.trainingMode,
+    preferredCharacterId: sessionTarget.characterId,
   };
 };
 

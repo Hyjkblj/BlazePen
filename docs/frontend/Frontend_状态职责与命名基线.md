@@ -14,6 +14,7 @@
 - 训练运行态统一使用 `runtimeState`。
 
 页面、flow、hook、context 不允许直接消费后端 snake_case 会话字段。后端历史字段兼容只允许在 `services/` 与 normalizer 中收口。
+训练场景正文对页面层只暴露 `brief`，不再把 `briefing` 作为前端可消费契约继续扩散。
 
 ## 2. 前端状态分层
 
@@ -54,7 +55,21 @@
   - flow 只消费 camelCase 结果
   - 会话恢复语义优先由 service 层翻译后再暴露给 flow
 
-### 2.4 本地缓存状态
+### 2.4 训练读链路目标选择
+
+- 载体:
+  - `src/hooks/useTrainingSessionReadTarget.ts`
+  - `src/hooks/useTrainingSessionViewModel.ts`
+- 正式优先级:
+  - 显式 `sessionId`
+  - 当前内存 `activeSession`
+  - 本地 `resumeTarget`
+- 约束:
+  - 训练主页的 insight 入口与 `progress / report / diagnostics` 读页必须复用同一套 target selector
+  - 页面层不允许再手工拼 `sessionId` fallback
+  - 本地 `resumeTarget` 只作为 UX 恢复入口，不提升为服务端事实源
+
+### 2.5 本地缓存状态
 
 - 载体: `src/storage/gameStorage.ts`
 - 责任:

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from api.services.training_service import TrainingService
-from training_runner_bootstrap import bootstrap_database
+from backend_runner_bootstrap import bootstrap_database
 
 
 # 为不同场景准备一组更贴合业务的默认作答文本。

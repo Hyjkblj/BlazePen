@@ -36,7 +36,7 @@ class TrainingStandaloneAppTestCase(unittest.TestCase):
     """验证训练专用应用可独立提供训练接口。"""
 
     def setUp(self):
-        self.database_manager_patcher = patch("api.training_app.DatabaseManager")
+        self.database_manager_patcher = patch("api.app_factory.DatabaseManager")
         self.database_manager_patcher.start()
         app.dependency_overrides[get_training_service] = lambda: _FakeTrainingService()
         self.client = TestClient(app)

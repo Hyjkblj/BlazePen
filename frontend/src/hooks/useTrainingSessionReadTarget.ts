@@ -20,14 +20,24 @@ export interface TrainingSessionReadTarget {
   source: TrainingSessionReadTargetSource;
 }
 
-const normalizeSessionId = (value: string | null | undefined): string | null => {
+export const normalizeTrainingSessionId = (value: string | null | undefined): string | null => {
   if (typeof value !== 'string') {
     return null;
   }
 
   const normalized = value.trim();
-  return normalized === '' ? null : normalized;
+  if (
+    normalized === '' ||
+    normalized.toLowerCase() === 'null' ||
+    normalized.toLowerCase() === 'undefined'
+  ) {
+    return null;
+  }
+
+  return normalized;
 };
+
+const normalizeSessionId = normalizeTrainingSessionId;
 
 const normalizeCharacterId = (value: string | null | undefined): string | null => {
   if (typeof value !== 'string') {
@@ -35,7 +45,15 @@ const normalizeCharacterId = (value: string | null | undefined): string | null =
   }
 
   const normalized = value.trim();
-  return normalized === '' ? null : normalized;
+  if (
+    normalized === '' ||
+    normalized.toLowerCase() === 'null' ||
+    normalized.toLowerCase() === 'undefined'
+  ) {
+    return null;
+  }
+
+  return normalized;
 };
 
 const buildTarget = ({

@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTrainingFlow } from '@/contexts';
-import { getServiceErrorMessage, isServiceError } from '@/services/serviceError';
 import {
   useTrainingSessionReadTarget,
   type TrainingSessionReadTarget,
 } from './useTrainingSessionReadTarget';
-import {
-  clearTrainingSessionRecoveryArtifacts,
-  isTerminalTrainingSessionRecoveryError,
-} from './trainingSessionRecovery';
+import { clearTrainingSessionRecoveryArtifacts } from './trainingSessionRecovery';
+import { resolveTrainingReadFailureState } from './trainingReadQueryExecutor';
 
 export type TrainingReadQueryStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -27,26 +24,6 @@ export interface UseTrainingReadQueryResult<TData> {
   hasStaleData: boolean;
   reload: () => void;
 }
-
-const getTrainingReadErrorMessage = (error: unknown, fallbackMessage: string): string => {
-  if (isServiceError(error) && error.code === 'TRAINING_SESSION_NOT_FOUND') {
-    return '训练会话不存在，请返回训练主页重新开始。';
-  }
-
-  if (isServiceError(error) && error.code === 'TRAINING_SESSION_RECOVERY_STATE_CORRUPTED') {
-    return '训练会话恢复状态损坏，当前结果无法读取。';
-  }
-
-  if (isServiceError(error) && error.code === 'REQUEST_TIMEOUT') {
-    return '训练结果读取超时，请重试。';
-  }
-
-  if (isServiceError(error) && error.code === 'SERVICE_UNAVAILABLE') {
-    return '训练结果服务暂时不可用，请稍后重试。';
-  }
-
-  return getServiceErrorMessage(error, fallbackMessage);
-};
 
 export function useTrainingReadQuery<TData>({
   explicitSessionId,
@@ -109,8 +86,15 @@ export function useTrainingReadQuery<TData>({
           return;
         }
 
-        const isTerminalRecoveryError = isTerminalTrainingSessionRecoveryError(error);
-        if (isTerminalRecoveryError) {
+        const hasCurrentSessionData =
+          lastSessionIdRef.current === sessionTarget.sessionId && dataRef.current !== null;
+        const failureState = resolveTrainingReadFailureState({
+          error,
+          fallbackMessage: fallbackErrorMessage,
+          hasCurrentSessionData,
+        });
+
+        if (failureState.shouldClearRecoveryArtifacts) {
           clearTrainingSessionRecoveryArtifacts({
             invalidSessionId: sessionTarget.sessionId,
             activeSession: activeSessionRef.current,
@@ -118,19 +102,11 @@ export function useTrainingReadQuery<TData>({
           });
         }
 
-        if (isServiceError(error)) {
-          setErrorCode(error.code);
-        } else {
-          setErrorCode(null);
-        }
-
-        const hasCurrentSessionData =
-          lastSessionIdRef.current === sessionTarget.sessionId && dataRef.current !== null;
-
-        if (isTerminalRecoveryError || !hasCurrentSessionData) {
+        setErrorCode(failureState.errorCode);
+        if (failureState.shouldClearData) {
           setData(null);
         }
-        setErrorMessage(getTrainingReadErrorMessage(error, fallbackErrorMessage));
+        setErrorMessage(failureState.errorMessage);
         setStatus('error');
       });
 

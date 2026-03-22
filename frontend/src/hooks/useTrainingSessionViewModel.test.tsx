@@ -155,6 +155,7 @@ describe('useTrainingSessionViewModel', () => {
       })
     ).toEqual({
       currentSessionId: 'training-session-active',
+      currentSessionSource: 'active-session',
       autoRestoreSessionId: 'training-session-active',
       preferredTrainingMode: 'adaptive',
       preferredCharacterId: '42',
@@ -192,6 +193,7 @@ describe('useTrainingSessionViewModel', () => {
     );
 
     expect(result.current.currentSessionId).toBe('training-session-view');
+    expect(result.current.currentSessionSource).toBe('session-view');
     expect(result.current.autoRestoreSessionId).toBeNull();
     expect(result.current.preferredTrainingMode).toBe('adaptive');
     expect(result.current.preferredCharacterId).toBe('77');
@@ -199,6 +201,30 @@ describe('useTrainingSessionViewModel', () => {
       sessionId: 'training-session-view',
       source: 'session-view',
       characterId: '77',
+    });
+  });
+
+  it('keeps the homepage insight entry on the same target selector as the read pages', () => {
+    const resumeTarget: TrainingResumeTarget = {
+      sessionId: 'training-session-resume',
+      trainingMode: 'guided',
+      characterId: '11',
+      status: 'in_progress',
+      timestamp: 1711092000000,
+    };
+
+    expect(
+      resolveTrainingSessionWorkspaceSeed({
+        sessionView: null,
+        activeSession: null,
+        resumeTarget,
+      })
+    ).toEqual({
+      currentSessionId: 'training-session-resume',
+      currentSessionSource: 'resume-target',
+      autoRestoreSessionId: 'training-session-resume',
+      preferredTrainingMode: 'guided',
+      preferredCharacterId: '11',
     });
   });
 });

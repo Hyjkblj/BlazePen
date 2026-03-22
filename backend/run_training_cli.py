@@ -17,7 +17,7 @@ from pathlib import Path
 
 import run_training_service_cli
 import run_training_service_local
-from training_runner_bootstrap import (
+from backend_runner_bootstrap import (
     run_check_database_status_script,
     run_init_db_script,
 )

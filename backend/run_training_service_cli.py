@@ -23,7 +23,7 @@ from run_training_service_local import (
     _save_json_artifact,
     _summarize_states,
 )
-from training_runner_bootstrap import bootstrap_database
+from backend_runner_bootstrap import bootstrap_database
 from training.cli_story_script import (
     build_round_feedback_story_block,
     build_scene_story_block,

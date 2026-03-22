@@ -233,15 +233,16 @@ class StoryRestoreSmokeTestCase(unittest.TestCase):
             check_ending=lambda thread_id: {"has_ending": False, "ending": None},
             trigger_ending=lambda thread_id: {},
         )
-        game_service = GameService(
+        story_history_service = SimpleNamespace(
             session_manager=restarted_manager,
-            image_service=image_service,
-            character_service=character_service,
+            get_story_history=lambda thread_id: {"thread_id": thread_id, "history": []},
+        )
+        game_service = GameService(
             story_asset_service=asset_service,
             story_session_service=story_session_service,
             story_turn_service=story_turn_service,
             story_ending_service=story_ending_service,
-            image_executor=image_executor,
+            story_history_service=story_history_service,
         )
 
         app = FastAPI()

@@ -3,17 +3,13 @@
 PR-BE-04 transitional role:
 1. keep router-facing methods stable
 2. delegate story domain work to focused story services
-3. reuse one shared set of story collaborators
+3. avoid embedding story runtime composition inside this compatibility facade
 """
 
 from __future__ import annotations
 
-from concurrent.futures import Executor, ThreadPoolExecutor
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from api.services.character_service import CharacterService
-from api.services.game_session import GameSessionManager
-from api.services.image_service import ImageService
 from story.story_asset_service import StoryAssetService
 from story.story_ending_service import StoryEndingService
 from story.story_history_service import StoryHistoryService
@@ -26,85 +22,50 @@ class GameService:
 
     def __init__(
         self,
-        character_service: Optional[CharacterService] = None,
-        image_service: Optional[ImageService] = None,
-        session_manager: Optional[GameSessionManager] = None,
-        story_asset_service: Optional[StoryAssetService] = None,
-        story_session_service: Optional[StorySessionService] = None,
-        story_turn_service: Optional[StoryTurnService] = None,
-        story_ending_service: Optional[StoryEndingService] = None,
-        story_history_service: Optional[StoryHistoryService] = None,
-        image_executor: Optional[Executor] = None,
+        *,
+        story_asset_service: StoryAssetService | None,
+        story_session_service: StorySessionService | None,
+        story_turn_service: StoryTurnService | None,
+        story_ending_service: StoryEndingService | None,
+        story_history_service: StoryHistoryService | None,
+        # Transitional compatibility: keep legacy constructor args explicit so
+        # old callsites fail less abruptly while composition lives in
+        # `api.dependencies.get_story_service_bundle`.
+        character_service: object | None = None,
+        image_service: object | None = None,
+        session_manager: object | None = None,
+        image_executor: object | None = None,
     ):
-        self.session_manager = self._pick_first(
-            session_manager,
-            getattr(story_session_service, "session_manager", None),
-            getattr(story_turn_service, "session_manager", None),
-            getattr(story_ending_service, "session_manager", None),
-            getattr(story_history_service, "session_manager", None),
-        ) or GameSessionManager()
-
-        self.image_service = self._pick_first(
-            image_service,
-            getattr(story_asset_service, "image_service", None),
-        ) or ImageService()
-
-        self.character_service = self._pick_first(
-            character_service,
-            getattr(story_turn_service, "character_service", None),
-        ) or CharacterService(image_service=self.image_service)
-
-        self.story_asset_service = self._pick_first(
-            story_asset_service,
-            getattr(story_session_service, "story_asset_service", None),
-            getattr(story_turn_service, "story_asset_service", None),
-            getattr(story_ending_service, "story_asset_service", None),
-        ) or StoryAssetService(image_service=self.image_service)
-
-        self.story_session_service = self._pick_first(
-            story_session_service,
-            getattr(story_turn_service, "story_session_service", None),
-        ) or StorySessionService(
-            session_manager=self.session_manager,
-            story_asset_service=self.story_asset_service,
+        self.story_asset_service = self._require_collaborator(
+            collaborator=story_asset_service,
+            collaborator_name="story_asset_service",
+        )
+        self.story_session_service = self._require_collaborator(
+            collaborator=story_session_service,
+            collaborator_name="story_session_service",
+        )
+        self.story_turn_service = self._require_collaborator(
+            collaborator=story_turn_service,
+            collaborator_name="story_turn_service",
+        )
+        self.story_ending_service = self._require_collaborator(
+            collaborator=story_ending_service,
+            collaborator_name="story_ending_service",
+        )
+        self.story_history_service = self._require_collaborator(
+            collaborator=story_history_service,
+            collaborator_name="story_history_service",
         )
 
-        self.image_executor = self._pick_first(
-            image_executor,
-            getattr(story_turn_service, "image_executor", None),
-        )
-        if self.image_executor is None and story_turn_service is None:
-            self.image_executor = ThreadPoolExecutor(
-                max_workers=2,
-                thread_name_prefix="image_gen",
-            )
-
-        self.story_turn_service = story_turn_service or StoryTurnService(
-            session_manager=self.session_manager,
-            character_service=self.character_service,
-            story_session_service=self.story_session_service,
-            story_asset_service=self.story_asset_service,
-            image_executor=self.image_executor,
-        )
-
-        if self.image_executor is None:
-            self.image_executor = getattr(self.story_turn_service, "image_executor", None)
-
-        self.story_ending_service = story_ending_service or StoryEndingService(
-            session_manager=self.session_manager,
-            story_asset_service=self.story_asset_service,
-        )
-
-        self.story_history_service = story_history_service or StoryHistoryService(
-            session_manager=self.session_manager,
-        )
-
-        self._validate_story_dependencies()
+        self._legacy_character_service = character_service
+        self._legacy_image_service = image_service
+        self._legacy_session_manager = session_manager
+        self._legacy_image_executor = image_executor
 
     def init_game(
         self,
-        user_id: Optional[str],
-        character_id: Optional[int],
+        user_id: str | None,
+        character_id: int | None,
         game_mode: str,
     ) -> Dict[str, str]:
         return self.story_session_service.init_game(
@@ -118,8 +79,8 @@ class GameService:
         thread_id: str,
         character_id: int,
         scene_id: str = "school",
-        character_image_url: Optional[str] = None,
-        opening_event_id: Optional[str] = None,
+        character_image_url: str | None = None,
+        opening_event_id: str | None = None,
     ) -> Dict[str, Any]:
         return self.story_turn_service.initialize_story(
             thread_id=thread_id,
@@ -133,7 +94,7 @@ class GameService:
         self,
         thread_id: str,
         user_input: str,
-        option_id: Optional[int] = None,
+        option_id: int | None = None,
     ) -> Dict[str, Any]:
         return self.story_turn_service.process_input(
             thread_id=thread_id,
@@ -146,9 +107,9 @@ class GameService:
         *,
         thread_id: str,
         user_input: str,
-        option_id: Optional[int],
-        user_id: Optional[str],
-        character_id: Optional[str],
+        option_id: int | None,
+        user_id: str | None,
+        character_id: str | None,
     ) -> Dict[str, Any]:
         return self.story_turn_service.submit_turn(
             thread_id=thread_id,
@@ -190,90 +151,14 @@ class GameService:
         return self.story_ending_service.trigger_ending(thread_id)
 
     @staticmethod
-    def _pick_first(*values):
-        for value in values:
-            if value is not None:
-                return value
-        return None
-
-    def _validate_story_dependencies(self):
-        self._ensure_shared_dependency(
-            service_name="story_asset_service",
-            service=self.story_asset_service,
-            dependency_name="image_service",
-            expected=self.image_service,
-        )
-        self._ensure_shared_dependency(
-            service_name="story_session_service",
-            service=self.story_session_service,
-            dependency_name="session_manager",
-            expected=self.session_manager,
-        )
-        self._ensure_shared_dependency(
-            service_name="story_session_service",
-            service=self.story_session_service,
-            dependency_name="story_asset_service",
-            expected=self.story_asset_service,
-        )
-        self._ensure_shared_dependency(
-            service_name="story_turn_service",
-            service=self.story_turn_service,
-            dependency_name="session_manager",
-            expected=self.session_manager,
-        )
-        self._ensure_shared_dependency(
-            service_name="story_turn_service",
-            service=self.story_turn_service,
-            dependency_name="character_service",
-            expected=self.character_service,
-        )
-        self._ensure_shared_dependency(
-            service_name="story_turn_service",
-            service=self.story_turn_service,
-            dependency_name="story_session_service",
-            expected=self.story_session_service,
-        )
-        self._ensure_shared_dependency(
-            service_name="story_turn_service",
-            service=self.story_turn_service,
-            dependency_name="story_asset_service",
-            expected=self.story_asset_service,
-        )
-        self._ensure_shared_dependency(
-            service_name="story_turn_service",
-            service=self.story_turn_service,
-            dependency_name="image_executor",
-            expected=self.image_executor,
-        )
-        self._ensure_shared_dependency(
-            service_name="story_ending_service",
-            service=self.story_ending_service,
-            dependency_name="session_manager",
-            expected=self.session_manager,
-        )
-        self._ensure_shared_dependency(
-            service_name="story_ending_service",
-            service=self.story_ending_service,
-            dependency_name="story_asset_service",
-            expected=self.story_asset_service,
-        )
-        self._ensure_shared_dependency(
-            service_name="story_history_service",
-            service=self.story_history_service,
-            dependency_name="session_manager",
-            expected=self.session_manager,
-        )
-
-    @staticmethod
-    def _ensure_shared_dependency(
+    def _require_collaborator(
         *,
-        service_name: str,
-        service: object,
-        dependency_name: str,
-        expected: object,
-    ):
-        actual = getattr(service, dependency_name, None)
-        if actual is not None and expected is not None and actual is not expected:
+        collaborator: object | None,
+        collaborator_name: str,
+    ) -> object:
+        if collaborator is None:
             raise ValueError(
-                f"{service_name}.{dependency_name} must reuse the shared {dependency_name} instance"
+                "GameService compatibility facade requires explicit "
+                f"{collaborator_name} injection"
             )
+        return collaborator

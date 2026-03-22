@@ -1,17 +1,19 @@
-"""启动FastAPI服务器"""
-import uvicorn
-import os
+"""Legacy story backend startup entrypoint.
+
+Transitional compatibility:
+1. preferred entrypoint: ``run_story_api.py``
+2. this file stays as a compatibility shell for existing scripts
+"""
+
+from __future__ import annotations
+
+import run_story_api
+
+
+def main() -> None:
+    """Delegate to the canonical story entrypoint."""
+    run_story_api.main()
+
 
 if __name__ == "__main__":
-    # 确保工作目录是backend目录
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    os.chdir(script_dir)
-    print(f"API服务工作目录: {os.getcwd()}")
-    
-    uvicorn.run(
-        "api.app:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
-
+    main()

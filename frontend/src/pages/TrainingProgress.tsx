@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import TrainingInsightShell from '@/components/training/TrainingInsightShell';
 import { useTrainingProgress } from '@/hooks/useTrainingProgress';
+import { normalizeTrainingSessionId } from '@/hooks/useTrainingSessionReadTarget';
 
 const formatPercent = (value: number): string => `${Number(value.toFixed(1))}%`;
 
@@ -8,7 +9,7 @@ const formatMetricValue = (value: number): string => Number(value.toFixed(2)).to
 
 function TrainingProgress() {
   const [searchParams] = useSearchParams();
-  const querySessionId = searchParams.get('sessionId');
+  const querySessionId = normalizeTrainingSessionId(searchParams.get('sessionId'));
   const { data, status, errorMessage, sessionTarget, hasStaleData, reload, totalRounds, progressPercent } =
     useTrainingProgress(querySessionId);
 

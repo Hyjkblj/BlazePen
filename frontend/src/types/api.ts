@@ -303,7 +303,6 @@ export interface TrainingScenarioApiResponse extends GenericApiRecord {
   decision_focus?: string | null;
   target_skills?: string[] | null;
   risk_tags?: string[] | null;
-  briefing?: string | null;
   options?: TrainingScenarioOptionApiResponse[] | null;
   completion_hint?: string | null;
   recommendation?: TrainingScenarioRecommendationApiResponse | null;

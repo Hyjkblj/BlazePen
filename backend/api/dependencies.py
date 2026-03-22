@@ -2,14 +2,13 @@
 
 This module keeps backend singleton caches in one place and lazily creates
 services so training-only processes do not eagerly import story/media/TTS
-dependencies. PR-BE-04 also centralizes the story-domain service bundle here,
-so routers and the GameService facade always reuse the same story collaborators.
+dependencies. Story-domain collaborator composition is delegated to
+`story.story_service_bundle` so API wiring remains a thin dependency entrypoint.
 """
 
 from __future__ import annotations
 
 from concurrent.futures import Executor, ThreadPoolExecutor
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -22,23 +21,11 @@ if TYPE_CHECKING:
     from story.story_asset_service import StoryAssetService
     from story.story_ending_service import StoryEndingService
     from story.story_history_service import StoryHistoryService
+    from story.story_service_bundle import StoryServiceBundle
     from story.story_session_query_policy import StorySessionQueryPolicy
     from story.story_session_service import StorySessionService
     from story.story_turn_service import StoryTurnService
     from training.training_query_service import TrainingQueryService
-
-
-@dataclass(frozen=True)
-class _StoryServiceBundle:
-    """One shared story-domain wiring bundle."""
-
-    image_executor: Executor
-    story_asset_service: StoryAssetService
-    story_session_query_policy: StorySessionQueryPolicy
-    story_session_service: StorySessionService
-    story_turn_service: StoryTurnService
-    story_ending_service: StoryEndingService
-    story_history_service: StoryHistoryService
 
 
 _game_service: Optional[GameService] = None
@@ -50,7 +37,7 @@ _training_service: Optional[TrainingService] = None
 _training_query_service: Optional[TrainingQueryService] = None
 _story_image_executor: Optional[Executor] = None
 _story_session_query_policy: Optional[StorySessionQueryPolicy] = None
-_story_service_bundle: Optional[_StoryServiceBundle] = None
+_story_service_bundle: Optional[StoryServiceBundle] = None
 
 
 def get_image_service() -> ImageService:
@@ -90,49 +77,17 @@ def get_story_session_query_policy() -> StorySessionQueryPolicy:
     return _story_session_query_policy
 
 
-def get_story_service_bundle() -> _StoryServiceBundle:
+def get_story_service_bundle() -> StoryServiceBundle:
     global _story_service_bundle
     if _story_service_bundle is None:
-        from story.story_asset_service import StoryAssetService
-        from story.story_ending_service import StoryEndingService
-        from story.story_history_service import StoryHistoryService
-        from story.story_session_service import StorySessionService
-        from story.story_turn_service import StoryTurnService
+        from story.story_service_bundle import build_story_service_bundle
 
-        session_manager = get_session_manager()
-        image_service = get_image_service()
-        character_service = get_character_service()
-        image_executor = get_story_image_executor()
-        story_session_query_policy = get_story_session_query_policy()
-
-        story_asset_service = StoryAssetService(image_service=image_service)
-        story_session_service = StorySessionService(
-            session_manager=session_manager,
-            story_asset_service=story_asset_service,
-            session_query_policy=story_session_query_policy,
-        )
-        story_turn_service = StoryTurnService(
-            session_manager=session_manager,
-            character_service=character_service,
-            story_session_service=story_session_service,
-            story_asset_service=story_asset_service,
-            image_executor=image_executor,
-        )
-        story_ending_service = StoryEndingService(
-            session_manager=session_manager,
-            story_asset_service=story_asset_service,
-        )
-        story_history_service = StoryHistoryService(
-            session_manager=session_manager,
-        )
-        _story_service_bundle = _StoryServiceBundle(
-            image_executor=image_executor,
-            story_asset_service=story_asset_service,
-            story_session_query_policy=story_session_query_policy,
-            story_session_service=story_session_service,
-            story_turn_service=story_turn_service,
-            story_ending_service=story_ending_service,
-            story_history_service=story_history_service,
+        _story_service_bundle = build_story_service_bundle(
+            session_manager=get_session_manager(),
+            image_service=get_image_service(),
+            character_service=get_character_service(),
+            image_executor=get_story_image_executor(),
+            story_session_query_policy=get_story_session_query_policy(),
         )
     return _story_service_bundle
 
@@ -164,15 +119,11 @@ def get_game_service() -> GameService:
 
         bundle = get_story_service_bundle()
         _game_service = GameService(
-            character_service=get_character_service(),
-            image_service=get_image_service(),
-            session_manager=get_session_manager(),
             story_asset_service=bundle.story_asset_service,
             story_session_service=bundle.story_session_service,
             story_turn_service=bundle.story_turn_service,
             story_ending_service=bundle.story_ending_service,
             story_history_service=bundle.story_history_service,
-            image_executor=bundle.image_executor,
         )
     return _game_service
 

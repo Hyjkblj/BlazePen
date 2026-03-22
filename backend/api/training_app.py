@@ -11,74 +11,28 @@ from __future__ import annotations
 import os
 
 import uvicorn
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
-from api.app_runtime import install_trace_context_middleware
-from api.cors_config import build_cors_middleware_options
-from api.middleware.error_handler import install_common_exception_handlers
+from api.app_factory import create_api_app
 from api.routers import training
-from database.db_manager import DatabaseManager
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
 
-app = FastAPI(
+app = create_api_app(
     title="烽火笔锋训练引擎 API",
     description="仅包含训练引擎相关接口的独立后端服务",
     version="1.0.0",
-)
-
-# 训练专用应用也复用统一异常处理，保证独立部署后返回形态不漂移。
-install_common_exception_handlers(app)
-install_trace_context_middleware(app)
-
-
-@app.on_event("startup")
-async def startup_event():
-    """应用启动时检查数据库连接。
-
-    这里故意只做连通性检查，不在启动阶段自动做 schema 变更。
-    """
-    try:
-        logger.info("正在检查训练引擎数据库连接...")
-        db_manager = DatabaseManager()
-        db_manager.check_connection()
-        logger.info("训练引擎数据库连接检查通过")
-    except Exception as exc:
-        # 独立训练服务也保留“记录错误但不阻断启动”的策略，方便本地先看接口和日志。
-        logger.error("训练引擎数据库连接检查失败: %s", str(exc), exc_info=True)
-
-
-app.add_middleware(
-    CORSMiddleware,
-    **build_cors_middleware_options(service_scope="training"),
+    service_scope="training",
+    logger=logger,
+    database_label="训练引擎数据库",
+    health_message="训练引擎服务正常运行",
+    root_message="烽火笔锋训练引擎 API",
+    root_extra={"entrypoint_kind": "training_only"},
 )
 
 # 这里只注册训练路由，确保服务边界清晰。
 app.include_router(training.router, prefix="/api")
-
-
-@app.get("/health")
-async def check_server_health():
-    """训练引擎健康检查。"""
-    return JSONResponse(
-        status_code=200,
-        content={"status": "healthy", "message": "训练引擎服务正常运行"},
-    )
-
-
-@app.get("/")
-async def root():
-    """训练引擎根路由。"""
-    return {
-        "message": "烽火笔锋训练引擎 API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "service_scope": "training_only",
-    }
 
 
 if __name__ == "__main__":

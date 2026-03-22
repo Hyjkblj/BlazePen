@@ -485,15 +485,16 @@ class StoryDomainServicesTestCase(unittest.TestCase):
             check_ending=lambda thread_id: {"delegated": "ending.check", "thread_id": thread_id},
             trigger_ending=lambda thread_id: {"delegated": "ending.trigger", "thread_id": thread_id},
         )
+        history_service = SimpleNamespace(
+            get_story_history=lambda thread_id: {"delegated": "history.read", "thread_id": thread_id},
+        )
 
         service = GameService(
-            character_service=SimpleNamespace(),
-            image_service=SimpleNamespace(),
-            session_manager=SimpleNamespace(),
             story_asset_service=StoryAssetService(),
             story_session_service=session_service,
             story_turn_service=turn_service,
             story_ending_service=ending_service,
+            story_history_service=history_service,
         )
 
         self.assertEqual(

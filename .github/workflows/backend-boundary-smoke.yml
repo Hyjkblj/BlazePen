@@ -1,0 +1,69 @@
+name: Backend Boundary Smoke
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "docs/runbooks/story_training_dual_backend_runbook.md"
+      - ".github/workflows/backend-boundary-smoke.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - "docs/runbooks/story_training_dual_backend_runbook.md"
+      - ".github/workflows/backend-boundary-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  boundary-smoke:
+    name: boundary-smoke (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/constraints.txt
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt -c backend/constraints.txt
+          python -m pip install pytest
+
+      - name: Run Backend Boundary + Smoke Suite
+        run: |
+          python -m pytest \
+            backend/test_domain_import_boundaries.py \
+            backend/test_api_domain_boundaries.py \
+            backend/test_runner_import_boundaries.py \
+            backend/test_api_dependencies.py \
+            backend/test_story_service_bundle.py \
+            backend/test_api_cors_config.py \
+            backend/test_api_cors_scope_prod.py \
+            backend/test_config_manager_cors_alignment.py \
+            backend/test_config_validator_cors.py \
+            backend/test_story_api_entry.py \
+            backend/test_training_api_entry.py \
+            backend/test_training_runner_bootstrap.py \
+            backend/test_story_cli_entry.py \
+            backend/test_story_standalone_app.py \
+            backend/test_training_standalone_app.py \
+            backend/test_api_entrypoint_boundaries.py \
+            backend/test_api_entry_common_middleware.py \
+            backend/test_story_route_smoke.py \
+            backend/test_training_route_smoke.py \
+            -q

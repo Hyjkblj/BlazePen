@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react';
 import { useTrainingFlow } from '@/contexts';
 import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
 import { getTrainingSessionSummary, initTraining } from '@/services/trainingApi';
-import { getServiceErrorMessage, isServiceError } from '@/services/serviceError';
 import {
   clearTrainingResumeTarget,
   persistTrainingResumeTarget,
@@ -17,8 +16,11 @@ import type {
 } from '@/types/training';
 import {
   clearTrainingSessionRecoveryArtifacts,
-  isTerminalTrainingSessionRecoveryError,
 } from './trainingSessionRecovery';
+import {
+  getTrainingStartErrorMessage,
+  resolveTrainingRestoreFailureState,
+} from './trainingSessionBootstrapExecutor';
 import {
   resolveTrainingSessionReadTarget,
   type TrainingSessionReadTargetSource,
@@ -80,38 +82,6 @@ const toRestoreTelemetrySource = (
     default:
       return 'unknown';
   }
-};
-
-const getRestoreErrorMessage = (error: unknown): string => {
-  if (isServiceError(error) && error.code === 'TRAINING_SESSION_NOT_FOUND') {
-    return '训练会话不存在，已清理本地恢复入口。';
-  }
-
-  if (isServiceError(error) && error.code === 'TRAINING_SESSION_RECOVERY_STATE_CORRUPTED') {
-    return '训练会话恢复状态损坏，已清理本地恢复入口。';
-  }
-
-  if (isServiceError(error) && error.code === 'REQUEST_TIMEOUT') {
-    return '训练恢复超时，请重试。';
-  }
-
-  if (isServiceError(error) && error.code === 'SERVICE_UNAVAILABLE') {
-    return '训练恢复服务暂时不可用，请稍后重试。';
-  }
-
-  return getServiceErrorMessage(error, '恢复训练会话失败。');
-};
-
-const getStartErrorMessage = (error: unknown): string => {
-  if (isServiceError(error) && error.code === 'REQUEST_TIMEOUT') {
-    return '训练初始化超时，请重试。';
-  }
-
-  if (isServiceError(error) && error.code === 'SERVICE_UNAVAILABLE') {
-    return '训练初始化服务暂时不可用，请稍后重试。';
-  }
-
-  return getServiceErrorMessage(error, '启动训练失败。');
 };
 
 export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult {
@@ -200,7 +170,7 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
           metadata: initTelemetryMetadata,
           cause: error,
         });
-        setErrorMessage(getStartErrorMessage(error));
+        setErrorMessage(getTrainingStartErrorMessage(error));
         setStatus('error');
         return null;
       }
@@ -286,7 +256,8 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
         });
         return summaryResult;
       } catch (error: unknown) {
-        if (isTerminalTrainingSessionRecoveryError(error)) {
+        const failureState = resolveTrainingRestoreFailureState(error);
+        if (failureState.shouldClearRecoveryArtifacts) {
           clearTrainingSessionRecoveryArtifacts({
             invalidSessionId: sessionId,
             activeSession: state.activeSession,
@@ -302,7 +273,7 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
           metadata: restoreTelemetryMetadata,
           cause: error,
         });
-        setErrorMessage(getRestoreErrorMessage(error));
+        setErrorMessage(failureState.errorMessage);
         setStatus('error');
         return null;
       }

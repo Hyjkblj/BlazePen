@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import TrainingInsightShell from '@/components/training/TrainingInsightShell';
 import { useTrainingReport } from '@/hooks/useTrainingReport';
+import { normalizeTrainingSessionId } from '@/hooks/useTrainingSessionReadTarget';
 import type {
   TrainingBranchTransitionSummary,
   TrainingDiagnosticsCountItem,
@@ -95,7 +96,7 @@ const renderMetricTable = (title: string, metrics: TrainingReportMetric[]) => (
 
 function TrainingReport() {
   const [searchParams] = useSearchParams();
-  const querySessionId = searchParams.get('sessionId');
+  const querySessionId = normalizeTrainingSessionId(searchParams.get('sessionId'));
   const { data, status, errorMessage, sessionTarget, hasStaleData, reload } =
     useTrainingReport(querySessionId);
 

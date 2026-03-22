@@ -207,7 +207,9 @@ describe('trainingApi', () => {
       updated_at: '2026-03-20T09:00:00Z',
     });
 
-    await expect(getTrainingSessionSummary('training-session-7')).resolves.toMatchObject({
+    const result = await getTrainingSessionSummary('training-session-7');
+
+    expect(result).toMatchObject({
       sessionId: 'training-session-7',
       trainingMode: 'adaptive',
       roundNo: 2,
@@ -224,10 +226,64 @@ describe('trainingApi', () => {
       scenarioCandidates: [{ id: 'scenario-2' }],
       canResume: true,
     });
+    expect('briefing' in (result.resumableScenario ?? {})).toBe(false);
 
     expect(httpClient.get).toHaveBeenCalledWith('/v1/training/sessions/training-session-7', {
       timeout: 30000,
     });
+  });
+
+  it('normalizes legacy briefing into canonical brief for next-scenario responses', async () => {
+    vi.mocked(httpClient.post).mockResolvedValueOnce({
+      session_id: 'training-session-next',
+      status: 'in_progress',
+      round_no: 2,
+      runtime_state: {
+        current_round_no: 2,
+        current_scene_id: 'scenario-next',
+      },
+      scenario: {
+        id: 'scenario-next',
+        title: 'Field Follow-up',
+        brief: '',
+        briefing: 'Legacy next scenario briefing',
+      },
+      scenario_candidates: [
+        {
+          id: 'scenario-candidate',
+          title: 'Candidate Scenario',
+          briefing: 'Legacy candidate briefing',
+        },
+      ],
+    });
+
+    const result = await getNextTrainingScenario({ sessionId: 'training-session-next' });
+
+    expect(result).toMatchObject({
+      sessionId: 'training-session-next',
+      scenario: {
+        id: 'scenario-next',
+        brief: 'Legacy next scenario briefing',
+      },
+      scenarioCandidates: [
+        {
+          id: 'scenario-candidate',
+          brief: 'Legacy candidate briefing',
+        },
+      ],
+    });
+    expect('briefing' in (result.scenario ?? {})).toBe(false);
+    expect('briefing' in result.scenarioCandidates[0]).toBe(false);
+
+    expect(httpClient.post).toHaveBeenCalledWith(
+      '/v1/training/scenario/next',
+      {
+        session_id: 'training-session-next',
+      },
+      {
+        timeout: 30000,
+      }
+    );
   });
 
   it('fails fast when the backend returns a legacy response training mode', async () => {

@@ -28,6 +28,7 @@ function Training() {
     retryRestore,
     clearWorkspace,
     sessionView,
+    insightSessionId,
     latestOutcome,
     selectedOptionId,
     selectOption,
@@ -59,7 +60,6 @@ function Training() {
   const sessionProgressLabel = sessionView?.progressAnchor
     ? formatProgressPercent(sessionView.progressAnchor.progressPercent)
     : null;
-  const insightSessionId = sessionView?.sessionId ?? resumeTarget?.sessionId ?? null;
   const hasInsightEntry = insightSessionId !== null;
 
   return (

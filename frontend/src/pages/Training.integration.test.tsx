@@ -17,7 +17,10 @@ import {
   type ActiveTrainingSessionState,
 } from '@/contexts';
 import { ServiceError } from '@/services/serviceError';
+import TrainingDiagnostics from '@/pages/TrainingDiagnostics';
 import Training from '@/pages/Training';
+import TrainingProgress from '@/pages/TrainingProgress';
+import TrainingReport from '@/pages/TrainingReport';
 import {
   persistTrainingResumeTarget,
   readTrainingResumeTarget,
@@ -29,6 +32,8 @@ const trainingApiMocks = vi.hoisted(() => ({
   submitTrainingRound: vi.fn(),
   getNextTrainingScenario: vi.fn(),
   getTrainingProgress: vi.fn(),
+  getTrainingReport: vi.fn(),
+  getTrainingDiagnostics: vi.fn(),
 }));
 
 vi.mock('@/services/trainingApi', () => trainingApiMocks);
@@ -115,6 +120,9 @@ const renderRouterApp = (
           <MemoryRouter initialEntries={[pathname]}>
             <Routes>
               <Route path={ROUTES.TRAINING} element={<Training />} />
+              <Route path={ROUTES.TRAINING_PROGRESS} element={<TrainingProgress />} />
+              <Route path={ROUTES.TRAINING_REPORT} element={<TrainingReport />} />
+              <Route path={ROUTES.TRAINING_DIAGNOSTICS} element={<TrainingDiagnostics />} />
             </Routes>
           </MemoryRouter>
         </TrainingFlowSeed>
@@ -332,8 +340,46 @@ describe('Training route integration', () => {
       updatedAt: '2026-03-20T09:15:00Z',
       endTime: null,
     });
+    trainingApiMocks.getTrainingProgress.mockResolvedValueOnce({
+      sessionId: 'training-session-active',
+      status: 'in_progress',
+      roundNo: 1,
+      totalRounds: 6,
+      runtimeState: createRuntimeState('scenario-active', 1),
+    });
+    trainingApiMocks.getTrainingReport.mockResolvedValueOnce({
+      sessionId: 'training-session-active',
+      status: 'in_progress',
+      rounds: 1,
+      kStateFinal: {
+        K1: 0.45,
+      },
+      sStateFinal: {
+        source_safety: 0.88,
+      },
+      improvement: 0.05,
+      playerProfile: null,
+      runtimeState: createRuntimeState('scenario-active', 1),
+      ending: null,
+      summary: null,
+      abilityRadar: [],
+      stateRadar: [],
+      growthCurve: [],
+      history: [],
+    });
+    trainingApiMocks.getTrainingDiagnostics.mockResolvedValueOnce({
+      sessionId: 'training-session-active',
+      status: 'in_progress',
+      roundNo: 1,
+      playerProfile: null,
+      runtimeState: createRuntimeState('scenario-active', 1),
+      summary: null,
+      recommendationLogs: [],
+      auditEvents: [],
+      ktObservations: [],
+    });
 
-    renderRouterApp(ROUTES.TRAINING, {
+    const { container } = renderRouterApp(ROUTES.TRAINING, {
       activeSession: {
         sessionId: 'training-session-active',
         trainingMode: 'adaptive',
@@ -353,10 +399,35 @@ describe('Training route integration', () => {
 
     expect(await screen.findByText('Active Session Restore')).toBeTruthy();
     expect(screen.getByText('16.7%')).toBeTruthy();
+    expectTrainingInsightLinks(container, 'training-session-active');
     expect(readTrainingResumeTarget()).toMatchObject({
       sessionId: 'training-session-active',
       trainingMode: 'adaptive',
       characterId: '42',
+    });
+
+    fireEvent.click(screen.getByRole('link', { name: '查看训练进度' }));
+
+    await waitFor(() => {
+      expect(trainingApiMocks.getTrainingProgress).toHaveBeenCalledWith(
+        'training-session-active'
+      );
+    });
+
+    fireEvent.click(screen.getByRole('link', { name: '训练报告' }));
+
+    await waitFor(() => {
+      expect(trainingApiMocks.getTrainingReport).toHaveBeenCalledWith(
+        'training-session-active'
+      );
+    });
+
+    fireEvent.click(screen.getByRole('link', { name: '训练诊断' }));
+
+    await waitFor(() => {
+      expect(trainingApiMocks.getTrainingDiagnostics).toHaveBeenCalledWith(
+        'training-session-active'
+      );
     });
   });
 

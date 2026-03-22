@@ -1,0 +1,47 @@
+## 前端 Findings
+- [Major] frontend/src/hooks/useTrainingSessionReadTarget.ts:107
+  问题：训练读取目标仍由 explicit sessionId / activeSession / resumeTarget(localStorage) 三路裁决。
+  原因：虽然注释声明 resumeTarget 只是 UX 恢复提示，但 frontend/src/hooks/useTrainingSessionBootstrap.ts:185 和 frontend/src/hooks/useTrainingReadQuery.ts:34 仍直接把这套结果送进服务端读取，前端事实源没有真正收口。
+  影响：刷新、跨页、无效会话清理时，仍可能先按旧 sessionId 发起恢复，导致恢复抖动和边界返工；如果前后端继续完全各改各的，这里最容易反复重写。
+  建议：把训练读取契约收敛成“显式 sessionId 或服务端给出的 canonical resume identity”；localStorage 只保留导航提示，不参与默认读取判定。
+
+- [Major] frontend/src/flows/useTrainingMvpFlow.ts:78
+  问题：useTrainingMvpFlow 仍同时承担启动、自动恢复、提交回合、notice 管理和页面工作区状态。
+  原因：flows 层已经变成巨型编排脚本，pages / flows / hooks / services / storage 的职责边界没有真正拆开。
+  影响：前端自己继续并行开发也会先撞上这个 merge hotspot；报告、可视化、恢复优化都会继续堆到同一个 hook 上。
+  建议：拆成独立的 bootstrap flow、round submission flow、workspace state/view-model，页面只消费组合后的只读状态和动作。
+
+- [Major] frontend/src/hooks/useTrainingRoundRunner.ts:105
+  问题：这次只把错误文案和 recovery-code 判定抽到了 executor，但真正的提交编排仍混在 hook 里。
+  原因：当前 hook 仍同时做 API 调用、context 写入、localStorage 持久化、telemetry 和恢复分支；frontend/src/hooks/trainingRoundRunnerExecutor.ts:3 只是错误映射，不是完整执行边界。
+  影响：后端一旦调整回合提交/恢复语义，前端仍要改这个大 hook，无法稳定并行；测试也只能主要围着 hook 做黑盒覆盖。
+  建议：把“提交 -> next -> restore fallback -> session sync” 抽成纯执行器或 application service，hook 只负责触发、状态暴露和 UI 生命周期。
+
+- [Major] frontend/src/utils/trainingSession.ts:139
+  问题：前端仍在消费历史脏字段 briefing 并归一化为 brief。
+  原因：这说明训练 DTO 还没真正冻结；虽然页面层没有直接兼容脏字段，但兼容逻辑仍留在运行路径里。对应后端字段还在 backend/api/schemas.py:296。
+  影响：如果前后端继续完全并行，DTO 收口阶段会重复返工，并把“过渡兼容”长期固化成正式契约。
+  建议：前后端一起冻结训练场景 DTO，只保留 brief，随后删除前端 legacy fallback 和相关兼容测试。
+
+## 是否需要前后端一起开发
+- 结论：不建议改成全程绑定开发，也不建议继续完全并行；当前更适合“边界联动、模块内并行”。
+- 不需要全程绑在一起的依据：训练前端已经接入真实训练接口 frontend/src/services/trainingApi.ts:200，训练端也有独立 dev target frontend/vite.training.config.ts:8。现在不是“接口还没打通”。
+- 必须一起冻结的边界有 3 个：训练恢复/读取契约、训练 DTO canonical 字段、回合提交后的错误码与恢复语义。
+- 这 3 个边界不一起定，前端继续拆 flow 和 hook 会返工，后端继续收口 story/training 拆分也会返工。
+- 边界冻结后可以继续并行：前端做 flow/hook 解耦、恢复事实源收口、页面级测试补全；后端做 DTO 清理、恢复语义固化、契约测试和 smoke 收口。
+
+## Open Questions
+- backend/api/schemas.py:296 的 briefing 是过渡字段还是准备长期保留？这个必须明确。
+- 刷新后无 query sessionId 时，训练恢复的权威入口最终是什么：服务端 canonical resume identity，还是客户端缓存的上次 sessionId 提示？这个契约不定，前端 read-target 无法真正收口。
+
+## 测试缺口
+- frontend/src/flows/useTrainingMvpFlow.ts:78 没有直接测试文件，自动恢复、notice 切换、workspace 清理目前主要靠页面侧间接覆盖。
+- frontend/src/pages/Training.tsx:12 缺少 duplicate、completed、next-fetch-failed 的页面级集成测试；现在主要只有 frontend/src/hooks/useTrainingRoundRunner.test.tsx:132 这类 hook 级覆盖。
+- 训练 DTO 还缺“canonical-contract only” 的消费测试。当前 frontend/src/utils/trainingSession.test.ts:126 和 frontend/src/services/trainingApi.test.ts:197 仍在固化 legacy briefing 兼容；后端删 alias 后需要补只接受 brief 的契约测试。
+
+## Review Summary
+- 未发现 Blocker，但当前前端还没有到可以完全脱离后端边界、继续纯并行开发的阶段。
+- 真正卡住的不是接口有没有接通，而是恢复事实源、回合恢复语义和 DTO 契约还没有冻结。
+- 结论不是“前后端从现在开始全程一起写”，而是先做一个短周期联动，把这 3 个边界定死，再回到各自模块并行。
+- 训练前端已经具备独立端口和真实 API 链路，所以后续大部分工作仍然可以拆开推进。
+- 验证结果：npx vitest run src/hooks/trainingRoundRunnerExecutor.test.ts src/hooks/useTrainingRoundRunner.test.tsx src/hooks/useTrainingSessionReadTarget.test.ts src/hooks/useTrainingSessionViewModel.test.tsx src/pages/Training.integration.test.tsx src/pages/TrainingInsights.integration.test.tsx 通过，6 个测试文件、33 个测试通过。

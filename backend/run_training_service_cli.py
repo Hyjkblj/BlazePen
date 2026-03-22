@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from api.services.training_service import TrainingService
-from database.db_manager import DatabaseManager
 from run_training_service_local import (
     DEFAULT_ACTION_TEMPLATES,
     _build_player_profile,
@@ -24,6 +23,7 @@ from run_training_service_local import (
     _save_json_artifact,
     _summarize_states,
 )
+from training_runner_bootstrap import bootstrap_database
 from training.cli_story_script import (
     build_round_feedback_story_block,
     build_scene_story_block,
@@ -48,7 +48,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--skip-init-db",
         action="store_true",
-        help="跳过 init_db，仅做连接与服务层调用",
+        help="跳过 scripts/init_db.py，仅做连接与服务层调用",
+    )
+    parser.add_argument(
+        "--check-db-status",
+        action="store_true",
+        help="在 CLI 启动前显式执行 scripts/check_database_status.py",
     )
     parser.add_argument(
         "--save-json-dir",
@@ -249,11 +254,18 @@ def run_interactive_cli(args: argparse.Namespace) -> int:
     """执行本地交互式训练流程。"""
     _configure_stdout_encoding()
 
-    db_manager = DatabaseManager()
-    db_manager.check_connection()
     if not args.skip_init_db:
-        # 本地第一次运行时自动补齐训练表，降低手工准备成本。
-        db_manager.init_db()
+        _print_section("数据库初始化")
+        print("执行 scripts/init_db.py，统一走显式迁移入口。")
+
+    if getattr(args, "check_db_status", False):
+        _print_section("数据库自检")
+        print("执行 scripts/check_database_status.py，确认当前数据库状态。")
+
+    db_manager = bootstrap_database(
+        skip_init_db=bool(args.skip_init_db),
+        check_db_status=bool(getattr(args, "check_db_status", False)),
+    )
 
     training_service = TrainingService(db_manager=db_manager)
     user_id = args.user_id or f"local-cli-{uuid.uuid4().hex[:8]}"
@@ -354,10 +366,10 @@ def run_interactive_cli(args: argparse.Namespace) -> int:
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     """命令行入口。"""
     parser = _build_arg_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     return run_interactive_cli(args)
 
 

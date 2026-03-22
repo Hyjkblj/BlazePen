@@ -9,11 +9,8 @@ const formatMetricValue = (value: number): string => Number(value.toFixed(2)).to
 function TrainingProgress() {
   const [searchParams] = useSearchParams();
   const querySessionId = searchParams.get('sessionId');
-  const { data, status, errorMessage, sessionTarget, reload } = useTrainingProgress(querySessionId);
-
-  const totalRounds = data?.totalRounds ?? 0;
-  const progressPercent =
-    data && totalRounds > 0 ? (Math.min(data.roundNo, totalRounds) / totalRounds) * 100 : 0;
+  const { data, status, errorMessage, sessionTarget, hasStaleData, reload, totalRounds, progressPercent } =
+    useTrainingProgress(querySessionId);
 
   return (
     <TrainingInsightShell
@@ -21,21 +18,23 @@ function TrainingProgress() {
       description="训练进度页只消费训练查询读模型，不回推会话事实源。刷新后优先读取显式 sessionId，其次读取当前内存活动会话，最后才使用本地恢复入口。"
       activeView="progress"
       sessionId={sessionTarget.sessionId}
+      sessionSource={sessionTarget.source}
       navigationSessionId={querySessionId}
       sessionStatus={data?.status ?? sessionTarget.status}
       loadingMessage={status === 'loading' ? '正在读取训练进度...' : null}
       errorMessage={errorMessage}
+      hasStaleData={hasStaleData}
+      emptyState={
+        !data && !sessionTarget.sessionId
+          ? {
+              title: '暂无训练进度',
+              description:
+                '当前没有可读取的训练 sessionId。请先开始训练，或从训练主页恢复最近一次训练会话。',
+            }
+          : null
+      }
       onRetry={sessionTarget.sessionId ? reload : null}
     >
-      {!sessionTarget.sessionId ? (
-        <section className="training-insight-section">
-          <h2>暂无训练会话</h2>
-          <p className="training-insight-empty">
-            当前没有可读取的训练 sessionId。请先开始训练，或从训练主页恢复最近一次训练会话。
-          </p>
-        </section>
-      ) : null}
-
       {data ? (
         <>
           <section className="training-insight-section">

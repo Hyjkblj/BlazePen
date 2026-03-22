@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTrainingRoundRunner } from '@/hooks/useTrainingRoundRunner';
 import { useTrainingSessionBootstrap } from '@/hooks/useTrainingSessionBootstrap';
+import {
+  buildBlockedTrainingSessionView,
+  buildCompletedTrainingSessionView,
+  buildTrainingSessionViewFromInit,
+  buildTrainingSessionViewFromNext,
+  buildTrainingSessionViewFromSummary,
+  useTrainingSessionViewModel,
+  type TrainingSessionViewState,
+} from '@/hooks/useTrainingSessionViewModel';
 import type {
   TrainingConsequenceEvent,
   TrainingEvaluation,
   TrainingMode,
   TrainingPlayerProfileInput,
-  TrainingProgressAnchor,
   TrainingRoundDecisionContext,
-  TrainingRoundSubmitResult,
-  TrainingRuntimeState,
   TrainingScenario,
-  TrainingScenarioNextResult,
-  TrainingSessionSummaryResult,
 } from '@/types/training';
 
 const DEFAULT_TRAINING_USER_ID = 'frontend-training-user';
@@ -34,153 +38,11 @@ export interface TrainingRoundOutcomeView {
   isCompleted: boolean;
 }
 
-export interface TrainingSessionViewState {
-  sessionId: string;
-  trainingMode: TrainingMode;
-  characterId: string | null;
-  status: string;
-  roundNo: number;
-  totalRounds: number | null;
-  runtimeState: TrainingRuntimeState;
-  currentScenario: TrainingScenario | null;
-  scenarioCandidates: TrainingScenario[];
-  progressAnchor: TrainingProgressAnchor | null;
-  canResume: boolean;
-  isCompleted: boolean;
-  createdAt: string | null;
-  updatedAt: string | null;
-  endTime: string | null;
-}
-
-interface TrainingRestoreIdentity {
-  sessionId: string | null;
-  trainingMode: TrainingMode | null;
-  characterId: string | null;
-}
-
 const TRAINING_MODE_LABELS: Record<TrainingMode, string> = {
   guided: '引导训练',
   'self-paced': '自主训练',
   adaptive: '自适应训练',
 };
-
-const deriveProgressAnchor = (
-  totalRounds: number | null,
-  roundNo: number,
-  isCompleted: boolean
-): TrainingProgressAnchor | null => {
-  if (!totalRounds || totalRounds <= 0) {
-    return null;
-  }
-
-  const completedRounds = isCompleted ? totalRounds : Math.min(roundNo, totalRounds);
-  const remainingRounds = Math.max(totalRounds - completedRounds, 0);
-
-  return {
-    roundNo,
-    totalRounds,
-    completedRounds,
-    remainingRounds,
-    progressPercent: (completedRounds / totalRounds) * 100,
-    nextRoundNo: remainingRounds > 0 ? roundNo + 1 : null,
-  };
-};
-
-const buildSessionViewFromSummary = (
-  summaryResult: TrainingSessionSummaryResult,
-  characterId: string | null
-): TrainingSessionViewState => ({
-  sessionId: summaryResult.sessionId,
-  trainingMode: summaryResult.trainingMode,
-  characterId,
-  status: summaryResult.status,
-  roundNo: summaryResult.roundNo,
-  totalRounds: summaryResult.totalRounds,
-  runtimeState: summaryResult.runtimeState,
-  currentScenario: summaryResult.resumableScenario,
-  scenarioCandidates: summaryResult.scenarioCandidates,
-  progressAnchor: summaryResult.progressAnchor,
-  canResume: summaryResult.canResume,
-  isCompleted: summaryResult.isCompleted,
-  createdAt: summaryResult.createdAt,
-  updatedAt: summaryResult.updatedAt,
-  endTime: summaryResult.endTime,
-});
-
-const buildSessionViewFromInit = (
-  sessionResult: {
-    sessionId: string;
-    trainingMode: TrainingMode;
-    status: string;
-    roundNo: number;
-    runtimeState: TrainingRuntimeState;
-    nextScenario: TrainingScenario | null;
-    scenarioCandidates: TrainingScenario[];
-  },
-  characterId: string | null
-): TrainingSessionViewState => ({
-  sessionId: sessionResult.sessionId,
-  trainingMode: sessionResult.trainingMode,
-  characterId,
-  status: sessionResult.status,
-  roundNo: sessionResult.roundNo,
-  totalRounds: null,
-  runtimeState: sessionResult.runtimeState,
-  currentScenario: sessionResult.nextScenario,
-  scenarioCandidates: sessionResult.scenarioCandidates,
-  progressAnchor: null,
-  canResume: sessionResult.nextScenario !== null,
-  isCompleted: false,
-  createdAt: null,
-  updatedAt: null,
-  endTime: null,
-});
-
-const buildSessionViewFromNext = (
-  currentSession: TrainingSessionViewState,
-  nextScenarioResult: TrainingScenarioNextResult
-): TrainingSessionViewState => ({
-  ...currentSession,
-  status: nextScenarioResult.status,
-  roundNo: nextScenarioResult.roundNo,
-  runtimeState: nextScenarioResult.runtimeState,
-  currentScenario: nextScenarioResult.scenario,
-  scenarioCandidates: nextScenarioResult.scenarioCandidates,
-  progressAnchor: deriveProgressAnchor(currentSession.totalRounds, nextScenarioResult.roundNo, false),
-  canResume: nextScenarioResult.scenario !== null,
-  isCompleted: nextScenarioResult.status === 'completed',
-  updatedAt: null,
-});
-
-const buildCompletedSessionView = (
-  currentSession: TrainingSessionViewState,
-  submitResult: TrainingRoundSubmitResult
-): TrainingSessionViewState => ({
-  ...currentSession,
-  status: 'completed',
-  roundNo: submitResult.roundNo,
-  runtimeState: submitResult.runtimeState,
-  currentScenario: null,
-  scenarioCandidates: [],
-  progressAnchor: deriveProgressAnchor(currentSession.totalRounds, submitResult.roundNo, true),
-  canResume: false,
-  isCompleted: true,
-});
-
-const buildBlockedSessionView = (
-  currentSession: TrainingSessionViewState,
-  submitResult: TrainingRoundSubmitResult
-): TrainingSessionViewState => ({
-  ...currentSession,
-  status: 'in_progress',
-  roundNo: submitResult.roundNo,
-  runtimeState: submitResult.runtimeState,
-  currentScenario: null,
-  scenarioCandidates: [],
-  progressAnchor: deriveProgressAnchor(currentSession.totalRounds, submitResult.roundNo, false),
-  canResume: true,
-  isCompleted: false,
-});
 
 const trimToNull = (value: string): string | null => {
   const normalized = value.trim();
@@ -213,80 +75,6 @@ const resolveSelectedOptionLabel = (
   return selectedOption?.label?.trim() || null;
 };
 
-const resolveRestoreIdentity = ({
-  sessionId,
-  sessionView,
-  activeSession,
-  resumeTarget,
-}: {
-  sessionId?: string | null;
-  sessionView: TrainingSessionViewState | null;
-  activeSession: {
-    sessionId: string;
-    trainingMode: TrainingMode;
-    characterId: string | null;
-  } | null;
-  resumeTarget: {
-    sessionId: string;
-    trainingMode: TrainingMode | null;
-    characterId: string | null;
-  } | null;
-}): TrainingRestoreIdentity => {
-  if (sessionId) {
-    if (sessionView?.sessionId === sessionId) {
-      return {
-        sessionId,
-        trainingMode: sessionView.trainingMode,
-        characterId: sessionView.characterId,
-      };
-    }
-
-    if (activeSession?.sessionId === sessionId) {
-      return {
-        sessionId,
-        trainingMode: activeSession.trainingMode,
-        characterId: activeSession.characterId,
-      };
-    }
-
-    if (resumeTarget?.sessionId === sessionId) {
-      return {
-        sessionId,
-        trainingMode: resumeTarget.trainingMode,
-        characterId: resumeTarget.characterId,
-      };
-    }
-
-    return {
-      sessionId,
-      trainingMode: null,
-      characterId: null,
-    };
-  }
-
-  if (activeSession?.sessionId) {
-    return {
-      sessionId: activeSession.sessionId,
-      trainingMode: activeSession.trainingMode,
-      characterId: activeSession.characterId,
-    };
-  }
-
-  if (resumeTarget?.sessionId) {
-    return {
-      sessionId: resumeTarget.sessionId,
-      trainingMode: resumeTarget.trainingMode,
-      characterId: resumeTarget.characterId,
-    };
-  }
-
-  return {
-    sessionId: null,
-    trainingMode: null,
-    characterId: null,
-  };
-};
-
 export function useTrainingMvpFlow() {
   const bootstrap = useTrainingSessionBootstrap();
   const roundRunner = useTrainingRoundRunner({
@@ -307,27 +95,25 @@ export function useTrainingMvpFlow() {
   const [latestOutcome, setLatestOutcome] = useState<TrainingRoundOutcomeView | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const autoRestoreSessionIdRef = useRef<string | null>(null);
+  const sessionViewModel = useTrainingSessionViewModel({
+    sessionView,
+    activeSession: bootstrap.activeSession,
+    resumeTarget: bootstrap.resumeTarget,
+  });
 
   const restoreSessionView = useCallback(
     async (sessionId?: string | null) => {
-      const restoreIdentity = resolveRestoreIdentity({
-        sessionId,
-        sessionView,
-        activeSession: bootstrap.activeSession,
-        resumeTarget: bootstrap.resumeTarget,
-      });
+      const restoreIdentity = sessionViewModel.resolveRestoreIdentity(sessionId);
       const summaryResult = await bootstrap.restoreSession(restoreIdentity);
 
       if (!summaryResult) {
         return null;
       }
 
-      setSessionView(
-        buildSessionViewFromSummary(summaryResult, restoreIdentity.characterId)
-      );
+      setSessionView(buildTrainingSessionViewFromSummary(summaryResult, restoreIdentity.characterId));
       return summaryResult;
     },
-    [bootstrap.activeSession, bootstrap.resumeTarget, bootstrap.restoreSession, sessionView]
+    [bootstrap.restoreSession, sessionViewModel]
   );
 
   useEffect(() => {
@@ -335,8 +121,7 @@ export function useTrainingMvpFlow() {
       return;
     }
 
-    const resumableSessionId =
-      bootstrap.activeSession?.sessionId ?? bootstrap.resumeTarget?.sessionId ?? null;
+    const resumableSessionId = sessionViewModel.autoRestoreSessionId;
     if (!resumableSessionId) {
       autoRestoreSessionIdRef.current = null;
       return;
@@ -348,34 +133,25 @@ export function useTrainingMvpFlow() {
 
     autoRestoreSessionIdRef.current = resumableSessionId;
     void restoreSessionView(resumableSessionId);
-  }, [bootstrap.activeSession?.sessionId, bootstrap.resumeTarget?.sessionId, restoreSessionView, sessionView]);
+  }, [restoreSessionView, sessionView, sessionViewModel.autoRestoreSessionId]);
 
   useEffect(() => {
     if (sessionView) {
       return;
     }
 
-    if (bootstrap.activeSession?.trainingMode) {
-      setTrainingMode(bootstrap.activeSession.trainingMode);
-    } else if (bootstrap.resumeTarget?.trainingMode) {
-      setTrainingMode(bootstrap.resumeTarget.trainingMode);
+    if (sessionViewModel.preferredTrainingMode) {
+      setTrainingMode(sessionViewModel.preferredTrainingMode);
     }
 
-    const preferredCharacterId =
-      bootstrap.activeSession?.characterId ?? bootstrap.resumeTarget?.characterId ?? null;
+    const preferredCharacterId = sessionViewModel.preferredCharacterId;
     if (preferredCharacterId) {
       setFormDraft((current) => ({
         ...current,
         characterId: preferredCharacterId,
       }));
     }
-  }, [
-    bootstrap.activeSession?.characterId,
-    bootstrap.activeSession?.trainingMode,
-    bootstrap.resumeTarget?.characterId,
-    bootstrap.resumeTarget?.trainingMode,
-    sessionView,
-  ]);
+  }, [sessionView, sessionViewModel.preferredCharacterId, sessionViewModel.preferredTrainingMode]);
 
   useEffect(() => {
     setSelectedOptionId(null);
@@ -417,22 +193,15 @@ export function useTrainingMvpFlow() {
     }
 
     setLatestOutcome(null);
-    setSessionView(buildSessionViewFromInit(initResult, trimToNull(formDraft.characterId)));
+    setSessionView(buildTrainingSessionViewFromInit(initResult, trimToNull(formDraft.characterId)));
   }, [bootstrap, formDraft, roundRunner, trainingMode]);
 
   const retryRestore = useCallback(async () => {
     roundRunner.dismissError();
     bootstrap.dismissError();
     setNoticeMessage(null);
-
-    const currentSessionId =
-      sessionView?.sessionId ??
-      bootstrap.activeSession?.sessionId ??
-      bootstrap.resumeTarget?.sessionId ??
-      null;
-
-    await restoreSessionView(currentSessionId);
-  }, [bootstrap, restoreSessionView, roundRunner, sessionView?.sessionId]);
+    await restoreSessionView(sessionViewModel.currentSessionId);
+  }, [bootstrap, restoreSessionView, roundRunner, sessionViewModel.currentSessionId]);
 
   const submitCurrentRound = useCallback(async () => {
     if (!sessionView?.currentScenario) {
@@ -476,7 +245,9 @@ export function useTrainingMvpFlow() {
     }
 
     if (transition.summaryResult) {
-      setSessionView(buildSessionViewFromSummary(transition.summaryResult, sessionView.characterId));
+      setSessionView(
+        buildTrainingSessionViewFromSummary(transition.summaryResult, sessionView.characterId)
+      );
 
       if (transition.recoveryReason === 'duplicate') {
         setNoticeMessage('检测到重复提交，页面已按服务端训练进度恢复。');
@@ -490,18 +261,18 @@ export function useTrainingMvpFlow() {
     }
 
     if (transition.nextScenarioResult) {
-      setSessionView(buildSessionViewFromNext(sessionView, transition.nextScenarioResult));
+      setSessionView(buildTrainingSessionViewFromNext(sessionView, transition.nextScenarioResult));
       return;
     }
 
     if (transition.submitResult?.isCompleted) {
-      setSessionView(buildCompletedSessionView(sessionView, transition.submitResult));
+      setSessionView(buildCompletedTrainingSessionView(sessionView, transition.submitResult));
       setNoticeMessage('本次训练已完成。');
       return;
     }
 
     if (transition.submitResult) {
-      setSessionView(buildBlockedSessionView(sessionView, transition.submitResult));
+      setSessionView(buildBlockedTrainingSessionView(sessionView, transition.submitResult));
       setNoticeMessage('回合已提交，请重试恢复当前训练会话。');
     }
   }, [bootstrap, responseInput, roundRunner, selectedOptionId, sessionView]);

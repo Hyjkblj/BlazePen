@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from training.constants import TRAINING_DEFAULT_SCENARIO_SEQUENCE, TRAINING_RUNTIME_CONFIG
+from training.exceptions import TrainingScenarioMismatchError
 
 
 class ScenarioPolicy:
@@ -160,8 +161,10 @@ class ScenarioPolicy:
         expected_index = min(current_round_no, len(session_sequence) - 1)
         expected_id = session_sequence[expected_index]["id"]
         if str(submitted_scenario_id) != expected_id:
-            raise ValueError(
-                f"scenario mismatch: expected={expected_id}, submitted={submitted_scenario_id}, round={current_round_no + 1}"
+            raise TrainingScenarioMismatchError(
+                submitted_scenario_id=str(submitted_scenario_id),
+                expected_scenario_id=str(expected_id),
+                round_no=current_round_no + 1,
             )
 
     def _normalize_sequence(self, sequence: Any) -> List[Dict[str, str]]:

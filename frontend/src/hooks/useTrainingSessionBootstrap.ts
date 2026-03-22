@@ -19,6 +19,10 @@ import {
   clearTrainingSessionRecoveryArtifacts,
   isTerminalTrainingSessionRecoveryError,
 } from './trainingSessionRecovery';
+import {
+  resolveTrainingSessionReadTarget,
+  type TrainingSessionReadTargetSource,
+} from './useTrainingSessionReadTarget';
 
 export type TrainingBootstrapStatus = 'idle' | 'restoring' | 'starting' | 'ready' | 'error';
 
@@ -44,11 +48,6 @@ export interface UseTrainingSessionBootstrapResult {
   dismissError: () => void;
 }
 
-interface RestoreSessionIdentity {
-  sessionId: string | null | undefined;
-  characterId?: string | null | undefined;
-}
-
 type TrainingRestoreTelemetrySource =
   | 'explicit'
   | 'active-session'
@@ -68,90 +67,19 @@ const normalizeCharacterId = (value: string | number | null | undefined): string
   return normalized === '' ? null : normalized;
 };
 
-const normalizeSessionId = (value: string | null | undefined): string | null => {
-  if (typeof value !== 'string') {
-    return null;
+const toRestoreTelemetrySource = (
+  source: TrainingSessionReadTargetSource
+): TrainingRestoreTelemetrySource => {
+  switch (source) {
+    case 'explicit':
+      return 'explicit';
+    case 'active-session':
+      return 'active-session';
+    case 'resume-target':
+      return 'resume-target';
+    default:
+      return 'unknown';
   }
-
-  const normalized = value.trim();
-  return normalized === '' ? null : normalized;
-};
-
-const resolveRestoreSessionTarget = (
-  options: RestoreTrainingSessionOptions,
-  activeSession: RestoreSessionIdentity | null,
-  resumeTarget: RestoreSessionIdentity | null
-): {
-  sessionId: string | null;
-  characterId: string | null;
-} => {
-  const explicitSessionId = normalizeSessionId(options.sessionId ?? null);
-  const explicitCharacterId =
-    options.characterId === undefined ? undefined : normalizeCharacterId(options.characterId);
-
-  if (explicitSessionId) {
-    const matchedCharacterId =
-      normalizeSessionId(activeSession?.sessionId) === explicitSessionId
-        ? normalizeCharacterId(activeSession?.characterId ?? null)
-        : normalizeSessionId(resumeTarget?.sessionId) === explicitSessionId
-          ? normalizeCharacterId(resumeTarget?.characterId ?? null)
-          : null;
-
-    return {
-      sessionId: explicitSessionId,
-      characterId: explicitCharacterId ?? matchedCharacterId ?? null,
-    };
-  }
-
-  const activeSessionId = normalizeSessionId(activeSession?.sessionId ?? null);
-  if (activeSessionId) {
-    return {
-      sessionId: activeSessionId,
-      characterId: explicitCharacterId ?? normalizeCharacterId(activeSession?.characterId ?? null),
-    };
-  }
-
-  const cachedSessionId = normalizeSessionId(resumeTarget?.sessionId ?? null);
-  if (cachedSessionId) {
-    return {
-      sessionId: cachedSessionId,
-      characterId: explicitCharacterId ?? normalizeCharacterId(resumeTarget?.characterId ?? null),
-    };
-  }
-
-  return {
-    sessionId: null,
-    characterId: explicitCharacterId ?? null,
-  };
-};
-
-const resolveRestoreTelemetrySource = ({
-  sessionId,
-  options,
-  activeSession,
-  resumeTarget,
-}: {
-  sessionId: string;
-  options: RestoreTrainingSessionOptions;
-  activeSession: RestoreSessionIdentity | null;
-  resumeTarget: RestoreSessionIdentity | null;
-}): TrainingRestoreTelemetrySource => {
-  const explicitSessionId = normalizeSessionId(options.sessionId ?? null);
-  if (explicitSessionId === sessionId) {
-    return 'explicit';
-  }
-
-  const activeSessionId = normalizeSessionId(activeSession?.sessionId ?? null);
-  if (activeSessionId === sessionId) {
-    return 'active-session';
-  }
-
-  const resumeTargetSessionId = normalizeSessionId(resumeTarget?.sessionId ?? null);
-  if (resumeTargetSessionId === sessionId) {
-    return 'resume-target';
-  }
-
-  return 'unknown';
 };
 
 const getRestoreErrorMessage = (error: unknown): string => {
@@ -285,11 +213,15 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
       options: RestoreTrainingSessionOptions = {}
     ): Promise<TrainingSessionSummaryResult | null> => {
       const cachedTarget = readTrainingResumeTarget();
-      const { sessionId, characterId } = resolveRestoreSessionTarget(
-        options,
-        state.activeSession,
-        cachedTarget
-      );
+      const restoreTarget = resolveTrainingSessionReadTarget({
+        explicitSessionId: options.sessionId ?? null,
+        activeSession: state.activeSession,
+        resumeTarget: cachedTarget,
+      });
+      const explicitCharacterId =
+        options.characterId === undefined ? undefined : normalizeCharacterId(options.characterId);
+      const sessionId = restoreTarget.sessionId;
+      const characterId = explicitCharacterId ?? restoreTarget.characterId;
 
       if (!sessionId) {
         trackFrontendTelemetry({
@@ -298,7 +230,7 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
           status: 'failed',
           metadata: {
             sessionId: null,
-            restoreSource: 'unknown',
+            restoreSource: toRestoreTelemetrySource(restoreTarget.source),
             failureStage: 'missing-session',
           },
         });
@@ -309,12 +241,7 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
 
       const restoreTelemetryMetadata = {
         sessionId,
-        restoreSource: resolveRestoreTelemetrySource({
-          sessionId,
-          options,
-          activeSession: state.activeSession,
-          resumeTarget: cachedTarget,
-        }),
+        restoreSource: toRestoreTelemetrySource(restoreTarget.source),
         hasCharacterId: characterId !== null,
       };
 

@@ -6,6 +6,7 @@ import re
 from typing import Any, Iterable, List, Optional, Set
 
 from training.constants import TRAINING_RUNTIME_CONFIG
+from training.exceptions import TrainingModeUnsupportedError
 
 
 class TrainingModeCatalog:
@@ -52,8 +53,10 @@ class TrainingModeCatalog:
             return normalized
 
         if raise_on_unknown:
-            supported = "/".join(self.supported_modes())
-            raise ValueError(f"unsupported training mode: {raw_text}; expected one of {supported}")
+            raise TrainingModeUnsupportedError(
+                raw_mode=raw_text,
+                supported_modes=self.supported_modes(),
+            )
         return None
 
     def is_recommendation_mode(self, training_mode: Any) -> bool:

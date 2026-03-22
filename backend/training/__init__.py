@@ -7,6 +7,8 @@ from training.ending_policy import EndingPolicy
 from training.evaluator import TrainingRoundEvaluator
 from training.exceptions import (
     DuplicateRoundSubmissionError,
+    TrainingModeUnsupportedError,
+    TrainingScenarioMismatchError,
     TrainingSessionCompletedError,
     TrainingSessionNotFoundError,
     TrainingSessionRecoveryStateError,
@@ -44,6 +46,8 @@ __all__ = [
     "EndingPolicy",
     "TrainingTelemetryPolicy",
     "DuplicateRoundSubmissionError",
+    "TrainingModeUnsupportedError",
+    "TrainingScenarioMismatchError",
     "TrainingSessionCompletedError",
     "TrainingSessionNotFoundError",
     "TrainingSessionRecoveryStateError",

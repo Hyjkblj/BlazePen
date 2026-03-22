@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROUTES } from '@/config/routes';
@@ -294,6 +294,72 @@ describe('Training insight routes', () => {
     expect(await screen.findByText('Training Report')).toBeTruthy();
     expect(screen.getByText('优先补练来源保护')).toBeTruthy();
     expect(screen.getByText('source_exposure_risk: 1')).toBeTruthy();
+  });
+
+  it('keeps the last successful report visible when reloading the same session times out', async () => {
+    trainingApiMocks.getTrainingReport
+      .mockResolvedValueOnce({
+        sessionId: 'training-session-report',
+        status: 'completed',
+        rounds: 3,
+        kStateFinal: {
+          K1: 0.62,
+        },
+        sStateFinal: {
+          source_safety: 0.9,
+        },
+        improvement: 0.31,
+        playerProfile: null,
+        runtimeState: createRuntimeState('scenario-explicit', 3),
+        ending: null,
+        summary: {
+          weightedScoreInitial: 0.3,
+          weightedScoreFinal: 0.71,
+          weightedScoreDelta: 0.41,
+          strongestImprovedSkillCode: 'K1',
+          strongestImprovedSkillDelta: 0.31,
+          weakestSkillCode: 'K2',
+          weakestSkillScore: 0.22,
+          dominantRiskFlag: 'source_exposure_risk',
+          highRiskRoundCount: 1,
+          highRiskRoundNos: [2],
+          panicTriggerRoundCount: 0,
+          sourceExposedRoundCount: 1,
+          editorLockedRoundCount: 0,
+          highRiskPathRoundCount: 0,
+          branchTransitionCount: 1,
+          branchTransitionRounds: [2],
+          branchTransitions: [],
+          riskFlagCounts: [],
+          completedScenarioIds: ['S1', 'S2'],
+          reviewSuggestions: ['优先补练来源保护'],
+        },
+        abilityRadar: [],
+        stateRadar: [],
+        growthCurve: [],
+        history: [],
+      })
+      .mockRejectedValueOnce(
+        new ServiceError({
+          code: 'REQUEST_TIMEOUT',
+          status: 504,
+          message: 'training report timed out',
+        })
+      );
+
+    renderInsightRoute(`${ROUTES.TRAINING_REPORT}?sessionId=training-session-report`);
+
+    expect(await screen.findByText('Training Report')).toBeTruthy();
+    expect(screen.getByText('优先补练来源保护')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '刷新读取' }));
+
+    expect(await screen.findByText('训练结果读取超时，请重试。')).toBeTruthy();
+    expect(
+      screen.getByText('当前显示的是最近一次成功读取的训练结果。可以稍后重新加载以获取最新状态。')
+    ).toBeTruthy();
+    expect(screen.getByText('优先补练来源保护')).toBeTruthy();
+    expect(trainingApiMocks.getTrainingReport).toHaveBeenCalledTimes(2);
   });
 
   it('falls back to the persisted resume target for diagnostics after refresh', async () => {

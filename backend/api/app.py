@@ -1,17 +1,17 @@
 """FastAPI应用主文件"""
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from api.routers import characters, game, vector_db_admin, tts, training
+from api.app_runtime import install_trace_context_middleware
+from api.routers import characters, game, vector_db_admin, tts
+from api.cors_config import build_cors_middleware_options
 from database.db_manager import DatabaseManager
 from api.middleware.error_handler import install_common_exception_handlers
-from api.request_context import reset_trace_id, set_trace_id
 from utils.logger import setup_logger
 import uvicorn
 import os
 import config
-from uuid import uuid4
 
 # 配置日志
 logger = setup_logger(__name__)
@@ -27,20 +27,7 @@ app = FastAPI(
 install_common_exception_handlers(app)
 
 
-@app.middleware("http")
-async def bind_trace_id(request: Request, call_next):
-    """Attach a trace id to every request/response pair."""
-
-    trace_id = request.headers.get("X-Trace-Id") or str(uuid4())
-    token = set_trace_id(trace_id)
-    request.state.trace_id = trace_id
-    try:
-        response = await call_next(request)
-    finally:
-        reset_trace_id(token)
-
-    response.headers["X-Trace-Id"] = trace_id
-    return response
+install_trace_context_middleware(app)
 
 # 应用启动时只检查数据库连接，不再隐式补表。
 # 数据库 schema 的创建和升级统一交给显式脚本处理，避免不同环境启动时出现“偷偷改库”。
@@ -56,37 +43,9 @@ async def startup_event():
         logger.error(f"数据库连接检查失败: {e}", exc_info=True)
         # 不阻止应用启动，但会记录错误，真正的建库建表请先执行 scripts/init_db.py
 
-# 配置CORS（允许前端跨域请求）
-# 根据环境变量配置允许的来源（安全最佳实践）
-_env = os.getenv('ENV', 'dev')
-if _env == 'prod':
-    # 生产环境：只允许指定的前端域名
-    allowed_origins_str = os.getenv('ALLOWED_ORIGINS', '')
-    if not allowed_origins_str:
-        raise ValueError("生产环境必须设置 ALLOWED_ORIGINS 环境变量（逗号分隔的前端域名列表）")
-    allowed_origins = [origin.strip() for origin in allowed_origins_str.split(',')]
-    allowed_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    allowed_headers = ["Content-Type", "Authorization", "X-Requested-With"]
-else:
-    # 开发环境：允许本地开发服务器
-    allowed_origins = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173"
-    ]
-    # 如果设置了ALLOWED_ORIGINS，也添加到允许列表
-    if os.getenv('ALLOWED_ORIGINS'):
-        allowed_origins.extend([origin.strip() for origin in os.getenv('ALLOWED_ORIGINS').split(',')])
-    allowed_methods = ["*"]
-    allowed_headers = ["*"]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,  # ✅ 只允许指定来源
-    allow_credentials=True,
-    allow_methods=allowed_methods,
-    allow_headers=allowed_headers,
+    **build_cors_middleware_options(service_scope="story"),
 )
 
 # 注册路由
@@ -94,7 +53,6 @@ app.include_router(characters.router, prefix="/api")
 app.include_router(game.router, prefix="/api")
 app.include_router(vector_db_admin.router, prefix="/api")
 app.include_router(tts.router, prefix="/api")
-app.include_router(training.router, prefix="/api")
 
 # 配置静态文件服务（用于提供本地保存的图片）
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

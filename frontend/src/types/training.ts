@@ -83,7 +83,6 @@ export interface TrainingScenario {
   decisionFocus: string;
   targetSkills: string[];
   riskTags: string[];
-  briefing: string;
   options: TrainingScenarioOption[];
   completionHint: string;
   recommendation: TrainingScenarioRecommendation | null;

@@ -15,38 +15,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from api.app_runtime import install_trace_context_middleware
+from api.cors_config import build_cors_middleware_options
 from api.middleware.error_handler import install_common_exception_handlers
 from api.routers import training
 from database.db_manager import DatabaseManager
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
-
-
-def _build_allowed_origins() -> list[str]:
-    """构建训练专用服务允许的跨域来源。
-
-    这里沿用主应用的开发环境默认值，同时支持通过环境变量覆盖。
-    """
-    env_name = os.getenv("ENV", "dev")
-    if env_name == "prod":
-        allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "")
-        if not allowed_origins_str.strip():
-            raise ValueError("生产环境必须设置 ALLOWED_ORIGINS 环境变量")
-        return [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
-
-    allowed_origins = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-    ]
-    extra_allowed_origins = os.getenv("ALLOWED_ORIGINS", "")
-    if extra_allowed_origins.strip():
-        allowed_origins.extend(
-            [origin.strip() for origin in extra_allowed_origins.split(",") if origin.strip()]
-        )
-    return allowed_origins
 
 
 app = FastAPI(
@@ -57,6 +33,7 @@ app = FastAPI(
 
 # 训练专用应用也复用统一异常处理，保证独立部署后返回形态不漂移。
 install_common_exception_handlers(app)
+install_trace_context_middleware(app)
 
 
 @app.on_event("startup")
@@ -77,10 +54,7 @@ async def startup_event():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_build_allowed_origins(),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    **build_cors_middleware_options(service_scope="training"),
 )
 
 # 这里只注册训练路由，确保服务边界清晰。

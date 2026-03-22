@@ -4,15 +4,18 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ROUTES } from '@/config/routes';
+import {
+  ROUTES,
+  buildTrainingDiagnosticsRoute,
+  buildTrainingProgressRoute,
+  buildTrainingReportRoute,
+} from '@/config/routes';
 import {
   FeedbackProvider,
-  GameFlowProvider,
   TrainingFlowProvider,
   useTrainingFlow,
   type ActiveTrainingSessionState,
 } from '@/contexts';
-import Home from '@/pages/Home';
 import { ServiceError } from '@/services/serviceError';
 import Training from '@/pages/Training';
 import {
@@ -63,7 +66,6 @@ const createScenario = (id: string, title: string, optionLabel = 'Hold publicati
   decisionFocus: 'Choose the safest next move.',
   targetSkills: ['verification'],
   riskTags: ['exposure'],
-  briefing: `${title} briefing`,
   options: [
     {
       id: `${id}-opt-1`,
@@ -108,20 +110,32 @@ const renderRouterApp = (
 ) =>
   render(
     <FeedbackProvider>
-      <GameFlowProvider>
-        <TrainingFlowProvider>
-          <TrainingFlowSeed activeSession={activeSession}>
-            <MemoryRouter initialEntries={[pathname]}>
-              <Routes>
-                <Route path={ROUTES.HOME} element={<Home />} />
-                <Route path={ROUTES.TRAINING} element={<Training />} />
-              </Routes>
-            </MemoryRouter>
-          </TrainingFlowSeed>
-        </TrainingFlowProvider>
-      </GameFlowProvider>
+      <TrainingFlowProvider>
+        <TrainingFlowSeed activeSession={activeSession}>
+          <MemoryRouter initialEntries={[pathname]}>
+            <Routes>
+              <Route path={ROUTES.TRAINING} element={<Training />} />
+            </Routes>
+          </MemoryRouter>
+        </TrainingFlowSeed>
+      </TrainingFlowProvider>
     </FeedbackProvider>
   );
+
+const expectTrainingInsightLinks = (
+  container: HTMLElement,
+  sessionId: string
+) => {
+  const subnavLinks = Array.from(
+    container.querySelectorAll<HTMLAnchorElement>('.training-shell__subnav-link')
+  );
+
+  expect(subnavLinks.map((link) => link.getAttribute('href'))).toEqual([
+    buildTrainingProgressRoute(sessionId),
+    buildTrainingReportRoute(sessionId),
+    buildTrainingDiagnosticsRoute(sessionId),
+  ]);
+};
 
 describe('Training route integration', () => {
   beforeEach(() => {
@@ -203,7 +217,7 @@ describe('Training route integration', () => {
       ending: null,
     });
 
-    renderRouterApp(ROUTES.TRAINING);
+    const { container } = renderRouterApp(ROUTES.TRAINING);
 
     expect(await screen.findByText('Training Frontend MVP')).toBeTruthy();
 
@@ -239,6 +253,7 @@ describe('Training route integration', () => {
       trainingMode: 'guided',
       status: 'in_progress',
     });
+    expectTrainingInsightLinks(container, 'training-session-1');
   });
 
   it('restores a cached training session through the session summary endpoint on refresh', async () => {
@@ -272,7 +287,7 @@ describe('Training route integration', () => {
       endTime: null,
     });
 
-    renderRouterApp(ROUTES.TRAINING);
+    const { container } = renderRouterApp(ROUTES.TRAINING);
 
     await waitFor(() => {
       expect(trainingApiMocks.getTrainingSessionSummary).toHaveBeenCalledWith(
@@ -284,6 +299,7 @@ describe('Training route integration', () => {
     expect(screen.getByText('training-session-restore')).toBeTruthy();
     expect(screen.getByText('33.3%')).toBeTruthy();
     expect(trainingApiMocks.initTraining).not.toHaveBeenCalled();
+    expectTrainingInsightLinks(container, 'training-session-restore');
   });
 
   it('prefers the active in-memory session over a stale resume target during auto restore', async () => {
@@ -342,17 +358,6 @@ describe('Training route integration', () => {
       trainingMode: 'adaptive',
       characterId: '42',
     });
-  });
-
-  it('keeps the home route stable and exposes an entry to the training route', async () => {
-    renderRouterApp(ROUTES.HOME);
-
-    expect(await screen.findByRole('button', { name: 'BEGIN' })).toBeTruthy();
-    const trainingEntry = screen.getByRole('button', { name: 'Training Mode' });
-
-    fireEvent.click(trainingEntry);
-
-    expect(await screen.findByText('Training Frontend MVP')).toBeTruthy();
   });
 
   it('clears the cached resume target when session summary recovery is terminally corrupted', async () => {

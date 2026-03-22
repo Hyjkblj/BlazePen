@@ -1,0 +1,60 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+
+- [Major] frontend/vite.app.config.ts:11
+  问题：story 和 training 两个前端入口仍共享写死的 `http://localhost:8000` 代理目标，训练端口拆分后依然默认回到 story backend。
+  原因：这让 `apps/training` 只完成了壳层分端口，没有完成 `pages / flows / hooks / services` 对训练专用后端入口的解耦；仓库里新增的 `backend/api/training_app.py` 在前端开发链路中没有成为权威事实源。
+  影响：训练前端无法独立联调和发布，训练后端与故事后端边界继续混在一起；一旦 story 入口保留旧训练路由或 CORS 策略不同，3001 端看到的行为会和训练独立服务不一致。
+  建议：为 story/training 分别提供独立的 API target 配置，例如拆成 `VITE_STORY_API_TARGET` 与 `VITE_TRAINING_API_TARGET`，并让 `vite.training.config.ts` 默认指向训练专用入口。
+
+- [Major] frontend/src/pages/Training.tsx:86
+  问题：训练主页面跳转进度、报告、诊断页时没有携带当前 `sessionId`，读取页只能退回到内存 `activeSession` 或 localStorage `resumeTarget`。
+  原因：训练 read-model 页面本应围绕显式 `sessionId` 消费服务端摘要，但这里把会话身份隐藏在页面状态和缓存回退里，继续保留了隐式事实源。
+  影响：刷新、复制链接、新标签打开或多会话切换时，报告/进度页可能读到空状态或读错会话，恢复链路的可复现性和可分享性不足。
+  建议：主页面子导航统一改为 `buildTrainingProgressRoute`、`buildTrainingReportRoute`、`buildTrainingDiagnosticsRoute`，并显式传入当前 `sessionId`。
+
+- [Minor] frontend/src/pages/Training.tsx:15
+  问题：`Training` 页面仍同时承担初始化、恢复、回合推进、结果展示和 insight 导航多类职责，页面层继续膨胀。
+  原因：前端边界应由 page 负责编排、由 flow 和子组件负责承载具体流程块；当前页面文件接近 500 行，和 `frontend/src/flows/useTrainingMvpFlow.ts` 一起形成双巨型入口。
+  影响：后续恢复“故事影响训练”链路或继续落地报告可视化时，改动会持续堆叠到同一页面，回归面扩大，可维护性和可测试性都会下降。
+  建议：拆出 `TrainingBootstrapPanel`、`TrainingSessionWorkspace`、`TrainingOutcomePanel` 等子组件，让页面只保留路由级编排。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+
+- [Major] backend/api/training_app.py:22
+  问题：训练独立 FastAPI 入口没有复用主应用的 trace-id HTTP middleware，成功响应不会返回 `X-Trace-Id`。
+  原因：`backend/api/app.py:30` 已经定义了统一请求级 trace 上下文，但 `training_app.py` 复制应用装配时漏掉了这层，中间件栈已经发生分叉。
+  影响：训练专用服务上的 init、submit、query 成功链路无法与错误链路、日志和前端 telemetry 做稳定对账，排查恢复和重复提交问题时会丢失统一请求上下文。
+  建议：抽出共享的 app factory 或 middleware installer，让 `api.app` 与 `api.training_app` 复用同一请求上下文装配，并在 standalone app 测试里补 `X-Trace-Id` 断言。
+
+- [Major] backend/api/app.py:57
+  问题：主后端仍在 story-scoped CORS 下继续暴露 `training.router`，同时仓库又新增了 `training_app.py` 作为训练专用入口，形成两个训练契约出口。
+  原因：同一训练域同时挂在 `api.app` 和 `api.training_app`，但两者的 CORS scope、中间件组装和部署意图并不一致，违背了 router/service 边界清晰和单一事实源原则。
+  影响：前端容易命中错误入口；在生产环境 story allowlist 与 training allowlist 分离后，训练请求可能在某些入口被 CORS 拒绝，或出现“本地能用、独立部署失效”的分叉行为。
+  建议：明确唯一对外训练入口。如果训练要独立部署，就从 `api.app` 移除或关停 `training.router`；如果仍需兼容主应用，则必须统一中间件栈、CORS scope 和入口级契约测试。
+
+## Open Questions
+- 训练前端正式联调时的权威后端到底是 `http://localhost:8000` 还是 `http://localhost:8010`？如果是 8010，主后端继续暴露 `/api/v1/training/**` 是否只是过渡兼容，而不是长期双入口共存？
+
+- 训练 insight 页面是否要求 URL 可直接分享并稳定复现同一 `sessionId`？如果答案是是，当前 `Training.tsx` 的子导航需要尽快改成显式携带 `sessionId`。
+
+## 测试缺口
+- 前端：`frontend/src/pages/Training.integration.test.tsx` 与 `frontend/src/pages/TrainingMainPathSmoke.integration.test.tsx` 还没有覆盖从训练主页面点击“训练进度/训练报告/训练诊断”时 URL 必须携带当前 `sessionId` 的路径，当前隐式恢复依赖没有保护。
+
+- 前端：仓库里没有针对 `frontend/vite.app.config.ts` / `frontend/vite.training.config.ts` 的配置级验证，未能证明 `3001` 训练端会命中训练专用后端而不是继续代理到 `8000`。
+
+- 后端：`backend/test_training_standalone_app.py` 只验证了 `/health` 和 `init`，没有覆盖 standalone training app 的 `X-Trace-Id` 响应头和请求上下文一致性。
+
+- 后端：现有 `backend/test_api_cors_config.py` 只测 helper 函数，没有入口级测试锁定 `api.app` 与 `api.training_app` 的训练路由暴露策略和 CORS 行为；主入口是否仍应响应 `/api/v1/training/**` 目前没有回归保护。
+
+## Review Summary
+- 本次 review 基于 2026-03-22 当前工作区的未提交改动，不假设只看最近一次 commit。
+
+- 当前工作区没有出现阻塞性的编译或基础测试失败，`npm run build:all`、`npm run test:smoke:training` 以及相关 backend pytest 都已通过。
+
+- 但前端拆分目前仍停留在“独立端口”层面，训练前端还没有真正拿到独立后端入口和显式 `sessionId` 路由身份。
+
+- 后端也还没有完成训练域单入口收口，`api.app` 与 `api.training_app` 的双出口已经产生中间件和 CORS 漂移。
+
+- 这些问题短期内不一定阻塞本地开发，但会直接抬高联调、恢复和部署阶段的契约风险。

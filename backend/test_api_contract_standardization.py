@@ -16,7 +16,12 @@ from story.exceptions import (
     StorySessionNotFoundError,
 )
 from story.story_asset_service import StoryAssetService
-from training.exceptions import TrainingSessionNotFoundError, TrainingSessionRecoveryStateError
+from training.exceptions import (
+    TrainingModeUnsupportedError,
+    TrainingScenarioMismatchError,
+    TrainingSessionNotFoundError,
+    TrainingSessionRecoveryStateError,
+)
 
 
 class _FakeGameService:
@@ -262,7 +267,10 @@ class _DeniedSessionsGameService(_FakeGameService):
 class _FakeTrainingService:
     def init_training(self, user_id, character_id=None, training_mode="guided", player_profile=None):
         if training_mode == "sandbox":
-            raise ValueError("unsupported training mode: sandbox")
+            raise TrainingModeUnsupportedError(
+                raw_mode=training_mode,
+                supported_modes=["guided", "self-paced", "adaptive"],
+            )
         return {
             "session_id": "s-001",
             "status": "in_progress",
@@ -295,6 +303,12 @@ class _FakeTrainingService:
         raise TrainingSessionNotFoundError(session_id=session_id)
 
     def submit_round(self, session_id, scenario_id, user_input, selected_option=None):
+        if scenario_id == "S999":
+            raise TrainingScenarioMismatchError(
+                submitted_scenario_id=scenario_id,
+                expected_scenario_id="S1",
+                round_no=1,
+            )
         return {
             "session_id": session_id,
             "round_no": 1,
@@ -637,7 +651,7 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         self.assertEqual(payload["error"]["details"]["recovery_reason"], "scenario_sequence_empty")
         self.assertTrue(payload["error"]["traceId"])
 
-    def test_training_init_invalid_mode_returns_validation_error(self):
+    def test_training_init_invalid_mode_returns_stable_error_code(self):
         response = self.client.post(
             "/api/v1/training/init",
             json={"user_id": "u-001", "training_mode": "sandbox"},
@@ -645,7 +659,32 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
 
         payload = response.json()
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(payload["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(payload["error"]["code"], "TRAINING_MODE_UNSUPPORTED")
+        self.assertEqual(payload["error"]["details"]["provided_mode"], "sandbox")
+        self.assertEqual(
+            payload["error"]["details"]["supported_modes"],
+            ["guided", "self-paced", "adaptive"],
+        )
+        self.assertTrue(payload["error"]["traceId"])
+
+    def test_training_submit_scenario_mismatch_returns_stable_error_code(self):
+        response = self.client.post(
+            "/api/v1/training/round/submit",
+            json={
+                "session_id": "s-001",
+                "scenario_id": "S999",
+                "user_input": "继续",
+            },
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(payload["error"]["code"], "TRAINING_SCENARIO_MISMATCH")
+        self.assertEqual(payload["error"]["details"]["route"], "training.submit_round")
+        self.assertEqual(payload["error"]["details"]["session_id"], "s-001")
+        self.assertEqual(payload["error"]["details"]["scenario_id"], "S999")
+        self.assertEqual(payload["error"]["details"]["expected_scenario_id"], "S1")
+        self.assertEqual(payload["error"]["details"]["round_no"], 1)
         self.assertTrue(payload["error"]["traceId"])
 
     def test_training_request_validation_rejects_story_fields_with_stable_error_envelope(self):

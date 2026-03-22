@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -35,11 +36,14 @@ class TrainingStandaloneAppTestCase(unittest.TestCase):
     """验证训练专用应用可独立提供训练接口。"""
 
     def setUp(self):
+        self.database_manager_patcher = patch("api.training_app.DatabaseManager")
+        self.database_manager_patcher.start()
         app.dependency_overrides[get_training_service] = lambda: _FakeTrainingService()
         self.client = TestClient(app)
 
     def tearDown(self):
         app.dependency_overrides.clear()
+        self.database_manager_patcher.stop()
 
     def test_health_endpoint_should_return_training_service_scope(self):
         """健康检查应明确返回训练服务正常状态。"""
@@ -48,6 +52,17 @@ class TrainingStandaloneAppTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["status"], "healthy")
+        self.assertTrue(response.headers["X-Trace-Id"])
+
+    def test_health_endpoint_should_echo_trace_id_header(self):
+        """成功响应也应复用来路 trace id，便于端到端排障。"""
+        response = self.client.get(
+            "/health",
+            headers={"X-Trace-Id": "training-trace-001"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["X-Trace-Id"], "training-trace-001")
 
     def test_init_endpoint_should_work_on_training_only_app(self):
         """训练专用应用应能独立响应训练初始化接口。"""
@@ -70,6 +85,15 @@ class TrainingStandaloneAppTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["session_id"], "standalone-s1")
         self.assertEqual(payload["data"]["player_profile"]["name"], "李敏")
         self.assertEqual(payload["data"]["next_scenario"]["id"], "S1")
+
+    def test_training_only_app_should_not_expose_story_routes(self):
+        """训练专用入口不应旁路暴露 story 域接口。"""
+        response = self.client.get(
+            "/api/v1/game/sessions",
+            params={"user_id": "story-user"},
+        )
+
+        self.assertEqual(response.status_code, 404)
 
 
 if __name__ == "__main__":

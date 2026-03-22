@@ -22,7 +22,9 @@ export interface UseTrainingReadQueryResult<TData> {
   data: TData | null;
   status: TrainingReadQueryStatus;
   errorMessage: string | null;
+  errorCode: string | null;
   sessionTarget: TrainingSessionReadTarget;
+  hasStaleData: boolean;
   reload: () => void;
 }
 
@@ -56,19 +58,26 @@ export function useTrainingReadQuery<TData>({
   const [data, setData] = useState<TData | null>(null);
   const [status, setStatus] = useState<TrainingReadQueryStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
   const requestIdRef = useRef(0);
   const lastSessionIdRef = useRef<string | null>(null);
   const activeSessionRef = useRef(state.activeSession);
+  const dataRef = useRef<TData | null>(null);
 
   useEffect(() => {
     activeSessionRef.current = state.activeSession;
   }, [state.activeSession]);
 
   useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
+  useEffect(() => {
     if (!sessionTarget.sessionId) {
       lastSessionIdRef.current = null;
       setData(null);
+      setErrorCode(null);
       setStatus((currentStatus) => (currentStatus === 'error' ? currentStatus : 'idle'));
       return;
     }
@@ -84,6 +93,7 @@ export function useTrainingReadQuery<TData>({
 
     setStatus('loading');
     setErrorMessage(null);
+    setErrorCode(null);
 
     void fetcher(sessionTarget.sessionId)
       .then((nextData) => {
@@ -99,7 +109,8 @@ export function useTrainingReadQuery<TData>({
           return;
         }
 
-        if (isTerminalTrainingSessionRecoveryError(error)) {
+        const isTerminalRecoveryError = isTerminalTrainingSessionRecoveryError(error);
+        if (isTerminalRecoveryError) {
           clearTrainingSessionRecoveryArtifacts({
             invalidSessionId: sessionTarget.sessionId,
             activeSession: activeSessionRef.current,
@@ -107,7 +118,18 @@ export function useTrainingReadQuery<TData>({
           });
         }
 
-        setData(null);
+        if (isServiceError(error)) {
+          setErrorCode(error.code);
+        } else {
+          setErrorCode(null);
+        }
+
+        const hasCurrentSessionData =
+          lastSessionIdRef.current === sessionTarget.sessionId && dataRef.current !== null;
+
+        if (isTerminalRecoveryError || !hasCurrentSessionData) {
+          setData(null);
+        }
         setErrorMessage(getTrainingReadErrorMessage(error, fallbackErrorMessage));
         setStatus('error');
       });
@@ -131,7 +153,9 @@ export function useTrainingReadQuery<TData>({
     data,
     status,
     errorMessage,
+    errorCode,
     sessionTarget,
+    hasStaleData: status === 'error' && data !== null,
     reload,
   };
 }

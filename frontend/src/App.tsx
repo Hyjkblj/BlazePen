@@ -1,17 +1,4 @@
-import AppRouter from './router';
-import { FeedbackProvider, GameFlowProvider, TrainingFlowProvider } from '@/contexts';
+import AppStory from './apps/story/AppStory';
 import './App.css';
 
-function App() {
-  return (
-    <FeedbackProvider>
-      <GameFlowProvider>
-        <TrainingFlowProvider>
-          <AppRouter />
-        </TrainingFlowProvider>
-      </GameFlowProvider>
-    </FeedbackProvider>
-  );
-}
-
-export default App;
+export default AppStory;

@@ -318,12 +318,14 @@ const normalizeTrainingScenario = (
     title: normalizeOptionalString(payload?.title) ?? '',
     eraDate: normalizeOptionalString(payload?.era_date) ?? '',
     location: normalizeOptionalString(payload?.location) ?? '',
-    brief: normalizeOptionalString(payload?.brief) ?? '',
+    brief:
+      normalizeOptionalString(payload?.brief) ??
+      normalizeOptionalString(payload?.briefing) ??
+      '',
     mission: normalizeOptionalString(payload?.mission) ?? '',
     decisionFocus: normalizeOptionalString(payload?.decision_focus) ?? '',
     targetSkills: normalizeStringArray(payload?.target_skills),
     riskTags: normalizeStringArray(payload?.risk_tags),
-    briefing: normalizeOptionalString(payload?.briefing) ?? '',
     options: Array.isArray(payload?.options)
       ? payload.options
           .map((item) => normalizeTrainingScenarioOption(item))

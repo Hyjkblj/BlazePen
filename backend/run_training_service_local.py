@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from api.services.training_service import TrainingService
-from database.db_manager import DatabaseManager
+from training_runner_bootstrap import bootstrap_database
 
 
 # 为不同场景准备一组更贴合业务的默认作答文本。
@@ -48,7 +48,6 @@ DEFAULT_ACTION_TEMPLATES: Dict[str, Dict[str, str]] = {
     },
 }
 
-
 def _configure_stdout_encoding() -> None:
     """尽量把终端输出切到 UTF-8，减少 Windows 控制台中文显示异常。"""
     if hasattr(sys.stdout, "reconfigure"):
@@ -78,7 +77,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--skip-init-db",
         action="store_true",
-        help="跳过 init_db，仅做连接与服务层调用",
+        help="跳过 scripts/init_db.py，仅做连接与服务层调用",
+    )
+    parser.add_argument(
+        "--check-db-status",
+        action="store_true",
+        help="在烟测前显式执行 scripts/check_database_status.py",
     )
     parser.add_argument(
         "--save-json-dir",
@@ -178,11 +182,18 @@ def run_local_smoke(args: argparse.Namespace) -> int:
     """执行直连服务层的完整烟测流程。"""
     _configure_stdout_encoding()
 
-    db_manager = DatabaseManager()
-    db_manager.check_connection()
     if not args.skip_init_db:
-        # 这里使用 create_all 的方式补齐训练表，避免本地第一次运行时缺表。
-        db_manager.init_db()
+        _print_section("数据库初始化")
+        print("执行 scripts/init_db.py，统一走显式迁移入口。")
+
+    if getattr(args, "check_db_status", False):
+        _print_section("数据库自检")
+        print("执行 scripts/check_database_status.py，确认当前数据库状态。")
+
+    db_manager = bootstrap_database(
+        skip_init_db=bool(args.skip_init_db),
+        check_db_status=bool(getattr(args, "check_db_status", False)),
+    )
 
     training_service = TrainingService(db_manager=db_manager)
     user_id = args.user_id or f"local-training-{uuid.uuid4().hex[:8]}"
@@ -288,10 +299,10 @@ def run_local_smoke(args: argparse.Namespace) -> int:
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     """命令行入口。"""
     parser = _build_arg_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     return run_local_smoke(args)
 
 

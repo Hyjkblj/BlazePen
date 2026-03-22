@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrainingFlowProvider, useTrainingFlow, type ActiveTrainingSessionState } from '@/contexts';
 import { ServiceError } from '@/services/serviceError';
@@ -124,9 +124,60 @@ describe('useTrainingReadQuery', () => {
     });
 
     expect(result.current.query.errorMessage).toBe('训练会话恢复状态损坏，当前结果无法读取。');
+    expect(result.current.query.errorCode).toBeNull();
     expect(result.current.query.sessionTarget.sessionId).toBeNull();
+    expect(result.current.query.hasStaleData).toBe(false);
     expect(result.current.activeSession).toBeNull();
     expect(readTrainingResumeTarget()).toBeNull();
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the last successful read model visible when a reload fails transiently', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce({ sessionId: 'training-session-1', score: 0.82 })
+      .mockRejectedValueOnce(
+        new ServiceError({
+          code: 'REQUEST_TIMEOUT',
+          status: 504,
+          message: 'training read timed out',
+        })
+      );
+
+    const { result } = renderHook(
+      () =>
+        useTrainingReadQuery({
+          explicitSessionId: 'training-session-1',
+          fetcher,
+          fallbackErrorMessage: '读取失败。',
+        }),
+      { wrapper: createWrapper(null) }
+    );
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('ready');
+    });
+
+    expect(result.current.data).toEqual({
+      sessionId: 'training-session-1',
+      score: 0.82,
+    });
+
+    act(() => {
+      result.current.reload();
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('error');
+    });
+
+    expect(result.current.errorCode).toBe('REQUEST_TIMEOUT');
+    expect(result.current.errorMessage).toBe('训练结果读取超时，请重试。');
+    expect(result.current.hasStaleData).toBe(true);
+    expect(result.current.data).toEqual({
+      sessionId: 'training-session-1',
+      score: 0.82,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });

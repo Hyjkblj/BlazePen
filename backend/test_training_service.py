@@ -14,6 +14,8 @@ from training.constants import DEFAULT_EVAL_MODEL, DEFAULT_K_STATE, DEFAULT_S_ST
 from training.config_loader import FlowForcedRoundConfig, ScenarioItemConfig, load_training_runtime_config, model_copy
 from training.exceptions import (
     DuplicateRoundSubmissionError,
+    TrainingModeUnsupportedError,
+    TrainingScenarioMismatchError,
     TrainingSessionRecoveryStateError,
 )
 from training.output_assembler_policy import TrainingOutputAssemblerPolicy
@@ -1013,10 +1015,12 @@ class TrainingServiceTestCase(unittest.TestCase):
 
     def test_init_training_should_reject_unknown_training_mode(self):
         """未知训练模式应尽早报错，避免脏数据写入会话表。"""
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(TrainingModeUnsupportedError) as cm:
             self.service.init_training(user_id="u0-invalid", training_mode="sandbox")
 
         self.assertIn("unsupported training mode", str(cm.exception))
+        self.assertEqual(cm.exception.raw_mode, "sandbox")
+        self.assertEqual(cm.exception.supported_modes, ["guided", "self-paced", "adaptive"])
 
     def test_init_training_should_use_runtime_config_default_sequence(self):
         """注入自定义运行时配置时，服务应优先使用配置里的默认场景序列。"""
@@ -1092,12 +1096,14 @@ class TrainingServiceTestCase(unittest.TestCase):
         init_result = self.service.init_training(user_id="u1")
         session_id = init_result["session_id"]
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TrainingScenarioMismatchError) as cm:
             self.service.submit_round(
                 session_id=session_id,
                 scenario_id="S999",
                 user_input="test input",
             )
+        self.assertEqual(cm.exception.expected_scenario_id, "S1")
+        self.assertEqual(cm.exception.round_no, 1)
 
     def test_submit_round_scenario_mismatch_can_be_disabled(self):
         # 显式注入关闭顺序校验的策略，替代旧的全局常量 monkeypatch。
@@ -1567,7 +1573,7 @@ class TrainingServiceTestCase(unittest.TestCase):
             "K8": 0.9,
         }
 
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(TrainingScenarioMismatchError) as cm:
             service.submit_round(
                 session_id=session_id,
                 scenario_id="S1",
@@ -1639,7 +1645,7 @@ class TrainingServiceTestCase(unittest.TestCase):
             user_input="hello",
         )
 
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(TrainingScenarioMismatchError) as cm:
             service.submit_round(
                 session_id=session_id,
                 scenario_id=init_result["scenario_candidates"][1]["id"],
@@ -1647,6 +1653,8 @@ class TrainingServiceTestCase(unittest.TestCase):
             )
 
         self.assertIn("scenario mismatch: allowed=", str(cm.exception))
+        self.assertTrue(cm.exception.allowed_scenario_ids)
+        self.assertEqual(cm.exception.round_no, 2)
 
     def test_submit_round_should_persist_structured_kt_observation(self):
         """提交回合后，应同步落一份结构化 KT 观测，便于后续分析和报表复用。"""
@@ -2156,7 +2164,7 @@ class TrainingServiceTestCase(unittest.TestCase):
             user_input="hello",
         )
 
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(TrainingScenarioMismatchError) as cm:
             service.submit_round(
                 session_id=session_id,
                 scenario_id="S2",
@@ -2164,6 +2172,8 @@ class TrainingServiceTestCase(unittest.TestCase):
             )
 
         self.assertIn("expected=S2B", str(cm.exception))
+        self.assertEqual(cm.exception.expected_scenario_id, "S2B")
+        self.assertEqual(cm.exception.round_no, 2)
 
     def test_branch_recovery_should_use_session_frozen_catalog_without_repository_fallback(self):
         """补救分支提交后，应只依赖会话冻结目录推进分支，不再回退实时仓储。"""

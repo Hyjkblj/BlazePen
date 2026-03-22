@@ -135,7 +135,8 @@ const renderObservation = (observation: TrainingKtObservation) => (
 function TrainingDiagnostics() {
   const [searchParams] = useSearchParams();
   const querySessionId = searchParams.get('sessionId');
-  const { data, status, errorMessage, sessionTarget, reload } = useTrainingDiagnostics(querySessionId);
+  const { data, status, errorMessage, sessionTarget, hasStaleData, reload } =
+    useTrainingDiagnostics(querySessionId);
 
   return (
     <TrainingInsightShell
@@ -143,21 +144,23 @@ function TrainingDiagnostics() {
       description="训练诊断页聚焦推荐日志、风险分布和可解释观测，不让页面层回扫 history 推导这些统计。"
       activeView="diagnostics"
       sessionId={sessionTarget.sessionId}
+      sessionSource={sessionTarget.source}
       navigationSessionId={querySessionId}
       sessionStatus={data?.status ?? sessionTarget.status}
       loadingMessage={status === 'loading' ? '正在读取训练诊断...' : null}
       errorMessage={errorMessage}
+      hasStaleData={hasStaleData}
+      emptyState={
+        !data && !sessionTarget.sessionId
+          ? {
+              title: '暂无训练诊断',
+              description:
+                '当前没有可读取的训练 sessionId。请先开始训练，或从训练主页恢复训练会话后再查看诊断。',
+            }
+          : null
+      }
       onRetry={sessionTarget.sessionId ? reload : null}
     >
-      {!sessionTarget.sessionId ? (
-        <section className="training-insight-section">
-          <h2>暂无训练诊断</h2>
-          <p className="training-insight-empty">
-            当前没有可读取的训练 sessionId。请先开始训练，或从训练主页恢复训练会话后再查看诊断。
-          </p>
-        </section>
-      ) : null}
-
       {data ? (
         <>
           <section className="training-insight-section">

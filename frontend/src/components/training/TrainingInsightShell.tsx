@@ -6,19 +6,28 @@ import {
   buildTrainingProgressRoute,
   buildTrainingReportRoute,
 } from '@/config/routes';
+import type { TrainingSessionReadTargetSource } from '@/hooks/useTrainingSessionReadTarget';
 import './TrainingInsightShell.css';
 
 type TrainingInsightView = 'progress' | 'report' | 'diagnostics';
+
+interface TrainingInsightEmptyState {
+  title: string;
+  description: string;
+}
 
 interface TrainingInsightShellProps {
   title: string;
   description: string;
   activeView: TrainingInsightView;
   sessionId: string | null;
+  sessionSource?: TrainingSessionReadTargetSource | null;
   navigationSessionId?: string | null;
   sessionStatus?: string | null;
   loadingMessage?: string | null;
   errorMessage?: string | null;
+  hasStaleData?: boolean;
+  emptyState?: TrainingInsightEmptyState | null;
   onRetry?: (() => void) | null;
   children: ReactNode;
 }
@@ -41,18 +50,35 @@ const buildNavItems = (sessionId: string | null) => [
   },
 ];
 
+const TRAINING_SESSION_SOURCE_LABELS: Record<
+  Exclude<TrainingSessionReadTargetSource, 'none'>,
+  string
+> = {
+  explicit: '显式 sessionId',
+  'active-session': '当前活动会话',
+  'resume-target': '本地恢复入口',
+};
+
 export function TrainingInsightShell({
   title,
   description,
   activeView,
   sessionId,
+  sessionSource = null,
   navigationSessionId = null,
   sessionStatus = null,
   loadingMessage = null,
   errorMessage = null,
+  hasStaleData = false,
+  emptyState = null,
   onRetry = null,
   children,
 }: TrainingInsightShellProps) {
+  const sessionSourceLabel =
+    sessionSource && sessionSource !== 'none'
+      ? TRAINING_SESSION_SOURCE_LABELS[sessionSource]
+      : null;
+
   return (
     <div className="training-insight-page">
       <section className="training-insight-shell">
@@ -67,6 +93,15 @@ export function TrainingInsightShell({
           <Link className="training-insight-shell__secondary-link" to={ROUTES.TRAINING}>
             返回训练主页
           </Link>
+          {sessionId && onRetry ? (
+            <button
+              className="training-insight-shell__ghost-button"
+              type="button"
+              onClick={onRetry}
+            >
+              刷新读取
+            </button>
+          ) : null}
         </div>
 
         <nav className="training-insight-shell__nav" aria-label="训练结果导航">
@@ -97,6 +132,12 @@ export function TrainingInsightShell({
                 <dd>{sessionStatus}</dd>
               </div>
             ) : null}
+            {sessionSourceLabel ? (
+              <div>
+                <dt>读取来源</dt>
+                <dd>{sessionSourceLabel}</dd>
+              </div>
+            ) : null}
           </dl>
         )}
 
@@ -117,7 +158,21 @@ export function TrainingInsightShell({
           </div>
         ) : null}
 
-        <div className="training-insight-shell__content">{children}</div>
+        {hasStaleData ? (
+          <div className="training-insight-shell__stale-banner" role="status">
+            当前显示的是最近一次成功读取的训练结果。可以稍后重新加载以获取最新状态。
+          </div>
+        ) : null}
+
+        <div className="training-insight-shell__content">
+          {emptyState ? (
+            <section className="training-insight-section training-insight-section--state">
+              <h2>{emptyState.title}</h2>
+              <p className="training-insight-empty">{emptyState.description}</p>
+            </section>
+          ) : null}
+          {children}
+        </div>
       </section>
     </div>
   );

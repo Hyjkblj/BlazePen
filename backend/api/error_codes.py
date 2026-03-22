@@ -19,6 +19,8 @@ TRAINING_SESSION_NOT_FOUND = "TRAINING_SESSION_NOT_FOUND"
 TRAINING_SESSION_COMPLETED = "TRAINING_SESSION_COMPLETED"
 TRAINING_SESSION_RECOVERY_STATE_CORRUPTED = "TRAINING_SESSION_RECOVERY_STATE_CORRUPTED"
 TRAINING_ROUND_DUPLICATE = "TRAINING_ROUND_DUPLICATE"
+TRAINING_MODE_UNSUPPORTED = "TRAINING_MODE_UNSUPPORTED"
+TRAINING_SCENARIO_MISMATCH = "TRAINING_SCENARIO_MISMATCH"
 
 CHARACTER_NOT_FOUND = "CHARACTER_NOT_FOUND"
 IMAGE_GENERATION_FAILED = "IMAGE_GENERATION_FAILED"
@@ -49,19 +51,4 @@ def infer_story_error_code(message: str, default: str = VALIDATION_ERROR) -> str
         return STORY_ROUND_DUPLICATE
     if "会话已过期且无法恢复" in message:
         return STORY_SESSION_RESTORE_FAILED
-    return default
-
-
-def infer_training_error_code(message: str, default: str = VALIDATION_ERROR) -> str:
-    """Map legacy training-domain error text to a stable error code."""
-
-    normalized = (message or "").strip().lower()
-    if "session not found" in normalized:
-        return TRAINING_SESSION_NOT_FOUND
-    if "training session already completed" in normalized:
-        return TRAINING_SESSION_COMPLETED
-    if "training session recovery state corrupted" in normalized:
-        return TRAINING_SESSION_RECOVERY_STATE_CORRUPTED
-    if "duplicate round submission" in normalized:
-        return TRAINING_ROUND_DUPLICATE
     return default

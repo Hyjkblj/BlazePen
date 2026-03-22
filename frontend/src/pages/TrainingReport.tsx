@@ -96,7 +96,8 @@ const renderMetricTable = (title: string, metrics: TrainingReportMetric[]) => (
 function TrainingReport() {
   const [searchParams] = useSearchParams();
   const querySessionId = searchParams.get('sessionId');
-  const { data, status, errorMessage, sessionTarget, reload } = useTrainingReport(querySessionId);
+  const { data, status, errorMessage, sessionTarget, hasStaleData, reload } =
+    useTrainingReport(querySessionId);
 
   return (
     <TrainingInsightShell
@@ -104,21 +105,23 @@ function TrainingReport() {
       description="训练报告页只展示服务端整理后的读模型摘要、能力变化和复盘建议，不在页面层二次拼装 recommendation、audit 或内部快照结构。"
       activeView="report"
       sessionId={sessionTarget.sessionId}
+      sessionSource={sessionTarget.source}
       navigationSessionId={querySessionId}
       sessionStatus={data?.status ?? sessionTarget.status}
       loadingMessage={status === 'loading' ? '正在读取训练报告...' : null}
       errorMessage={errorMessage}
+      hasStaleData={hasStaleData}
+      emptyState={
+        !data && !sessionTarget.sessionId
+          ? {
+              title: '暂无训练报告',
+              description:
+                '当前没有可读取的训练 sessionId。请先完成一次训练，或从训练主页恢复训练会话后再查看报告。',
+            }
+          : null
+      }
       onRetry={sessionTarget.sessionId ? reload : null}
     >
-      {!sessionTarget.sessionId ? (
-        <section className="training-insight-section">
-          <h2>暂无训练报告</h2>
-          <p className="training-insight-empty">
-            当前没有可读取的训练 sessionId。请先完成一次训练，或从训练主页恢复训练会话后再查看报告。
-          </p>
-        </section>
-      ) : null}
-
       {data ? (
         <>
           <section className="training-insight-section">

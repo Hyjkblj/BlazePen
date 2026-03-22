@@ -100,7 +100,6 @@ describe('trainingSession normalizers', () => {
         decisionFocus: 'Verify the source',
         targetSkills: [],
         riskTags: [],
-        briefing: '',
         options: [
           {
             id: 'opt-1',
@@ -122,6 +121,29 @@ describe('trainingSession normalizers', () => {
       },
       scenarioCandidates: [],
     });
+  });
+
+  it('normalizes legacy briefing into the canonical brief field before pages consume the scenario', () => {
+    const result = normalizeTrainingInitPayload(
+      {
+        session_id: 'session-legacy-briefing',
+        status: 'active',
+        round_no: 0,
+        next_scenario: {
+          id: 'scenario-legacy',
+          title: 'Legacy Briefing Scenario',
+          brief: '',
+          briefing: 'Use the archived briefing copy.',
+        },
+      },
+      'guided'
+    );
+
+    expect(result.nextScenario).toMatchObject({
+      id: 'scenario-legacy',
+      brief: 'Use the archived briefing copy.',
+    });
+    expect('briefing' in (result.nextScenario ?? {})).toBe(false);
   });
 
   it('fails fast when the backend returns a non-canonical response training mode', () => {
@@ -332,7 +354,6 @@ describe('trainingSession normalizers', () => {
         decisionFocus: '',
         targetSkills: [],
         riskTags: [],
-        briefing: '',
         options: [],
         completionHint: '',
         recommendation: null,
@@ -348,7 +369,6 @@ describe('trainingSession normalizers', () => {
           decisionFocus: '',
           targetSkills: [],
           riskTags: [],
-          briefing: '',
           options: [],
           completionHint: '',
           recommendation: null,

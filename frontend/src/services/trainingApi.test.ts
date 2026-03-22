@@ -194,6 +194,7 @@ describe('trainingApi', () => {
       resumable_scenario: {
         id: 'scenario-2',
         title: 'Follow-up interview',
+        briefing: 'Legacy scenario briefing',
       },
       scenario_candidates: [
         {
@@ -218,6 +219,7 @@ describe('trainingApi', () => {
       },
       resumableScenario: {
         id: 'scenario-2',
+        brief: 'Legacy scenario briefing',
       },
       scenarioCandidates: [{ id: 'scenario-2' }],
       canResume: true,

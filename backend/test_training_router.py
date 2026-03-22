@@ -10,7 +10,12 @@ from fastapi.testclient import TestClient
 from api.dependencies import get_training_query_service, get_training_service
 from api.middleware.error_handler import install_common_exception_handlers
 from api.routers import training
-from training.exceptions import TrainingSessionNotFoundError, TrainingSessionRecoveryStateError
+from training.exceptions import (
+    TrainingModeUnsupportedError,
+    TrainingScenarioMismatchError,
+    TrainingSessionNotFoundError,
+    TrainingSessionRecoveryStateError,
+)
 
 
 class _FakeTrainingService:
@@ -711,7 +716,34 @@ class TrainingRouterTestCase(unittest.TestCase):
         payload = response.json()
         self.assertEqual(response.status_code, 400)
         self.assertEqual(payload["code"], 400)
-        self.assertIn("unsupported training mode", payload["message"])
+        self.assertEqual(payload["error"]["code"], "TRAINING_MODE_UNSUPPORTED")
+        self.assertEqual(payload["error"]["details"]["route"], "training.init")
+        self.assertEqual(payload["error"]["details"]["provided_mode"], "sandbox")
+        self.assertEqual(
+            payload["error"]["details"]["supported_modes"],
+            ["guided", "self-paced", "adaptive"],
+        )
+
+    def test_submit_route_should_return_conflict_for_scenario_mismatch(self):
+        self.app.dependency_overrides[get_training_service] = lambda: _ScenarioMismatchTrainingService()
+
+        response = self.client.post(
+            "/api/v1/training/round/submit",
+            json={
+                "session_id": "s-test",
+                "scenario_id": "S999",
+                "user_input": "hello",
+            },
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(payload["error"]["code"], "TRAINING_SCENARIO_MISMATCH")
+        self.assertEqual(payload["error"]["details"]["route"], "training.submit_round")
+        self.assertEqual(payload["error"]["details"]["session_id"], "s-test")
+        self.assertEqual(payload["error"]["details"]["scenario_id"], "S999")
+        self.assertEqual(payload["error"]["details"]["expected_scenario_id"], "S1")
+        self.assertEqual(payload["error"]["details"]["round_no"], 1)
 
     def test_submit_route_should_validate_against_explicit_evaluation_schema(self):
         """提交接口应通过显式评估 schema 返回稳定字段。"""
@@ -824,7 +856,19 @@ class _InvalidModeTrainingService:
     """用于验证路由错误码分支的失败桩。"""
 
     def init_training(self, user_id, character_id=None, training_mode="guided", player_profile=None):
-        raise ValueError(f"unsupported training mode: {training_mode}")
+        raise TrainingModeUnsupportedError(
+            raw_mode=training_mode,
+            supported_modes=["guided", "self-paced", "adaptive"],
+        )
+
+
+class _ScenarioMismatchTrainingService:
+    def submit_round(self, session_id, scenario_id, user_input, selected_option=None):
+        raise TrainingScenarioMismatchError(
+            submitted_scenario_id=scenario_id,
+            expected_scenario_id="S1",
+            round_no=1,
+        )
 
 
 if __name__ == "__main__":

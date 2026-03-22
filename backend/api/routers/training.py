@@ -7,12 +7,12 @@ from fastapi import APIRouter, Depends
 from api.dependencies import get_training_query_service, get_training_service
 from api.error_codes import (
     INTERNAL_ERROR,
+    TRAINING_MODE_UNSUPPORTED,
     TRAINING_ROUND_DUPLICATE,
+    TRAINING_SCENARIO_MISMATCH,
     TRAINING_SESSION_COMPLETED,
     TRAINING_SESSION_NOT_FOUND,
     TRAINING_SESSION_RECOVERY_STATE_CORRUPTED,
-    VALIDATION_ERROR,
-    infer_training_error_code,
 )
 from api.response import build_success_payload, error_response, not_found_response
 from api.schemas import (
@@ -32,6 +32,8 @@ from api.services.training_service import TrainingService
 from training.training_query_service import TrainingQueryService
 from training.exceptions import (
     DuplicateRoundSubmissionError,
+    TrainingModeUnsupportedError,
+    TrainingScenarioMismatchError,
     TrainingSessionCompletedError,
     TrainingSessionNotFoundError,
     TrainingSessionRecoveryStateError,
@@ -91,6 +93,29 @@ def _build_training_domain_error_response(
             details=details,
         )
 
+    if isinstance(exc, TrainingModeUnsupportedError):
+        details["provided_mode"] = exc.raw_mode or None
+        details["supported_modes"] = list(exc.supported_modes)
+        return error_response(
+            code=400,
+            message=str(exc),
+            error_code=TRAINING_MODE_UNSUPPORTED,
+            details=details,
+        )
+
+    if isinstance(exc, TrainingScenarioMismatchError):
+        details["round_no"] = exc.round_no
+        if exc.expected_scenario_id is not None:
+            details["expected_scenario_id"] = exc.expected_scenario_id
+        if exc.allowed_scenario_ids:
+            details["allowed_scenario_ids"] = list(exc.allowed_scenario_ids)
+        return error_response(
+            code=409,
+            message=str(exc),
+            error_code=TRAINING_SCENARIO_MISMATCH,
+            details=details,
+        )
+
     if isinstance(exc, TrainingSessionRecoveryStateError):
         details["recovery_reason"] = exc.reason
         if exc.details:
@@ -120,13 +145,10 @@ async def init_training(
             player_profile=_serialize_player_profile_request(request),
         )
         return build_success_payload(data=result)
-    except ValueError as exc:
-        message = str(exc)
-        return error_response(
-            code=400,
-            message=message,
-            error_code=infer_training_error_code(message, default=VALIDATION_ERROR),
-            details={"route": "training.init"},
+    except TrainingModeUnsupportedError as exc:
+        return _build_training_domain_error_response(
+            exc,
+            route_name="training.init",
         )
     except Exception as exc:
         logger.error("failed to initialize training: %s", str(exc), exc_info=True)
@@ -153,13 +175,6 @@ async def get_next_scenario(
             exc,
             route_name="training.next",
             session_id=request.session_id,
-        )
-    except ValueError as exc:
-        message = str(exc)
-        return not_found_response(
-            message=message,
-            error_code=infer_training_error_code(message),
-            details={"route": "training.next", "session_id": request.session_id},
         )
     except Exception as exc:
         logger.error("failed to get next training scenario: %s", str(exc), exc_info=True)
@@ -188,6 +203,7 @@ async def submit_round(
         return build_success_payload(data=result)
     except (
         DuplicateRoundSubmissionError,
+        TrainingScenarioMismatchError,
         TrainingSessionCompletedError,
         TrainingSessionNotFoundError,
         TrainingSessionRecoveryStateError,
@@ -197,18 +213,6 @@ async def submit_round(
             route_name="training.submit_round",
             session_id=request.session_id,
             scenario_id=request.scenario_id,
-        )
-    except ValueError as exc:
-        message = str(exc)
-        return error_response(
-            code=400,
-            message=message,
-            error_code=infer_training_error_code(message, default=VALIDATION_ERROR),
-            details={
-                "route": "training.submit_round",
-                "session_id": request.session_id,
-                "scenario_id": request.scenario_id,
-            },
         )
     except Exception as exc:
         logger.error("failed to submit training round: %s", str(exc), exc_info=True)
@@ -266,13 +270,6 @@ async def get_progress(
             route_name="training.progress",
             session_id=session_id,
         )
-    except ValueError as exc:
-        message = str(exc)
-        return not_found_response(
-            message=message,
-            error_code=infer_training_error_code(message),
-            details={"route": "training.progress", "session_id": session_id},
-        )
     except Exception as exc:
         logger.error("failed to get training progress: %s", str(exc), exc_info=True)
         return error_response(
@@ -325,13 +322,6 @@ async def get_report(
             route_name="training.report",
             session_id=session_id,
         )
-    except ValueError as exc:
-        message = str(exc)
-        return not_found_response(
-            message=message,
-            error_code=infer_training_error_code(message),
-            details={"route": "training.report", "session_id": session_id},
-        )
     except Exception as exc:
         logger.error("failed to get training report: %s", str(exc), exc_info=True)
         return error_response(
@@ -357,13 +347,6 @@ async def get_diagnostics(
             exc,
             route_name="training.diagnostics",
             session_id=session_id,
-        )
-    except ValueError as exc:
-        message = str(exc)
-        return not_found_response(
-            message=message,
-            error_code=infer_training_error_code(message),
-            details={"route": "training.diagnostics", "session_id": session_id},
         )
     except Exception as exc:
         logger.error("failed to get training diagnostics: %s", str(exc), exc_info=True)

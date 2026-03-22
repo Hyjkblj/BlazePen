@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from training.branch_resolver import BranchResolver
 from training.constants import TRAINING_RUNTIME_CONFIG
+from training.exceptions import TrainingScenarioMismatchError
 from training.recommendation_policy import RecommendationPolicy
 from training.scenario_policy import ScenarioPolicy
 from training.training_mode import TrainingModeCatalog
@@ -165,8 +166,10 @@ class TrainingRoundFlowPolicy:
         if branch_payload is not None:
             expected_id = str(branch_payload["id"])
             if str(submitted_scenario_id) != expected_id:
-                raise ValueError(
-                    f"scenario mismatch: expected={expected_id}, submitted={submitted_scenario_id}, round={current_round_no + 1}"
+                raise TrainingScenarioMismatchError(
+                    submitted_scenario_id=str(submitted_scenario_id),
+                    expected_scenario_id=expected_id,
+                    round_no=current_round_no + 1,
                 )
             return
 
@@ -180,8 +183,10 @@ class TrainingRoundFlowPolicy:
         if forced_round_payload is not None:
             expected_id = str(forced_round_payload["id"])
             if str(submitted_scenario_id) != expected_id:
-                raise ValueError(
-                    f"scenario mismatch: expected={expected_id}, submitted={submitted_scenario_id}, round={next_round_no}"
+                raise TrainingScenarioMismatchError(
+                    submitted_scenario_id=str(submitted_scenario_id),
+                    expected_scenario_id=expected_id,
+                    round_no=next_round_no,
                 )
             return
 
@@ -205,16 +210,20 @@ class TrainingRoundFlowPolicy:
                 if self.recommendation_policy.is_strict_mode(training_mode or ""):
                     expected_id = str(ranked_candidates[0]["id"])
                     if str(submitted_scenario_id) != expected_id:
-                        raise ValueError(
-                            f"scenario mismatch: expected={expected_id}, submitted={submitted_scenario_id}, round={current_round_no + 1}"
+                        raise TrainingScenarioMismatchError(
+                            submitted_scenario_id=str(submitted_scenario_id),
+                            expected_scenario_id=expected_id,
+                            round_no=current_round_no + 1,
                         )
                     return
 
                 allowed_candidates = self._build_scenario_candidates(training_mode, ranked_candidates)
                 allowed_ids = [str(item["id"]) for item in allowed_candidates if item.get("id")]
                 if allowed_ids and str(submitted_scenario_id) not in allowed_ids:
-                    raise ValueError(
-                        f"scenario mismatch: allowed={','.join(allowed_ids)}, submitted={submitted_scenario_id}, round={current_round_no + 1}"
+                    raise TrainingScenarioMismatchError(
+                        submitted_scenario_id=str(submitted_scenario_id),
+                        allowed_scenario_ids=allowed_ids,
+                        round_no=current_round_no + 1,
                     )
                 return
 
@@ -233,8 +242,10 @@ class TrainingRoundFlowPolicy:
 
             expected_id = str(fallback_payload.get("id") or "").strip()
             if str(submitted_scenario_id) != expected_id:
-                raise ValueError(
-                    f"scenario mismatch: expected={expected_id}, submitted={submitted_scenario_id}, round={current_round_no + 1}"
+                raise TrainingScenarioMismatchError(
+                    submitted_scenario_id=str(submitted_scenario_id),
+                    expected_scenario_id=expected_id,
+                    round_no=current_round_no + 1,
                 )
             return
 

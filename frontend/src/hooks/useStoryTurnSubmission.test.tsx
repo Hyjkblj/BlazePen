@@ -7,8 +7,14 @@ import { ServiceError } from '@/services/serviceError';
 import { submitStoryTurn } from '@/services/storyTurnService';
 import { useStoryTurnSubmission } from './useStoryTurnSubmission';
 
+const telemetrySpy = vi.hoisted(() => vi.fn());
+
 vi.mock('@/services/storyTurnService', () => ({
   submitStoryTurn: vi.fn(),
+}));
+
+vi.mock('@/services/frontendTelemetry', () => ({
+  trackFrontendTelemetry: telemetrySpy,
 }));
 
 const createFeedbackSpy = (): FeedbackContextValue => ({
@@ -37,6 +43,7 @@ const createActionSpies = () => ({
 describe('useStoryTurnSubmission', () => {
   beforeEach(() => {
     vi.mocked(submitStoryTurn).mockReset();
+    telemetrySpy.mockReset();
   });
 
   it('uses the backend returned dialogue and options when the session asks the user to reselect', async () => {
@@ -94,6 +101,24 @@ describe('useStoryTurnSubmission', () => {
       'Game session restored. Please choose an option again.'
     );
     expect(persistReadOnlySnapshot).not.toHaveBeenCalled();
+    expect(telemetrySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domain: 'story',
+        event: 'story.turn.submit',
+        status: 'requested',
+      })
+    );
+    expect(telemetrySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domain: 'story',
+        event: 'story.turn.submit',
+        status: 'succeeded',
+        metadata: expect.objectContaining({
+          needReselectOption: true,
+          nextThreadId: 'thread-restored',
+        }),
+      })
+    );
   });
 
   it('drops the active session instead of switching to a fresh thread when the story session expires', async () => {
@@ -150,6 +175,13 @@ describe('useStoryTurnSubmission', () => {
     expect(actions.rollbackPendingUserMessage).toHaveBeenCalledTimes(1);
     expect(actions.replaceMessages).not.toHaveBeenCalled();
     expect(feedback.error).toHaveBeenCalledWith('Story session expired. Please restart the story.');
+    expect(telemetrySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domain: 'story',
+        event: 'story.turn.submit',
+        status: 'failed',
+      })
+    );
   });
 
   it('drops the active session when the backend restore flow fails explicitly', async () => {

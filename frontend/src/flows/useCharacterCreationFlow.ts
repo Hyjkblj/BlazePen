@@ -9,6 +9,7 @@ import {
 import { ROUTES } from '@/config/routes';
 import { useFeedback, useGameFlow } from '@/contexts';
 import { createCharacter } from '@/services/characterApi';
+import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
 import { checkServerHealth } from '@/services/healthApi';
 import type { CharacterData } from '@/types/game';
 
@@ -170,6 +171,14 @@ export function useCharacterCreationFlow(): UseCharacterCreationFlowResult {
     setIsModalVisible(false);
   };
 
+  const buildCreationTelemetryMetadata = () => ({
+    hasCustomName: name.trim() !== '',
+    appearanceKeywordCount: selectedAppearance.length,
+    personalityKeywordCount: selectedPersonality.length,
+    hasStyle: selectedStyle !== null,
+    gender,
+  });
+
   const submit = async () => {
     setIsModalVisible(false);
     setLoading(true);
@@ -178,6 +187,15 @@ export function useCharacterCreationFlow(): UseCharacterCreationFlowResult {
     try {
       const isHealthy = await checkServerHealth();
       if (!isHealthy) {
+        trackFrontendTelemetry({
+          domain: 'character',
+          event: 'character.create',
+          status: 'failed',
+          metadata: {
+            ...buildCreationTelemetryMetadata(),
+            failureStage: 'health-check',
+          },
+        });
         feedback.error('无法连接到服务器，请检查后端服务是否运行');
         return;
       }
@@ -187,6 +205,13 @@ export function useCharacterCreationFlow(): UseCharacterCreationFlowResult {
       const style = selectedStyle !== null ? styleOptions[selectedStyle] : null;
 
       setLoadingMessage('正在生成你的专属角色...');
+
+      trackFrontendTelemetry({
+        domain: 'character',
+        event: 'character.create',
+        status: 'requested',
+        metadata: buildCreationTelemetryMetadata(),
+      });
 
       const response = await createCharacter({
         name: name || '未命名角色',
@@ -207,6 +232,15 @@ export function useCharacterCreationFlow(): UseCharacterCreationFlowResult {
 
       const characterId = response.characterId;
       if (!isValidCharacterId(characterId)) {
+        trackFrontendTelemetry({
+          domain: 'character',
+          event: 'character.create',
+          status: 'failed',
+          metadata: {
+            ...buildCreationTelemetryMetadata(),
+            failureStage: 'invalid-response',
+          },
+        });
         feedback.error('创建角色失败：未获取到有效角色 ID');
         return;
       }
@@ -230,10 +264,30 @@ export function useCharacterCreationFlow(): UseCharacterCreationFlowResult {
       clearRestoreSession();
       clearActiveSession();
 
+      trackFrontendTelemetry({
+        domain: 'character',
+        event: 'character.create',
+        status: 'succeeded',
+        metadata: {
+          ...buildCreationTelemetryMetadata(),
+          characterId: characterData.characterId,
+        },
+      });
+
       setLoadingMessage('正在加载角色图片...');
       await delay(500);
       navigate(ROUTES.CHARACTER_SELECTION);
     } catch (error: unknown) {
+      trackFrontendTelemetry({
+        domain: 'character',
+        event: 'character.create',
+        status: 'failed',
+        metadata: {
+          ...buildCreationTelemetryMetadata(),
+          failureStage: 'request',
+        },
+        cause: error,
+      });
       const err = error as { response?: { data?: { detail?: string } }; message?: string };
       feedback.error(err.response?.data?.detail || err.message || '创建角色失败，请稍后重试');
     } finally {

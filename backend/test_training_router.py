@@ -780,6 +780,17 @@ class TrainingRouterTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["summary"]["source_exposed_round_count"], 1)
         self.assertTrue(payload["data"]["runtime_state"]["runtime_flags"]["source_exposed"])
 
+    def test_diagnostics_route_should_return_conflict_for_corrupted_recovery_state(self):
+        self.app.dependency_overrides[get_training_query_service] = lambda: _CorruptedSessionTrainingService()
+
+        response = self.client.get("/api/v1/training/diagnostics/s-corrupted")
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(payload["error"]["code"], "TRAINING_SESSION_RECOVERY_STATE_CORRUPTED")
+        self.assertEqual(payload["error"]["details"]["route"], "training.diagnostics")
+        self.assertEqual(payload["error"]["details"]["recovery_reason"], "scenario_sequence_empty")
+
 
 class _MissingSessionTrainingService:
     def get_session_summary(self, session_id):
@@ -797,6 +808,12 @@ class _CorruptedSessionTrainingService:
         )
 
     def get_history(self, session_id):
+        raise TrainingSessionRecoveryStateError(
+            session_id=session_id,
+            reason="scenario_sequence_empty",
+        )
+
+    def get_diagnostics(self, session_id):
         raise TrainingSessionRecoveryStateError(
             session_id=session_id,
             reason="scenario_sequence_empty",

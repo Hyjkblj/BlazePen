@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useTrainingFlow } from '@/contexts';
+import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
 import { getNextTrainingScenario, submitTrainingRound } from '@/services/trainingApi';
 import { getServiceErrorMessage, isServiceError } from '@/services/serviceError';
 import { persistTrainingResumeTarget } from '@/storage/trainingSessionCache';
@@ -140,7 +141,22 @@ export function useTrainingRoundRunner({
       params: Omit<TrainingRoundSubmitParams, 'sessionId'>
     ): Promise<TrainingRoundTransition | null> => {
       const activeSession = state.activeSession;
+      const submitTelemetryMetadata = {
+        sessionId: activeSession?.sessionId ?? null,
+        scenarioId: params.scenarioId,
+        selectedOptionId: params.selectedOption ?? null,
+        hasUserInput: params.userInput.trim() !== '',
+      };
       if (!activeSession?.sessionId) {
+        trackFrontendTelemetry({
+          domain: 'training',
+          event: 'training.round.submit',
+          status: 'failed',
+          metadata: {
+            ...submitTelemetryMetadata,
+            failureStage: 'missing-session',
+          },
+        });
         setErrorMessage('当前没有可提交的训练会话。');
         setStatus('error');
         return null;
@@ -150,6 +166,12 @@ export function useTrainingRoundRunner({
       setErrorMessage(null);
 
       try {
+        trackFrontendTelemetry({
+          domain: 'training',
+          event: 'training.round.submit',
+          status: 'requested',
+          metadata: submitTelemetryMetadata,
+        });
         const submitResult = await submitTrainingRound({
           sessionId: activeSession.sessionId,
           scenarioId: params.scenarioId,
@@ -165,6 +187,18 @@ export function useTrainingRoundRunner({
 
         if (submitResult.isCompleted) {
           setStatus('idle');
+          trackFrontendTelemetry({
+            domain: 'training',
+            event: 'training.round.submit',
+            status: 'succeeded',
+            metadata: {
+              ...submitTelemetryMetadata,
+              roundNo: submitResult.roundNo,
+              status: 'completed',
+              isCompleted: true,
+              recoveryReason: null,
+            },
+          });
           return {
             submitResult,
             nextScenarioResult: null,
@@ -183,6 +217,18 @@ export function useTrainingRoundRunner({
             nextScenarioResult.runtimeState
           );
           setStatus('idle');
+          trackFrontendTelemetry({
+            domain: 'training',
+            event: 'training.round.submit',
+            status: 'succeeded',
+            metadata: {
+              ...submitTelemetryMetadata,
+              roundNo: nextScenarioResult.roundNo,
+              status: nextScenarioResult.status,
+              isCompleted: false,
+              recoveryReason: null,
+            },
+          });
           return {
             submitResult,
             nextScenarioResult,
@@ -193,6 +239,18 @@ export function useTrainingRoundRunner({
           const summaryResult = await restoreCurrentSession();
           if (summaryResult) {
             setStatus('idle');
+            trackFrontendTelemetry({
+              domain: 'training',
+              event: 'training.round.submit',
+              status: 'succeeded',
+              metadata: {
+                ...submitTelemetryMetadata,
+                roundNo: summaryResult.roundNo,
+                status: summaryResult.status,
+                isCompleted: summaryResult.isCompleted,
+                recoveryReason: 'next-fetch-failed',
+              },
+            });
             return {
               submitResult,
               nextScenarioResult: null,
@@ -201,6 +259,16 @@ export function useTrainingRoundRunner({
             };
           }
 
+          trackFrontendTelemetry({
+            domain: 'training',
+            event: 'training.round.submit',
+            status: 'failed',
+            metadata: {
+              ...submitTelemetryMetadata,
+              failureStage: 'next-scenario',
+            },
+            cause: nextError,
+          });
           setErrorMessage(getNextScenarioErrorMessage(nextError));
           setStatus('error');
           return {
@@ -215,6 +283,19 @@ export function useTrainingRoundRunner({
           const summaryResult = await restoreCurrentSession();
           if (summaryResult) {
             setStatus('idle');
+            trackFrontendTelemetry({
+              domain: 'training',
+              event: 'training.round.submit',
+              status: 'succeeded',
+              metadata: {
+                ...submitTelemetryMetadata,
+                roundNo: summaryResult.roundNo,
+                status: summaryResult.status,
+                isCompleted: summaryResult.isCompleted,
+                recoveryReason:
+                  error.code === 'TRAINING_ROUND_DUPLICATE' ? 'duplicate' : 'completed',
+              },
+            });
             return {
               submitResult: null,
               nextScenarioResult: null,
@@ -225,6 +306,16 @@ export function useTrainingRoundRunner({
           }
         }
 
+        trackFrontendTelemetry({
+          domain: 'training',
+          event: 'training.round.submit',
+          status: 'failed',
+          metadata: {
+            ...submitTelemetryMetadata,
+            failureStage: 'submit',
+          },
+          cause: error,
+        });
         setErrorMessage(getSubmitErrorMessage(error));
         setStatus('error');
         return null;

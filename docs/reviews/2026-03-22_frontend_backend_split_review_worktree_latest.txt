@@ -1,0 +1,45 @@
+## 前端 Findings
+- [Major] frontend/src/services/frontendTelemetry.ts:82
+  问题：新增前端 telemetry 把 `requested/succeeded` 事件写到了 `logger.info`，而这条链路在生产环境默认不会输出。
+  原因：可观测性不应依赖开发环境 console 作为事实源；当前 `trackFrontendTelemetry` 没有稳定 sink，只是在 `status !== 'failed'` 时走 dev-only 日志分支。
+  影响：线上只能看到失败事件，看不到初始化、提交、恢复成功这类正常链路，无法做成功率对账、恢复闭环排查和 smoke 结果核实，新增 telemetry 会停留在“开发期自说自话”。
+  建议：把 telemetry 收口到稳定 transport/store，至少保证 `requested/succeeded/failed` 三态在生产环境都能落地；如果现阶段只想做本地调试日志，就不要把这层当作正式 observability 基线。
+
+- [Major] frontend/src/App.tsx:8
+  问题：错误边界被直接挂在应用根部，把 `FeedbackProvider / GameFlowProvider / TrainingFlowProvider / Router` 绑成了单一失败域。
+  原因：这会让任意页面或任意 provider 的 render 异常直接吞掉整个应用树；`AppErrorBoundary` 虽然支持 `resetKeys`，但当前根节点没有传入任何 reset 依据，路由切换也不能自动脱离 fallback。
+  影响：训练页、故事页或角色流任一路径渲染崩溃都会把整站打进全局 fallback，恢复只能依赖手工 `Try again / Return home`，不符合“可恢复、低耦合、分域隔离”的前端边界要求。
+  建议：把错误边界下沉到 route shell 或 story/training 两个主域，至少让故障局限在页面级；同时把 `location.pathname` 或等价路由键接入 `resetKeys`，避免一次渲染故障锁死整个应用。
+
+## 后端 Findings
+- [Major] backend/test_training_route_smoke.py:31
+  问题：新增的“real DB smoke”实际上仍是内存 SQLite 路径，不是项目当前权威的 PostgreSQL 迁移/自检链路。
+  原因：训练后端当前的迁移、自检、JSONB/UUID 方言和发布前初始化目标都以 PostgreSQL 为标准，SQLite 只能证明 repository 在轻量方言上可跑，不能替代真实数据库事实源。
+  影响：这条 smoke 发现不了真正的迁移、方言差异、初始化脚本和约束行为问题，却会给 `PR-BE-08A` 已经收口的错觉，发布前风险仍然留在现场。
+  建议：补最小 PostgreSQL 集成 smoke，至少串起 `init_db`、训练主链路和 `check_database_status`；SQLite smoke 可以保留，但应明确定位为 repository-level baseline，而不是发布前 DB baseline。
+
+- [Major] backend/test_training_route_smoke.py:141
+  问题：损坏会话 smoke 只断言了 `summary` 和 `scenario/next`，没有锁住 `progress / history / report / diagnostics` 的恢复契约。
+  原因：训练 read-model 应共享同一套 recovery facts 和 corrupted 语义；只测两条入口会继续把 query/read-model 分叉留在保护网外，尤其是 `diagnostics` 这类已知易分叉路径。
+  影响：即使某些读端点继续和其他端点返回不同恢复语义，这组 smoke 也不会报警，后端仍可能在“测试全绿”下带着恢复不一致合并。
+  建议：把损坏会话断言扩展到全部训练 read endpoints，至少补上 `progress`、`history`、`report`、`diagnostics`；如果某个端点故意例外，就单独定义契约，不要继续让 smoke 文案宣称统一恢复行为。
+
+## Open Questions
+- 前端 `frontendTelemetry` 是否打算作为正式可观测链路，而不是仅开发期 console 辅助？如果是，当前 dev-only success/requested 日志策略必须调整。
+- 根级 `AppErrorBoundary` 是否有意把 story、training、character 三条主流程放在同一失败域？如果是，需要明确全局 fallback 的状态清理和自动恢复规则。
+- `PR-BE-08A` 的验收口径是否允许 SQLite smoke 代替 PostgreSQL smoke？如果不允许，当前后端 smoke 还不能算收口。
+
+## 测试缺口
+- 前端：`frontend/src/services/frontendTelemetry.test.ts` 只验证了 logger 调用，没有覆盖生产环境下 `requested/succeeded` 事件被 dev-only `logger.info` 丢弃的行为，当前最关键的 observability 风险没有被测试锁住。
+- 前端：`frontend/src/components/AppErrorBoundary.test.tsx` 只覆盖了手工 `Try again` 恢复，没有覆盖根级边界在路由切换、`resetKeys` 变化或 provider/render 异常下的恢复行为，无法证明全局 fallback 的恢复模型稳定。
+- 前端：`frontend/src/hooks/useTrainingSessionBootstrap.test.tsx` 只给 `startTrainingSession()` 补了 telemetry 断言，没有覆盖 `restoreSession()` 的 requested/succeeded/failed 观测路径，训练恢复主链路仍处于无观测状态。
+- 后端：`backend/test_training_route_smoke.py` 没有覆盖 `progress`、`history`、`report`、`diagnostics` 在损坏会话下的 `TRAINING_SESSION_RECOVERY_STATE_CORRUPTED` 回归，read-model 一致性仍缺保护。
+- 后端：`backend/test_training_route_smoke.py` 只跑了 SQLite 内存库，没有任何 PostgreSQL 集成 smoke 去验证 `backend/alembic/**`、`scripts/init_db.py`、`scripts/check_database_status.py` 和训练主链路的真实发布前组合。
+- 后端：`backend/test_init_db_script.py` 目前只 mock 了 `alembic.command` 调用顺序，没有覆盖 `scripts/init_db.py` 真实 CLI 入口、环境配置装配和失败退出码路径，初始化脚本仍缺现场级验证。
+
+## Review Summary
+- 本次改动前端主要是补错误边界和 telemetry，后端主要是补 smoke/self-check 测试，没有引入新的训练业务能力。
+- 前端最大问题不是“有没有 telemetry”，而是成功链路 telemetry 在生产默认丢失，同时根级错误边界把整站做成了单一失败域。
+- 后端最大问题不是“有没有 smoke”，而是 smoke 仍没有对准 PostgreSQL 发布链路，也没有锁住全部训练 read-model 的恢复契约。
+- 因此这轮改动提升了开发期可见性，但还不能作为“前端可观测性已成型、后端 smoke 已收口”的依据。
+- 本次新增测试我已执行，结果是前端 12 个测试通过、后端 5 个测试通过，但保护范围仍明显不足。

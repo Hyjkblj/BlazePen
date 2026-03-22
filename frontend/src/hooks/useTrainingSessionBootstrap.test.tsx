@@ -4,6 +4,7 @@ import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrainingFlowProvider, useTrainingFlow } from '@/contexts';
+import { ServiceError } from '@/services/serviceError';
 import {
   persistTrainingResumeTarget,
   readTrainingResumeTarget,
@@ -16,7 +17,13 @@ const trainingApiMocks = vi.hoisted(() => ({
   getTrainingSessionSummary: vi.fn(),
 }));
 
+const telemetrySpy = vi.hoisted(() => vi.fn());
+
 vi.mock('@/services/trainingApi', () => trainingApiMocks);
+
+vi.mock('@/services/frontendTelemetry', () => ({
+  trackFrontendTelemetry: telemetrySpy,
+}));
 
 const createRuntimeState = (): TrainingRuntimeState => ({
   currentRoundNo: 2,
@@ -179,5 +186,123 @@ describe('useTrainingSessionBootstrap', () => {
       characterId: '77',
       trainingMode: 'guided',
     });
+  });
+
+  it('emits telemetry when starting a training session succeeds', async () => {
+    trainingApiMocks.initTraining.mockResolvedValueOnce({
+      sessionId: 'training-session-start',
+      trainingMode: 'guided',
+      status: 'initialized',
+      roundNo: 0,
+      runtimeState: createRuntimeState(),
+      nextScenario: null,
+      scenarioCandidates: [],
+    });
+
+    const { result } = renderHook(() => useTrainingSessionBootstrap(), { wrapper });
+
+    await act(async () => {
+      await result.current.startTrainingSession({
+        userId: 'frontend-training-user',
+        trainingMode: 'guided',
+        characterId: '12',
+        playerProfile: null,
+      });
+    });
+
+    expect(telemetrySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domain: 'training',
+        event: 'training.init',
+        status: 'requested',
+      })
+    );
+    expect(telemetrySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domain: 'training',
+        event: 'training.init',
+        status: 'succeeded',
+        metadata: expect.objectContaining({
+          sessionId: 'training-session-start',
+        }),
+      })
+    );
+  });
+
+  it('emits telemetry for a successful training session restore', async () => {
+    persistTrainingResumeTarget({
+      sessionId: 'training-session-restore',
+      trainingMode: 'guided',
+      characterId: '11',
+      status: 'in_progress',
+    });
+    trainingApiMocks.getTrainingSessionSummary.mockResolvedValueOnce(
+      createSummaryResult({
+        sessionId: 'training-session-restore',
+        trainingMode: 'guided',
+      })
+    );
+
+    const { result } = renderHook(() => useTrainingSessionBootstrap(), { wrapper });
+
+    await act(async () => {
+      await result.current.restoreSession();
+    });
+
+    expect(telemetrySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domain: 'training',
+        event: 'training.restore',
+        status: 'requested',
+        metadata: expect.objectContaining({
+          sessionId: 'training-session-restore',
+          restoreSource: 'resume-target',
+        }),
+      })
+    );
+    expect(telemetrySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domain: 'training',
+        event: 'training.restore',
+        status: 'succeeded',
+        metadata: expect.objectContaining({
+          sessionId: 'training-session-restore',
+          status: 'in_progress',
+        }),
+      })
+    );
+  });
+
+  it('emits failed telemetry when training session restore is rejected', async () => {
+    persistTrainingResumeTarget({
+      sessionId: 'training-session-missing',
+      trainingMode: 'guided',
+      characterId: '11',
+      status: 'in_progress',
+    });
+    trainingApiMocks.getTrainingSessionSummary.mockRejectedValueOnce(
+      new ServiceError({
+        code: 'TRAINING_SESSION_NOT_FOUND',
+        message: 'Training session missing.',
+      })
+    );
+
+    const { result } = renderHook(() => useTrainingSessionBootstrap(), { wrapper });
+
+    await act(async () => {
+      await result.current.restoreSession();
+    });
+
+    expect(telemetrySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domain: 'training',
+        event: 'training.restore',
+        status: 'failed',
+        metadata: expect.objectContaining({
+          sessionId: 'training-session-missing',
+          restoreSource: 'resume-target',
+        }),
+      })
+    );
   });
 });

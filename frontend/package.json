@@ -10,6 +10,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "test:smoke": "vitest run src/pages/MainPathSmoke.integration.test.tsx",
     "test:unit": "vitest run",
     "test:electron": "node --test tests/electron/navigationPolicy.test.mjs",
     "preview": "vite preview",

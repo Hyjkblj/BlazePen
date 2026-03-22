@@ -128,6 +128,14 @@ class TrainingQueryServiceTestCase(unittest.TestCase):
         self.assertEqual(report["history"][0]["scenario_id"], scenario_id)
         self.assertEqual(self.db.update_calls, [])
 
+    def test_get_diagnostics_should_not_write_during_query(self):
+        session_id, _ = self._create_seeded_session()
+
+        diagnostics = self.query_service.get_diagnostics(session_id)
+
+        self.assertEqual(diagnostics["session_id"], session_id)
+        self.assertEqual(self.db.update_calls, [])
+
     def test_get_session_summary_should_raise_typed_error_when_snapshots_are_missing(self):
         session_id, _ = self._create_seeded_session()
         session = self.db.sessions[session_id]
@@ -164,6 +172,18 @@ class TrainingQueryServiceTestCase(unittest.TestCase):
 
         with self.assertRaises(TrainingSessionRecoveryStateError) as cm:
             self.query_service.get_report(session_id)
+
+        self.assertEqual(cm.exception.reason, "scenario_snapshots_missing")
+        self.assertEqual(self.db.update_calls, [])
+
+    def test_get_diagnostics_should_raise_typed_error_when_snapshots_are_missing(self):
+        session_id, _ = self._create_seeded_session()
+        session = self.db.sessions[session_id]
+        session.session_meta.pop("scenario_payload_sequence", None)
+        session.session_meta.pop("scenario_payload_catalog", None)
+
+        with self.assertRaises(TrainingSessionRecoveryStateError) as cm:
+            self.query_service.get_diagnostics(session_id)
 
         self.assertEqual(cm.exception.reason, "scenario_snapshots_missing")
         self.assertEqual(self.db.update_calls, [])

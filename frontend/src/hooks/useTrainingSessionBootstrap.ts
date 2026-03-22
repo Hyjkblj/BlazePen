@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useTrainingFlow } from '@/contexts';
+import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
 import { getTrainingSessionSummary, initTraining } from '@/services/trainingApi';
 import { getServiceErrorMessage, isServiceError } from '@/services/serviceError';
 import {
@@ -47,6 +48,12 @@ interface RestoreSessionIdentity {
   sessionId: string | null | undefined;
   characterId?: string | null | undefined;
 }
+
+type TrainingRestoreTelemetrySource =
+  | 'explicit'
+  | 'active-session'
+  | 'resume-target'
+  | 'unknown';
 
 const normalizeCharacterId = (value: string | number | null | undefined): string | null => {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -118,6 +125,35 @@ const resolveRestoreSessionTarget = (
   };
 };
 
+const resolveRestoreTelemetrySource = ({
+  sessionId,
+  options,
+  activeSession,
+  resumeTarget,
+}: {
+  sessionId: string;
+  options: RestoreTrainingSessionOptions;
+  activeSession: RestoreSessionIdentity | null;
+  resumeTarget: RestoreSessionIdentity | null;
+}): TrainingRestoreTelemetrySource => {
+  const explicitSessionId = normalizeSessionId(options.sessionId ?? null);
+  if (explicitSessionId === sessionId) {
+    return 'explicit';
+  }
+
+  const activeSessionId = normalizeSessionId(activeSession?.sessionId ?? null);
+  if (activeSessionId === sessionId) {
+    return 'active-session';
+  }
+
+  const resumeTargetSessionId = normalizeSessionId(resumeTarget?.sessionId ?? null);
+  if (resumeTargetSessionId === sessionId) {
+    return 'resume-target';
+  }
+
+  return 'unknown';
+};
+
 const getRestoreErrorMessage = (error: unknown): string => {
   if (isServiceError(error) && error.code === 'TRAINING_SESSION_NOT_FOUND') {
     return '训练会话不存在，已清理本地恢复入口。';
@@ -182,11 +218,22 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
   const startTrainingSession = useCallback(
     async (params: TrainingSessionInitParams): Promise<TrainingInitResult | null> => {
       const normalizedCharacterId = normalizeCharacterId(params.characterId ?? null);
+      const initTelemetryMetadata = {
+        trainingMode: params.trainingMode,
+        hasCharacterId: normalizedCharacterId !== null,
+        hasPlayerProfile: params.playerProfile !== null,
+      };
 
       setStatus('starting');
       setErrorMessage(null);
 
       try {
+        trackFrontendTelemetry({
+          domain: 'training',
+          event: 'training.init',
+          status: 'requested',
+          metadata: initTelemetryMetadata,
+        });
         const initResult = await initTraining(params);
         setActiveSession({
           sessionId: initResult.sessionId,
@@ -205,8 +252,26 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
         });
         refreshResumeTarget();
         setStatus('ready');
+        trackFrontendTelemetry({
+          domain: 'training',
+          event: 'training.init',
+          status: 'succeeded',
+          metadata: {
+            ...initTelemetryMetadata,
+            sessionId: initResult.sessionId,
+            status: initResult.status,
+            roundNo: initResult.roundNo,
+          },
+        });
         return initResult;
       } catch (error: unknown) {
+        trackFrontendTelemetry({
+          domain: 'training',
+          event: 'training.init',
+          status: 'failed',
+          metadata: initTelemetryMetadata,
+          cause: error,
+        });
         setErrorMessage(getStartErrorMessage(error));
         setStatus('error');
         return null;
@@ -227,15 +292,42 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
       );
 
       if (!sessionId) {
+        trackFrontendTelemetry({
+          domain: 'training',
+          event: 'training.restore',
+          status: 'failed',
+          metadata: {
+            sessionId: null,
+            restoreSource: 'unknown',
+            failureStage: 'missing-session',
+          },
+        });
         setErrorMessage('当前没有可恢复的训练会话。');
         setStatus('error');
         return null;
       }
 
+      const restoreTelemetryMetadata = {
+        sessionId,
+        restoreSource: resolveRestoreTelemetrySource({
+          sessionId,
+          options,
+          activeSession: state.activeSession,
+          resumeTarget: cachedTarget,
+        }),
+        hasCharacterId: characterId !== null,
+      };
+
       setStatus('restoring');
       setErrorMessage(null);
 
       try {
+        trackFrontendTelemetry({
+          domain: 'training',
+          event: 'training.restore',
+          status: 'requested',
+          metadata: restoreTelemetryMetadata,
+        });
         const summaryResult = await getTrainingSessionSummary(sessionId);
         setActiveSession({
           sessionId: summaryResult.sessionId,
@@ -254,6 +346,17 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
         });
         refreshResumeTarget();
         setStatus('ready');
+        trackFrontendTelemetry({
+          domain: 'training',
+          event: 'training.restore',
+          status: 'succeeded',
+          metadata: {
+            ...restoreTelemetryMetadata,
+            status: summaryResult.status,
+            roundNo: summaryResult.roundNo,
+            isCompleted: summaryResult.isCompleted,
+          },
+        });
         return summaryResult;
       } catch (error: unknown) {
         if (isTerminalTrainingSessionRecoveryError(error)) {
@@ -265,6 +368,13 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
           setResumeTarget(refreshResumeTarget());
         }
 
+        trackFrontendTelemetry({
+          domain: 'training',
+          event: 'training.restore',
+          status: 'failed',
+          metadata: restoreTelemetryMetadata,
+          cause: error,
+        });
         setErrorMessage(getRestoreErrorMessage(error));
         setStatus('error');
         return null;

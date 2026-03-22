@@ -273,6 +273,10 @@ class TrainingQueryService:
         logger.info("training diagnostics requested: session_id=%s", session_id)
 
         session = self._get_session_or_raise(session_id)
+        # Diagnostics must consume the same persisted recovery facts as the
+        # other read models; otherwise corrupted sessions can silently fork UX.
+        self._read_persisted_session_sequence_or_raise(session_id, session)
+        self._read_session_snapshots_or_raise(session_id, session)
         recommendation_logs = self.training_store.get_scenario_recommendation_logs(session_id)
         audit_events = self.training_store.get_training_audit_events(session_id)
         kt_observations = self.training_store.get_kt_observations(session_id)

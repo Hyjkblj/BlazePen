@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useFeedback, useGameFlow } from '@/contexts';
+import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
 import { initGame, initializeStory } from '@/services/gameApi';
 import { readStoryThreadSave } from '@/storage/storySessionCache';
 import type { GameMessage, GameSessionSnapshot } from '@/types/game';
@@ -166,7 +167,19 @@ export function useGameInit(actions: GameSessionInitActions): UseGameInitResult 
           actions.setCharacterId(initializationPlan.characterId);
           setCurrentCharacterId(initializationPlan.characterId);
 
+          const initTelemetryMetadata = {
+            initializationKind: initializationPlan.kind,
+            characterId: initializationPlan.characterId,
+            sceneId: initializationPlan.selectedSceneTransition?.sceneId ?? null,
+          };
+
           try {
+            trackFrontendTelemetry({
+              domain: 'story',
+              event: 'story.init',
+              status: 'requested',
+              metadata: initTelemetryMetadata,
+            });
             const initRes = await initGame({
               gameMode: 'solo',
               characterId: initializationPlan.characterId,
@@ -193,7 +206,24 @@ export function useGameInit(actions: GameSessionInitActions): UseGameInitResult 
               sceneMode: initializationPlan.selectedSceneTransition ? 'reset' : 'silent',
             });
             actions.replaceMessages(buildInitialAssistantMessages(storyData));
+            trackFrontendTelemetry({
+              domain: 'story',
+              event: 'story.init',
+              status: 'succeeded',
+              metadata: {
+                ...initTelemetryMetadata,
+                threadId: newThreadId,
+                initialSceneId: storyData.sceneId ?? null,
+              },
+            });
           } catch (error: unknown) {
+            trackFrontendTelemetry({
+              domain: 'story',
+              event: 'story.init',
+              status: 'failed',
+              metadata: initTelemetryMetadata,
+              cause: error,
+            });
             logger.error('failed to initialize game', error);
             feedback.error('Failed to initialize game.');
           }

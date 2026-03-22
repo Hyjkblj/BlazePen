@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import type { FeedbackContextValue } from '@/contexts/feedbackCore';
+import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
 import { submitStoryTurn } from '@/services/storyTurnService';
 import { getServiceErrorMessage, isServiceError } from '@/services/serviceError';
 import type { GameMessage, GameTurnResult, PlayerOption } from '@/types/game';
@@ -144,13 +145,39 @@ export function useStoryTurnSubmission({
         return;
       }
 
+      const submitTelemetryMetadata = {
+        threadId,
+        optionIndex: optionIndex + 1,
+        optionId: selectedOption.id,
+        sceneId: currentScene,
+      };
+
       actions.prepareOptionSelection(selectedOption.text);
 
       try {
+        trackFrontendTelemetry({
+          domain: 'story',
+          event: 'story.turn.submit',
+          status: 'requested',
+          metadata: submitTelemetryMetadata,
+        });
         const response = await submitStoryTurn({
           threadId,
           userInput: `option:${optionIndex + 1}`,
           characterId: preferredCharacterId,
+        });
+
+        trackFrontendTelemetry({
+          domain: 'story',
+          event: 'story.turn.submit',
+          status: 'succeeded',
+          metadata: {
+            ...submitTelemetryMetadata,
+            nextThreadId: response.threadId ?? threadId,
+            sessionRestored: response.sessionRestored === true,
+            needReselectOption: response.needReselectOption === true,
+            isGameFinished: response.isGameFinished === true,
+          },
         });
 
         if (response.threadId && response.threadId !== threadId) {
@@ -169,6 +196,13 @@ export function useStoryTurnSubmission({
 
         applyGameResponse(response);
       } catch (error: unknown) {
+        trackFrontendTelemetry({
+          domain: 'story',
+          event: 'story.turn.submit',
+          status: 'failed',
+          metadata: submitTelemetryMetadata,
+          cause: error,
+        });
         logger.error('Failed to process game option:', error);
 
         if (isServiceError(error) && error.code === 'STORY_SESSION_RESTORE_FAILED') {
@@ -203,6 +237,7 @@ export function useStoryTurnSubmission({
       actions,
       applyGameResponse,
       applyReselectResponse,
+      currentScene,
       currentOptions,
       feedback,
       loading,

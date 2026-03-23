@@ -293,7 +293,6 @@ class TrainingScenarioResponse(BaseModel):
     decision_focus: str = ""
     target_skills: List[str] = Field(default_factory=list)
     risk_tags: List[str] = Field(default_factory=list)
-    briefing: str = ""
     options: List[TrainingScenarioOptionResponse] = Field(default_factory=list)
     completion_hint: str = ""
     recommendation: Optional[TrainingScenarioRecommendationResponse] = None
@@ -432,6 +431,7 @@ class TrainingRoundSubmitResponse(BaseModel):
 class TrainingProgressResponse(BaseModel):
     """训练进度响应"""
     session_id: str
+    character_id: Optional[int] = None
     status: str
     round_no: int
     total_rounds: int
@@ -456,6 +456,7 @@ class TrainingSessionSummaryResponse(BaseModel):
     """Stable training session recovery summary."""
 
     session_id: str
+    character_id: Optional[int] = None
     status: str
     training_mode: str
     current_round_no: int
@@ -496,6 +497,7 @@ class TrainingHistoryResponse(BaseModel):
     """Stable training session history response."""
 
     session_id: str
+    character_id: Optional[int] = None
     status: str
     training_mode: str
     current_round_no: int
@@ -562,6 +564,7 @@ class TrainingReportSummaryResponse(BaseModel):
 class TrainingReportResponse(BaseModel):
     """训练报告响应"""
     session_id: str
+    character_id: Optional[int] = None
     status: str
     rounds: int
     k_state_final: Dict[str, float]
@@ -580,6 +583,7 @@ class TrainingReportResponse(BaseModel):
 class TrainingDiagnosticsResponse(BaseModel):
     """训练诊断响应"""
     session_id: str
+    character_id: Optional[int] = None
     status: str
     round_no: int
     player_profile: Optional[TrainingPlayerProfileResponse] = None

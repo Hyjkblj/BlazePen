@@ -16,7 +16,7 @@ function TrainingProgress() {
   return (
     <TrainingInsightShell
       title="Training Progress"
-      description="训练进度页只消费训练查询读模型，不回推会话事实源。刷新后优先读取显式 sessionId，其次读取当前内存活动会话，最后才使用本地恢复入口。"
+      description="训练进度页只消费训练查询读模型，不回推会话事实源。刷新后优先读取显式 sessionId，其次读取当前内存活动会话；本地恢复入口仅用于手动恢复提示。"
       activeView="progress"
       sessionId={sessionTarget.sessionId}
       sessionSource={sessionTarget.source}

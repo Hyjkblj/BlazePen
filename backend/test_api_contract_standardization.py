@@ -159,6 +159,15 @@ class _FakeGameService:
     ):
         return self.process_input(thread_id=thread_id, user_input=user_input, option_id=option_id)
 
+    def normalize_story_turn_payload(self, result, *, thread_id: str):
+        from api.story_contract_utils import normalize_story_turn_payload
+
+        return normalize_story_turn_payload(
+            result,
+            thread_id=thread_id,
+            story_asset_service=self.story_asset_service,
+        )
+
     @property
     def session_manager(self):
         return _FakeSessionManager(self)
@@ -346,6 +355,7 @@ class _FakeTrainingService:
             )
         return {
             "session_id": session_id,
+            "character_id": 42,
             "status": "in_progress",
             "training_mode": "self-paced",
             "current_round_no": 1,
@@ -369,6 +379,7 @@ class _FakeTrainingService:
     def get_progress(self, session_id):
         return {
             "session_id": session_id,
+            "character_id": 42,
             "status": "in_progress",
             "round_no": 1,
             "total_rounds": 6,
@@ -386,6 +397,7 @@ class _FakeTrainingService:
             )
         return {
             "session_id": session_id,
+            "character_id": 42,
             "status": "in_progress",
             "training_mode": "self-paced",
             "current_round_no": 1,
@@ -405,6 +417,7 @@ class _FakeTrainingService:
     def get_report(self, session_id):
         return {
             "session_id": session_id,
+            "character_id": 42,
             "status": "completed",
             "rounds": 1,
             "k_state_final": {"K1": 0.5},
@@ -416,6 +429,7 @@ class _FakeTrainingService:
     def get_diagnostics(self, session_id):
         return {
             "session_id": session_id,
+            "character_id": 42,
             "status": "in_progress",
             "round_no": 1,
             "recommendation_logs": [],
@@ -615,6 +629,7 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         payload = response.json()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload["data"]["session_id"], "s-001")
+        self.assertEqual(payload["data"]["character_id"], 42)
         self.assertEqual(payload["data"]["training_mode"], "self-paced")
         self.assertEqual(payload["data"]["progress_anchor"]["next_round_no"], 2)
         self.assertEqual(payload["data"]["progress_anchor"]["progress_percent"], 16.67)
@@ -636,10 +651,21 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         payload = response.json()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload["data"]["session_id"], "s-001")
+        self.assertEqual(payload["data"]["character_id"], 42)
         self.assertEqual(payload["data"]["training_mode"], "self-paced")
         self.assertEqual(payload["data"]["progress_anchor"]["next_round_no"], 2)
         self.assertEqual(payload["data"]["progress_anchor"]["progress_percent"], 16.67)
         self.assertEqual(payload["data"]["history"], [])
+
+    def test_training_progress_route_returns_canonical_character_id(self):
+        response = self.client.get("/api/v1/training/progress/s-001")
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["data"]["session_id"], "s-001")
+        self.assertEqual(payload["data"]["character_id"], 42)
+        self.assertEqual(payload["data"]["round_no"], 1)
+        self.assertEqual(payload["data"]["total_rounds"], 6)
 
     def test_training_history_route_returns_stable_recovery_conflict(self):
         response = self.client.get("/api/v1/training/sessions/corrupted/history")

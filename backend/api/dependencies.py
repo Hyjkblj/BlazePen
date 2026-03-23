@@ -18,13 +18,8 @@ if TYPE_CHECKING:
     from api.services.image_service import ImageService
     from api.services.training_service import TrainingService
     from api.services.tts_service import TTSService
-    from story.story_asset_service import StoryAssetService
-    from story.story_ending_service import StoryEndingService
-    from story.story_history_service import StoryHistoryService
     from story.story_service_bundle import StoryServiceBundle
     from story.story_session_query_policy import StorySessionQueryPolicy
-    from story.story_session_service import StorySessionService
-    from story.story_turn_service import StoryTurnService
     from training.training_query_service import TrainingQueryService
 
 
@@ -92,39 +87,13 @@ def get_story_service_bundle() -> StoryServiceBundle:
     return _story_service_bundle
 
 
-def get_story_asset_service() -> StoryAssetService:
-    return get_story_service_bundle().story_asset_service
-
-
-def get_story_session_service() -> StorySessionService:
-    return get_story_service_bundle().story_session_service
-
-
-def get_story_turn_service() -> StoryTurnService:
-    return get_story_service_bundle().story_turn_service
-
-
-def get_story_ending_service() -> StoryEndingService:
-    return get_story_service_bundle().story_ending_service
-
-
-def get_story_history_service() -> StoryHistoryService:
-    return get_story_service_bundle().story_history_service
-
-
 def get_game_service() -> GameService:
     global _game_service
     if _game_service is None:
         from api.services.game_service import GameService
 
         bundle = get_story_service_bundle()
-        _game_service = GameService(
-            story_asset_service=bundle.story_asset_service,
-            story_session_service=bundle.story_session_service,
-            story_turn_service=bundle.story_turn_service,
-            story_ending_service=bundle.story_ending_service,
-            story_history_service=bundle.story_history_service,
-        )
+        _game_service = GameService.from_story_service_bundle(bundle)
     return _game_service
 
 

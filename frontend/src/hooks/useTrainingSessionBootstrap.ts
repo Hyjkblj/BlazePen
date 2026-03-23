@@ -187,11 +187,12 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
         explicitSessionId: options.sessionId ?? null,
         activeSession: state.activeSession,
         resumeTarget: cachedTarget,
+        allowResumeTargetFallback: false,
       });
       const explicitCharacterId =
         options.characterId === undefined ? undefined : normalizeCharacterId(options.characterId);
       const sessionId = restoreTarget.sessionId;
-      const characterId = explicitCharacterId ?? restoreTarget.characterId;
+      const characterIdHint = explicitCharacterId ?? restoreTarget.characterId;
 
       if (!sessionId) {
         trackFrontendTelemetry({
@@ -212,7 +213,7 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
       const restoreTelemetryMetadata = {
         sessionId,
         restoreSource: toRestoreTelemetrySource(restoreTarget.source),
-        hasCharacterId: characterId !== null,
+        hasCharacterId: characterIdHint !== null,
       };
 
       setStatus('restoring');
@@ -226,10 +227,11 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
           metadata: restoreTelemetryMetadata,
         });
         const summaryResult = await getTrainingSessionSummary(sessionId);
+        const resolvedCharacterId = normalizeCharacterId(summaryResult.characterId);
         setActiveSession({
           sessionId: summaryResult.sessionId,
           trainingMode: summaryResult.trainingMode,
-          characterId,
+          characterId: resolvedCharacterId,
           status: summaryResult.status,
           roundNo: summaryResult.roundNo,
           totalRounds: summaryResult.totalRounds,
@@ -238,7 +240,7 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
         persistTrainingResumeTarget({
           sessionId: summaryResult.sessionId,
           trainingMode: summaryResult.trainingMode,
-          characterId,
+          characterId: resolvedCharacterId,
           status: summaryResult.status,
         });
         refreshResumeTarget();
@@ -249,6 +251,7 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
           status: 'succeeded',
           metadata: {
             ...restoreTelemetryMetadata,
+            hasCharacterId: resolvedCharacterId !== null,
             status: summaryResult.status,
             roundNo: summaryResult.roundNo,
             isCompleted: summaryResult.isCompleted,

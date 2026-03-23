@@ -159,6 +159,36 @@ describe('trainingApi', () => {
     }
   );
 
+  it('normalizes the training progress read model with canonical characterId', async () => {
+    vi.mocked(httpClient.get).mockResolvedValueOnce({
+      session_id: 'training-session-progress',
+      character_id: '55',
+      status: 'in_progress',
+      round_no: 3,
+      total_rounds: 6,
+      runtime_state: {
+        current_round_no: 3,
+        current_scene_id: 'scenario-3',
+      },
+    });
+
+    await expect(getTrainingProgress('training-session-progress')).resolves.toMatchObject({
+      sessionId: 'training-session-progress',
+      characterId: '55',
+      status: 'in_progress',
+      roundNo: 3,
+      totalRounds: 6,
+      runtimeState: {
+        currentRoundNo: 3,
+        currentSceneId: 'scenario-3',
+      },
+    });
+
+    expect(httpClient.get).toHaveBeenCalledWith('/v1/training/progress/training-session-progress', {
+      timeout: 30000,
+    });
+  });
+
   it('guards against invalid responses that omit sessionId', async () => {
     vi.mocked(httpClient.get).mockResolvedValueOnce({
       status: 'active',
@@ -175,6 +205,7 @@ describe('trainingApi', () => {
   it('normalizes the training session summary restore payload', async () => {
     vi.mocked(httpClient.get).mockResolvedValueOnce({
       session_id: 'training-session-7',
+      character_id: 42,
       status: 'in_progress',
       training_mode: 'adaptive',
       current_round_no: 2,
@@ -211,6 +242,7 @@ describe('trainingApi', () => {
 
     expect(result).toMatchObject({
       sessionId: 'training-session-7',
+      characterId: '42',
       trainingMode: 'adaptive',
       roundNo: 2,
       totalRounds: 5,
@@ -314,6 +346,7 @@ describe('trainingApi', () => {
   it('normalizes the training report read model', async () => {
     vi.mocked(httpClient.get).mockResolvedValueOnce({
       session_id: 'training-session-report',
+      character_id: '88',
       status: 'completed',
       rounds: 3,
       improvement: '0.32',
@@ -348,6 +381,7 @@ describe('trainingApi', () => {
 
     await expect(getTrainingReport('training-session-report')).resolves.toMatchObject({
       sessionId: 'training-session-report',
+      characterId: '88',
       status: 'completed',
       improvement: 0.32,
       summary: {
@@ -384,6 +418,7 @@ describe('trainingApi', () => {
   it('normalizes the training diagnostics read model', async () => {
     vi.mocked(httpClient.get).mockResolvedValueOnce({
       session_id: 'training-session-diagnostics',
+      character_id: 66,
       status: 'completed',
       round_no: 3,
       summary: {
@@ -416,6 +451,7 @@ describe('trainingApi', () => {
 
     await expect(getTrainingDiagnostics('training-session-diagnostics')).resolves.toMatchObject({
       sessionId: 'training-session-diagnostics',
+      characterId: '66',
       status: 'completed',
       roundNo: 3,
       summary: {

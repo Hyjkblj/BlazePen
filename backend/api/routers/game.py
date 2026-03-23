@@ -24,7 +24,6 @@ from api.story_contract_utils import (
     normalize_story_history_payload,
     normalize_story_session_init_payload,
     normalize_story_session_list_payload,
-    normalize_story_turn_payload,
 )
 from api.story_route_handlers import handle_initialize_story_request
 from api.story_schemas import (
@@ -133,10 +132,9 @@ async def process_input(
             user_id=request.user_id,
             character_id=request.character_id,
         )
-        payload = normalize_story_turn_payload(
+        payload = game_service.normalize_story_turn_payload(
             result,
             thread_id=request.thread_id,
-            story_asset_service=game_service.story_asset_service,
         )
         if payload.get("need_reselect_option"):
             return build_success_payload(
@@ -313,10 +311,9 @@ async def get_session_snapshot(
 
     try:
         result = game_service.get_story_session_snapshot(thread_id)
-        payload = normalize_story_turn_payload(
+        payload = game_service.normalize_story_turn_payload(
             result,
             thread_id=thread_id,
-            story_asset_service=game_service.story_asset_service,
         )
         payload["updated_at"] = result.get("updated_at")
         payload["expires_at"] = result.get("expires_at")
@@ -386,10 +383,9 @@ async def trigger_ending(
 
     try:
         result = game_service.trigger_ending(request.thread_id)
-        payload = normalize_story_turn_payload(
+        payload = game_service.normalize_story_turn_payload(
             result,
             thread_id=request.thread_id,
-            story_asset_service=game_service.story_asset_service,
         )
         payload["status"] = "completed"
         return build_success_payload(data=payload)

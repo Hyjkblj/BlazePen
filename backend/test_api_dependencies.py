@@ -140,20 +140,33 @@ class DependencyWiringTestCase(unittest.TestCase):
             "get_story_service_bundle",
             return_value=bundle,
         ), patch(
-            "api.services.game_service.GameService",
+            "api.services.game_service.GameService.from_story_service_bundle",
             return_value=game_service,
-        ) as game_service_cls:
+        ) as game_service_from_bundle:
             result = dependencies.get_game_service()
             cached_result = dependencies.get_game_service()
 
         self.assertIs(result, game_service)
         self.assertIs(cached_result, game_service)
-        game_service_cls.assert_called_once_with(
-            story_asset_service=story_asset_service,
-            story_session_service=story_session_service,
-            story_turn_service=story_turn_service,
-            story_ending_service=story_ending_service,
-            story_history_service=story_history_service,
+        game_service_from_bundle.assert_called_once_with(bundle)
+
+    def test_dependencies_should_not_expose_story_collaborator_getters(self):
+        forbidden_getters = {
+            "get_story_asset_service",
+            "get_story_session_service",
+            "get_story_turn_service",
+            "get_story_ending_service",
+            "get_story_history_service",
+        }
+
+        exposed = {name for name in forbidden_getters if hasattr(dependencies, name)}
+        self.assertEqual(
+            exposed,
+            set(),
+            msg=(
+                "api.dependencies should expose story entrypoints only via "
+                "get_story_service_bundle/get_game_service"
+            ),
         )
 
     def test_get_training_query_service_should_share_training_runtime_bundle(self):
@@ -195,30 +208,96 @@ class GameServiceCompositionTestCase(unittest.TestCase):
                 story_history_service=None,
             )
 
-    def test_game_service_should_keep_legacy_constructor_args_as_compatibility_only(self):
+    def test_game_service_should_reject_legacy_constructor_args(self):
         story_asset_service = SimpleNamespace()
         story_session_service = SimpleNamespace()
         story_turn_service = SimpleNamespace()
         story_ending_service = SimpleNamespace()
         story_history_service = SimpleNamespace()
 
-        service = GameService(
+        with self.assertRaises(TypeError):
+            GameService(
+                story_asset_service=story_asset_service,
+                story_session_service=story_session_service,
+                story_turn_service=story_turn_service,
+                story_ending_service=story_ending_service,
+                story_history_service=story_history_service,
+                character_service=object(),
+            )
+
+    def test_game_service_should_build_from_story_service_bundle(self):
+        story_history_service = SimpleNamespace(
+            get_story_history=lambda thread_id: {"thread_id": thread_id, "delegated": "history"},
+        )
+        story_asset_service = SimpleNamespace(
+            merge_story_assets=lambda payload: dict(payload),
+        )
+        bundle = SimpleNamespace(
             story_asset_service=story_asset_service,
-            story_session_service=story_session_service,
-            story_turn_service=story_turn_service,
-            story_ending_service=story_ending_service,
+            story_session_service=SimpleNamespace(),
+            story_turn_service=SimpleNamespace(),
+            story_ending_service=SimpleNamespace(),
             story_history_service=story_history_service,
-            character_service=object(),
-            image_service=object(),
-            session_manager=object(),
-            image_executor=object(),
         )
 
-        self.assertIs(service.story_asset_service, story_asset_service)
-        self.assertIs(service.story_session_service, story_session_service)
-        self.assertIs(service.story_turn_service, story_turn_service)
-        self.assertIs(service.story_ending_service, story_ending_service)
-        self.assertIs(service.story_history_service, story_history_service)
+        service = GameService.from_story_service_bundle(bundle)
+
+        self.assertEqual(
+            service.normalize_story_turn_payload({"round_no": 0, "player_options": []}, thread_id="thread-001")[
+                "thread_id"
+            ],
+            "thread-001",
+        )
+        self.assertEqual(
+            service.get_story_history("thread-001"),
+            {"thread_id": "thread-001", "delegated": "history"},
+        )
+
+    def test_game_service_should_normalize_turn_payload_via_story_asset_service(self):
+        story_asset_service = SimpleNamespace(
+            merge_story_assets=lambda payload: {
+                **dict(payload),
+                "assets": {
+                    "scene_image": {"status": "ready"},
+                    "composite_image": {"status": "failed"},
+                },
+            }
+        )
+        service = GameService(
+            story_asset_service=story_asset_service,
+            story_session_service=SimpleNamespace(),
+            story_turn_service=SimpleNamespace(),
+            story_ending_service=SimpleNamespace(),
+            story_history_service=SimpleNamespace(),
+        )
+
+        payload = service.normalize_story_turn_payload(
+            {
+                "round_no": 1,
+                "player_options": [],
+                "is_game_finished": False,
+            },
+            thread_id="thread-001",
+        )
+
+        self.assertEqual(payload["thread_id"], "thread-001")
+        self.assertEqual(payload["status"], "in_progress")
+        self.assertEqual(payload["assets"]["scene_image"]["status"], "ready")
+
+    def test_game_service_should_not_expose_story_collaborators_as_public_fields(self):
+        service = GameService(
+            story_asset_service=SimpleNamespace(),
+            story_session_service=SimpleNamespace(),
+            story_turn_service=SimpleNamespace(),
+            story_ending_service=SimpleNamespace(),
+            story_history_service=SimpleNamespace(),
+        )
+
+        self.assertFalse(hasattr(service, "story_asset_service"))
+        self.assertFalse(hasattr(service, "story_session_service"))
+        self.assertFalse(hasattr(service, "story_turn_service"))
+        self.assertFalse(hasattr(service, "story_ending_service"))
+        self.assertFalse(hasattr(service, "story_history_service"))
 
 
 if __name__ == "__main__":

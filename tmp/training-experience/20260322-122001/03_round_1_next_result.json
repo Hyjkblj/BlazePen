@@ -1,0 +1,289 @@
+{
+  "session_id": "36bf00ea-bd72-4b8f-af3c-cdad1ab98cfd",
+  "status": "in_progress",
+  "round_no": 2,
+  "scenario": {
+    "id": "S2",
+    "title": "淞沪会战连续战况",
+    "era_date": "1937-08-13",
+    "location": "上海前线与租界新闻点",
+    "brief": "战况连续变化，伤亡数字、阵地得失和民众情绪都在快速波动。",
+    "mission": "输出一版连续战况报道，避免标题化煽动与伤亡数据误用。",
+    "decision_focus": "战况表述的准确性与情绪控制",
+    "target_skills": [
+      "K1",
+      "K3",
+      "K4",
+      "K7"
+    ],
+    "risk_tags": [
+      "emotional_language",
+      "casualty_conflict"
+    ],
+    "briefing": "你从三家通讯员手里拿到不同版本的战况摘要，其中两份伤亡数据明显不一致，街头民众情绪已经明显紧张。",
+    "options": [
+      {
+        "id": "A",
+        "label": "使用最震撼的数字吸引关注",
+        "impact_hint": "传播力强，但高风险。"
+      },
+      {
+        "id": "B",
+        "label": "只发布已核实的战况并标注数据来源",
+        "impact_hint": "更稳，但需要克制表达。"
+      },
+      {
+        "id": "C",
+        "label": "先发布局部战况并附带行动建议",
+        "impact_hint": "适合训练公共行动指引能力。"
+      }
+    ],
+    "completion_hint": "重点看你是否把不确定信息明确标出，而不是写成确定结论。",
+    "recommendation": {
+      "mode": "self-paced",
+      "rank_score": 0.5293,
+      "weakness_score": 0.5275,
+      "state_boost_score": 0.0,
+      "risk_boost_score": 0.0,
+      "phase_boost_score": 2.0,
+      "reasons": [
+        "当前处于开场阶段，优先推荐建立背景和规则感的场景",
+        "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+      ],
+      "rank": 1
+    },
+    "phase_tags": [
+      "opening",
+      "middle"
+    ],
+    "branch_tags": [],
+    "next_rules": []
+  },
+  "k_state": {
+    "K1": 0.51,
+    "K2": 0.49,
+    "K3": 0.46,
+    "K4": 0.46,
+    "K5": 0.46,
+    "K6": 0.46,
+    "K7": 0.46,
+    "K8": 0.46
+  },
+  "s_state": {
+    "credibility": 0.63,
+    "accuracy": 0.64,
+    "public_panic": 0.3,
+    "source_safety": 0.65,
+    "editor_trust": 0.55,
+    "actionability": 0.5
+  },
+  "player_profile": {
+    "name": "李敏",
+    "gender": "女",
+    "identity": "战地记者",
+    "age": 24
+  },
+  "runtime_state": {
+    "current_round_no": 1,
+    "k_state": {
+      "K1": 0.51,
+      "K2": 0.49,
+      "K3": 0.46,
+      "K4": 0.46,
+      "K5": 0.46,
+      "K6": 0.46,
+      "K7": 0.46,
+      "K8": 0.46
+    },
+    "s_state": {
+      "credibility": 0.63,
+      "accuracy": 0.64,
+      "public_panic": 0.3,
+      "source_safety": 0.65,
+      "editor_trust": 0.55,
+      "actionability": 0.5
+    },
+    "runtime_flags": {
+      "panic_triggered": false,
+      "source_exposed": false,
+      "editor_locked": false,
+      "high_risk_path": false
+    },
+    "state_bar": {
+      "editor_trust": 0.55,
+      "public_stability": 0.7,
+      "source_safety": 0.65
+    },
+    "current_scene_id": "S2",
+    "player_profile": {
+      "name": "李敏",
+      "gender": "女",
+      "identity": "战地记者",
+      "age": 24
+    }
+  },
+  "scenario_candidates": [
+    {
+      "id": "S2",
+      "title": "淞沪会战连续战况",
+      "era_date": "1937-08-13",
+      "location": "上海前线与租界新闻点",
+      "brief": "战况连续变化，伤亡数字、阵地得失和民众情绪都在快速波动。",
+      "mission": "输出一版连续战况报道，避免标题化煽动与伤亡数据误用。",
+      "decision_focus": "战况表述的准确性与情绪控制",
+      "target_skills": [
+        "K1",
+        "K3",
+        "K4",
+        "K7"
+      ],
+      "risk_tags": [
+        "emotional_language",
+        "casualty_conflict"
+      ],
+      "briefing": "你从三家通讯员手里拿到不同版本的战况摘要，其中两份伤亡数据明显不一致，街头民众情绪已经明显紧张。",
+      "options": [
+        {
+          "id": "A",
+          "label": "使用最震撼的数字吸引关注",
+          "impact_hint": "传播力强，但高风险。"
+        },
+        {
+          "id": "B",
+          "label": "只发布已核实的战况并标注数据来源",
+          "impact_hint": "更稳，但需要克制表达。"
+        },
+        {
+          "id": "C",
+          "label": "先发布局部战况并附带行动建议",
+          "impact_hint": "适合训练公共行动指引能力。"
+        }
+      ],
+      "completion_hint": "重点看你是否把不确定信息明确标出，而不是写成确定结论。",
+      "recommendation": {
+        "mode": "self-paced",
+        "rank_score": 0.5293,
+        "weakness_score": 0.5275,
+        "state_boost_score": 0.0,
+        "risk_boost_score": 0.0,
+        "phase_boost_score": 2.0,
+        "reasons": [
+          "当前处于开场阶段，优先推荐建立背景和规则感的场景",
+          "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+        ],
+        "rank": 1
+      },
+      "phase_tags": [
+        "opening",
+        "middle"
+      ],
+      "branch_tags": [],
+      "next_rules": []
+    },
+    {
+      "id": "S4",
+      "title": "武汉会战后方动员沟通",
+      "era_date": "1938-06-15",
+      "location": "武汉后方新闻站",
+      "brief": "后方需要动员民众配合转运和防护，但过度渲染会导致恐慌与秩序失控。",
+      "mission": "写出一版兼顾稳定情绪与行动引导的沟通文案。",
+      "decision_focus": "行动指引与群体情绪管理",
+      "target_skills": [
+        "K4",
+        "K7",
+        "K8"
+      ],
+      "risk_tags": [
+        "public_panic",
+        "action_guidance"
+      ],
+      "briefing": "城市即将进入更紧张的疏散阶段，群众既需要真实信息，也需要可执行的具体行动建议。",
+      "options": [
+        {
+          "id": "A",
+          "label": "强调最坏后果迫使群众立刻行动",
+          "impact_hint": "可能有效，但恐慌风险很高。"
+        },
+        {
+          "id": "B",
+          "label": "用事实说明风险并给出分步骤行动建议",
+          "impact_hint": "更适合训练稳定沟通。"
+        },
+        {
+          "id": "C",
+          "label": "弱化风险以维持秩序表面稳定",
+          "impact_hint": "短期平静，长期可能失信。"
+        }
+      ],
+      "completion_hint": "重点看你是否给出清晰、可执行、不过度煽动的行动指引。",
+      "recommendation": {
+        "mode": "self-paced",
+        "rank_score": 0.378,
+        "weakness_score": 0.54,
+        "state_boost_score": 0.0,
+        "risk_boost_score": 0.0,
+        "phase_boost_score": 0.0,
+        "reasons": [],
+        "rank": 2
+      },
+      "phase_tags": [
+        "middle"
+      ],
+      "branch_tags": [],
+      "next_rules": []
+    },
+    {
+      "id": "S3",
+      "title": "南京失守高冲突信息处置",
+      "era_date": "1937-12-13",
+      "location": "南京外围撤离点",
+      "brief": "你获得一份高敏感线索，内容涉及幸存者身份、撤离路线和未公开目击信息。",
+      "mission": "在保护线索人物安全的前提下完成关键信息报道。",
+      "decision_focus": "来源保护与公众知情权边界",
+      "target_skills": [
+        "K2",
+        "K5",
+        "K6"
+      ],
+      "risk_tags": [
+        "source_exposure",
+        "privacy_leak",
+        "ethical_boundary"
+      ],
+      "briefing": "幸存者愿意提供目击细节，但前提是不能暴露身份与藏身位置。编辑部同时要求你尽量给出具体细节证明报道真实。",
+      "options": [
+        {
+          "id": "A",
+          "label": "公开证人真实姓名和躲藏地点",
+          "impact_hint": "证据感强，但极高风险。"
+        },
+        {
+          "id": "B",
+          "label": "匿名处理身份并模糊敏感细节",
+          "impact_hint": "优先保护来源安全。"
+        },
+        {
+          "id": "C",
+          "label": "暂缓发布，等待更安全的核验路径",
+          "impact_hint": "牺牲时效换安全空间。"
+        }
+      ],
+      "completion_hint": "重点看你是否知道哪些细节必须删、哪些证据可以换方式呈现。",
+      "recommendation": {
+        "mode": "self-paced",
+        "rank_score": 0.371,
+        "weakness_score": 0.53,
+        "state_boost_score": 0.0,
+        "risk_boost_score": 0.0,
+        "phase_boost_score": 0.0,
+        "reasons": [],
+        "rank": 3
+      },
+      "phase_tags": [
+        "middle"
+      ],
+      "branch_tags": [],
+      "next_rules": []
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "session_id": "4e3f88f3-9dfd-4aaf-9626-7b5dc51a7ead",
+  "round_no": 2,
+  "evaluation": {
+    "llm_model": "rules_v1",
+    "confidence": 0.78,
+    "risk_flags": [],
+    "skill_delta": {
+      "K1": 0.06,
+      "K2": 0.04,
+      "K3": 0.01,
+      "K4": 0.01,
+      "K5": 0.01,
+      "K6": 0.01,
+      "K7": 0.01,
+      "K8": 0.01
+    },
+    "s_delta": {
+      "credibility": 0.03,
+      "accuracy": 0.04,
+      "public_panic": 0.0,
+      "source_safety": 0.0,
+      "editor_trust": 0.0,
+      "actionability": 0.0
+    },
+    "evidence": [
+      "包含事实核验或多源确认策略"
+    ],
+    "skill_scores_preview": {
+      "K1": 0.57,
+      "K2": 0.53,
+      "K3": 0.47,
+      "K4": 0.47,
+      "K5": 0.47,
+      "K6": 0.47,
+      "K7": 0.47,
+      "K8": 0.47
+    },
+    "eval_mode": "rules_only",
+    "calibration": {}
+  },
+  "k_state": {
+    "K1": 0.57,
+    "K2": 0.53,
+    "K3": 0.47,
+    "K4": 0.47,
+    "K5": 0.47,
+    "K6": 0.47,
+    "K7": 0.47,
+    "K8": 0.47
+  },
+  "s_state": {
+    "credibility": 0.66,
+    "accuracy": 0.68,
+    "public_panic": 0.3,
+    "source_safety": 0.65,
+    "editor_trust": 0.55,
+    "actionability": 0.5
+  },
+  "is_completed": false,
+  "ending": null,
+  "player_profile": {
+    "name": "李敏",
+    "gender": "女",
+    "identity": "战地记者",
+    "age": 24
+  },
+  "runtime_state": {
+    "current_round_no": 2,
+    "k_state": {
+      "K1": 0.57,
+      "K2": 0.53,
+      "K3": 0.47,
+      "K4": 0.47,
+      "K5": 0.47,
+      "K6": 0.47,
+      "K7": 0.47,
+      "K8": 0.47
+    },
+    "s_state": {
+      "credibility": 0.66,
+      "accuracy": 0.68,
+      "public_panic": 0.3,
+      "source_safety": 0.65,
+      "editor_trust": 0.55,
+      "actionability": 0.5
+    },
+    "runtime_flags": {
+      "panic_triggered": false,
+      "source_exposed": false,
+      "editor_locked": false,
+      "high_risk_path": false
+    },
+    "state_bar": {
+      "editor_trust": 0.55,
+      "public_stability": 0.7,
+      "source_safety": 0.65
+    },
+    "current_scene_id": "S2",
+    "player_profile": {
+      "name": "李敏",
+      "gender": "女",
+      "identity": "战地记者",
+      "age": 24
+    }
+  },
+  "consequence_events": [],
+  "decision_context": {
+    "mode": "guided",
+    "selection_source": "ordered_sequence",
+    "selected_scenario_id": "S2",
+    "candidate_pool": [
+      {
+        "scenario_id": "S2",
+        "title": "淞沪会战连续战况",
+        "rank_score": 0.0,
+        "is_selected": true,
+        "is_recommended": false
+      }
+    ]
+  }
+}

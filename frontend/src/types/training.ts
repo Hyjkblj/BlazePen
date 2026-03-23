@@ -334,6 +334,7 @@ export interface TrainingRoundSubmitResult {
 
 export interface TrainingProgressResult {
   sessionId: TrainingSessionId;
+  characterId: string | null;
   status: string;
   roundNo: number;
   totalRounds: number;
@@ -351,6 +352,7 @@ export interface TrainingProgressAnchor {
 
 export interface TrainingSessionSummaryResult {
   sessionId: TrainingSessionId;
+  characterId: string | null;
   trainingMode: TrainingMode;
   status: string;
   roundNo: number;
@@ -368,6 +370,7 @@ export interface TrainingSessionSummaryResult {
 
 export interface TrainingReportResult {
   sessionId: TrainingSessionId;
+  characterId: string | null;
   status: string;
   rounds: number;
   kStateFinal: Record<string, number>;
@@ -385,6 +388,7 @@ export interface TrainingReportResult {
 
 export interface TrainingDiagnosticsResult {
   sessionId: TrainingSessionId;
+  characterId: string | null;
   status: string;
   roundNo: number;
   playerProfile: TrainingPlayerProfile | null;

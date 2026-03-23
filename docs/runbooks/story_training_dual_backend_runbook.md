@@ -97,6 +97,9 @@ curl -i -X OPTIONS "http://localhost:8010/health" \
 python -m pytest backend/test_domain_import_boundaries.py `
   backend/test_api_domain_boundaries.py `
   backend/test_runner_import_boundaries.py `
+  backend/test_story_router_facade_boundaries.py `
+  backend/test_game_service_facade_surface.py `
+  backend/test_api_app_factory_metadata.py `
   backend/test_api_dependencies.py `
   backend/test_story_service_bundle.py `
   backend/test_api_cors_scope_prod.py `

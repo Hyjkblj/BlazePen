@@ -180,4 +180,33 @@ describe('useTrainingReadQuery', () => {
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
+
+  it('does not read from resumeTarget by default without explicit or active session', async () => {
+    persistTrainingResumeTarget({
+      sessionId: 'training-session-cached',
+      trainingMode: 'guided',
+      status: 'in_progress',
+    });
+    const fetcher = vi.fn().mockResolvedValueOnce({
+      sessionId: 'training-session-cached',
+      score: 0.66,
+    });
+
+    const { result } = renderHook(
+      () =>
+        useTrainingReadQuery({
+          fetcher,
+          fallbackErrorMessage: '读取失败。',
+        }),
+      { wrapper: createWrapper(null) }
+    );
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('idle');
+    });
+
+    expect(result.current.sessionTarget.sessionId).toBeNull();
+    expect(result.current.sessionTarget.source).toBe('none');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
 });

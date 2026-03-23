@@ -49,7 +49,8 @@ def _serialize_scenario(
     if isinstance(scenario, TrainingScenarioOutput):
         return scenario.to_dict()
     if isinstance(scenario, dict):
-        return dict(scenario)
+        normalized = TrainingScenarioOutput.from_payload(scenario)
+        return normalized.to_dict() if normalized is not None else None
     return None
 
 
@@ -573,7 +574,6 @@ class TrainingScenarioOutput:
     decision_focus: str = ""
     target_skills: List[str] = field(default_factory=list)
     risk_tags: List[str] = field(default_factory=list)
-    briefing: str = ""
     options: List[TrainingScenarioOptionOutput] = field(default_factory=list)
     completion_hint: str = ""
     recommendation: Optional[TrainingScenarioRecommendationOutput] = None
@@ -589,6 +589,13 @@ class TrainingScenarioOutput:
         if not scenario_id:
             return None
 
+        # Canonical scenario summary field is `brief`.
+        # Keep input-level compatibility for legacy `briefing`, but never
+        # emit `briefing` in canonical output DTO payloads.
+        brief_value = str(payload.get("brief") or "")
+        briefing_value = str(payload.get("briefing") or "")
+        canonical_brief = brief_value or briefing_value
+
         option_items: List[TrainingScenarioOptionOutput] = []
         for option in payload.get("options", []) or []:
             option_output = TrainingScenarioOptionOutput.from_payload(option)
@@ -601,11 +608,11 @@ class TrainingScenarioOutput:
             "era_date",
             "location",
             "brief",
+            "briefing",
             "mission",
             "decision_focus",
             "target_skills",
             "risk_tags",
-            "briefing",
             "options",
             "completion_hint",
             "recommendation",
@@ -621,12 +628,11 @@ class TrainingScenarioOutput:
             title=str(payload.get("title") or scenario_id),
             era_date=str(payload.get("era_date") or ""),
             location=str(payload.get("location") or ""),
-            brief=str(payload.get("brief") or ""),
+            brief=canonical_brief,
             mission=str(payload.get("mission") or ""),
             decision_focus=str(payload.get("decision_focus") or ""),
             target_skills=[str(item) for item in payload.get("target_skills", []) if str(item or "").strip()],
             risk_tags=[str(item) for item in payload.get("risk_tags", []) if str(item or "").strip()],
-            briefing=str(payload.get("briefing") or ""),
             options=option_items,
             completion_hint=str(payload.get("completion_hint") or ""),
             recommendation=TrainingScenarioRecommendationOutput.from_payload(payload.get("recommendation")),
@@ -645,7 +651,6 @@ class TrainingScenarioOutput:
             "decision_focus": self.decision_focus,
             "target_skills": list(self.target_skills),
             "risk_tags": list(self.risk_tags),
-            "briefing": self.briefing,
             "options": [item.to_dict() for item in self.options],
             "completion_hint": self.completion_hint,
         }
@@ -1664,6 +1669,7 @@ class TrainingProgressOutput:
     total_rounds: int
     k_state: Dict[str, float]
     s_state: Dict[str, float]
+    character_id: Optional[int] = None
     player_profile: Optional[TrainingPlayerProfileOutput | Dict[str, Any]] = None
     runtime_state: Optional["TrainingRuntimeStateOutput | Dict[str, Any]"] = None
 
@@ -1671,6 +1677,7 @@ class TrainingProgressOutput:
         """导出训练进度。"""
         payload = {
             "session_id": self.session_id,
+            "character_id": self.character_id,
             "status": self.status,
             "round_no": self.round_no,
             "total_rounds": self.total_rounds,
@@ -1756,6 +1763,7 @@ class TrainingSessionSummaryOutput:
     progress_anchor: "TrainingSessionProgressAnchorOutput | Dict[str, Any]"
     can_resume: bool
     is_completed: bool
+    character_id: Optional[int] = None
     player_profile: Optional["TrainingPlayerProfileOutput | Dict[str, Any]"] = None
     runtime_state: Optional["TrainingRuntimeStateOutput | Dict[str, Any]"] = None
     resumable_scenario: Optional["TrainingScenarioOutput | Dict[str, Any]"] = None
@@ -1768,6 +1776,7 @@ class TrainingSessionSummaryOutput:
         """Export the stable session summary payload."""
         payload = {
             "session_id": self.session_id,
+            "character_id": self.character_id,
             "status": self.status,
             "training_mode": self.training_mode,
             "current_round_no": self.current_round_no,
@@ -1800,6 +1809,7 @@ class TrainingHistoryOutput:
     current_round_no: int
     total_rounds: int
     progress_anchor: "TrainingSessionProgressAnchorOutput | Dict[str, Any]"
+    character_id: Optional[int] = None
     history: List["TrainingReportHistoryItemOutput"] = field(default_factory=list)
     is_completed: bool = False
     player_profile: Optional["TrainingPlayerProfileOutput | Dict[str, Any]"] = None
@@ -1812,6 +1822,7 @@ class TrainingHistoryOutput:
         """Export the stable training history payload."""
         payload = {
             "session_id": self.session_id,
+            "character_id": self.character_id,
             "status": self.status,
             "training_mode": self.training_mode,
             "current_round_no": self.current_round_no,
@@ -2072,6 +2083,7 @@ class TrainingReportOutput:
     k_state_final: Dict[str, float]
     s_state_final: Dict[str, float]
     improvement: float
+    character_id: Optional[int] = None
     player_profile: Optional[TrainingPlayerProfileOutput | Dict[str, Any]] = None
     runtime_state: Optional["TrainingRuntimeStateOutput | Dict[str, Any]"] = None
     ending: Optional[Dict[str, Any]] = None
@@ -2085,6 +2097,7 @@ class TrainingReportOutput:
         """导出训练报告。"""
         payload = {
             "session_id": self.session_id,
+            "character_id": self.character_id,
             "status": self.status,
             "rounds": self.rounds,
             "k_state_final": _copy_dict(self.k_state_final),
@@ -2111,6 +2124,7 @@ class TrainingDiagnosticsOutput:
     session_id: str
     status: str
     round_no: int
+    character_id: Optional[int] = None
     player_profile: "TrainingPlayerProfileOutput | Dict[str, Any] | None" = None
     runtime_state: "TrainingRuntimeStateOutput | Dict[str, Any] | None" = None
     summary: "TrainingDiagnosticsSummaryOutput | Dict[str, Any] | None" = None
@@ -2122,6 +2136,7 @@ class TrainingDiagnosticsOutput:
         """导出稳定诊断字典。"""
         payload = {
             "session_id": self.session_id,
+            "character_id": self.character_id,
             "status": self.status,
             "round_no": self.round_no,
             "summary": _serialize_diagnostics_summary(self.summary),

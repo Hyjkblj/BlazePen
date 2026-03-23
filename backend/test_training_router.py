@@ -158,6 +158,7 @@ class _FakeTrainingService:
     def get_session_summary(self, session_id):
         return {
             "session_id": session_id,
+            "character_id": 42,
             "status": "in_progress",
             "training_mode": "self-paced",
             "current_round_no": 1,
@@ -205,6 +206,7 @@ class _FakeTrainingService:
     def get_progress(self, session_id):
         return {
             "session_id": session_id,
+            "character_id": 42,
             "status": "in_progress",
             "round_no": 1,
             "total_rounds": 6,
@@ -233,6 +235,7 @@ class _FakeTrainingService:
     def get_history(self, session_id):
         return {
             "session_id": session_id,
+            "character_id": 42,
             "status": "in_progress",
             "training_mode": "self-paced",
             "current_round_no": 1,
@@ -287,6 +290,7 @@ class _FakeTrainingService:
     def get_report(self, session_id):
         return {
             "session_id": session_id,
+            "character_id": 42,
             "status": "completed",
             "rounds": 6,
             "k_state_final": {"K1": 0.9},
@@ -440,6 +444,7 @@ class _FakeTrainingService:
     def get_diagnostics(self, session_id):
         return {
             "session_id": session_id,
+            "character_id": 42,
             "status": "in_progress",
             "round_no": 1,
             "player_profile": {"name": "李敏", "gender": "女", "identity": "战地记者"},
@@ -653,6 +658,7 @@ class TrainingRouterTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload["code"], 200)
         self.assertEqual(payload["data"]["session_id"], "s-test")
+        self.assertEqual(payload["data"]["character_id"], 42)
         self.assertEqual(payload["data"]["training_mode"], "self-paced")
         self.assertEqual(payload["data"]["progress_anchor"]["next_round_no"], 2)
         self.assertEqual(payload["data"]["progress_anchor"]["progress_percent"], 16.67)
@@ -688,6 +694,7 @@ class TrainingRouterTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload["code"], 200)
         self.assertEqual(payload["data"]["session_id"], "s-test")
+        self.assertEqual(payload["data"]["character_id"], 42)
         self.assertEqual(payload["data"]["training_mode"], "self-paced")
         self.assertEqual(payload["data"]["progress_anchor"]["next_round_no"], 2)
         self.assertEqual(payload["data"]["progress_anchor"]["progress_percent"], 16.67)
@@ -791,6 +798,7 @@ class TrainingRouterTestCase(unittest.TestCase):
         payload = response.json()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload["code"], 200)
+        self.assertEqual(payload["data"]["character_id"], 42)
         self.assertEqual(payload["data"]["history"][0]["decision_context"]["selection_source"], "ordered_sequence")
         self.assertEqual(payload["data"]["history"][0]["kt_observation"]["primary_skill_code"], "K1")
         self.assertEqual(payload["data"]["summary"]["strongest_improved_skill_code"], "K1")
@@ -804,6 +812,7 @@ class TrainingRouterTestCase(unittest.TestCase):
         payload = response.json()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload["code"], 200)
+        self.assertEqual(payload["data"]["character_id"], 42)
         self.assertEqual(payload["data"]["recommendation_logs"][0]["selection_source"], "candidate_pool")
         self.assertEqual(payload["data"]["audit_events"][0]["event_type"], "round_submitted")
         self.assertEqual(payload["data"]["kt_observations"][0]["primary_skill_code"], "K1")

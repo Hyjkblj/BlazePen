@@ -52,6 +52,7 @@ const createSummaryResult = (
   overrides: Partial<TrainingSessionSummaryResult> = {}
 ): TrainingSessionSummaryResult => ({
   sessionId: 'training-session-active',
+  characterId: '84',
   trainingMode: 'adaptive',
   status: 'in_progress',
   roundNo: 2,
@@ -128,11 +129,11 @@ describe('useTrainingSessionBootstrap', () => {
     );
     expect(result.current.bootstrap.activeSession).toMatchObject({
       sessionId: 'training-session-active',
-      characterId: '42',
+      characterId: '84',
     });
     expect(readTrainingResumeTarget()).toMatchObject({
       sessionId: 'training-session-active',
-      characterId: '42',
+      characterId: '84',
       trainingMode: 'adaptive',
     });
   });
@@ -147,6 +148,7 @@ describe('useTrainingSessionBootstrap', () => {
     trainingApiMocks.getTrainingSessionSummary.mockResolvedValueOnce(
       createSummaryResult({
         sessionId: 'training-session-explicit',
+        characterId: '66',
         trainingMode: 'guided',
       })
     );
@@ -183,7 +185,7 @@ describe('useTrainingSessionBootstrap', () => {
     );
     expect(result.current.bootstrap.activeSession).toMatchObject({
       sessionId: 'training-session-explicit',
-      characterId: '77',
+      characterId: '66',
       trainingMode: 'guided',
     });
   });
@@ -229,7 +231,7 @@ describe('useTrainingSessionBootstrap', () => {
     );
   });
 
-  it('emits telemetry for a successful training session restore', async () => {
+  it('emits telemetry for a successful explicit training session restore', async () => {
     persistTrainingResumeTarget({
       sessionId: 'training-session-restore',
       trainingMode: 'guided',
@@ -246,7 +248,9 @@ describe('useTrainingSessionBootstrap', () => {
     const { result } = renderHook(() => useTrainingSessionBootstrap(), { wrapper });
 
     await act(async () => {
-      await result.current.restoreSession();
+      await result.current.restoreSession({
+        sessionId: 'training-session-restore',
+      });
     });
 
     expect(telemetrySpy).toHaveBeenCalledWith(
@@ -256,7 +260,7 @@ describe('useTrainingSessionBootstrap', () => {
         status: 'requested',
         metadata: expect.objectContaining({
           sessionId: 'training-session-restore',
-          restoreSource: 'resume-target',
+          restoreSource: 'explicit',
         }),
       })
     );
@@ -273,7 +277,35 @@ describe('useTrainingSessionBootstrap', () => {
     );
   });
 
-  it('emits failed telemetry when training session restore is rejected', async () => {
+  it('does not restore by default from resumeTarget when no explicit sessionId exists', async () => {
+    persistTrainingResumeTarget({
+      sessionId: 'training-session-cached',
+      trainingMode: 'guided',
+      characterId: '11',
+      status: 'in_progress',
+    });
+    const { result } = renderHook(() => useTrainingSessionBootstrap(), { wrapper });
+
+    await act(async () => {
+      await result.current.restoreSession();
+    });
+
+    expect(trainingApiMocks.getTrainingSessionSummary).not.toHaveBeenCalled();
+    expect(result.current.errorMessage).toBe('当前没有可恢复的训练会话。');
+    expect(telemetrySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domain: 'training',
+        event: 'training.restore',
+        status: 'failed',
+        metadata: expect.objectContaining({
+          sessionId: null,
+          failureStage: 'missing-session',
+        }),
+      })
+    );
+  });
+
+  it('emits failed telemetry when explicit training session restore is rejected', async () => {
     persistTrainingResumeTarget({
       sessionId: 'training-session-missing',
       trainingMode: 'guided',
@@ -290,7 +322,9 @@ describe('useTrainingSessionBootstrap', () => {
     const { result } = renderHook(() => useTrainingSessionBootstrap(), { wrapper });
 
     await act(async () => {
-      await result.current.restoreSession();
+      await result.current.restoreSession({
+        sessionId: 'training-session-missing',
+      });
     });
 
     expect(telemetrySpy).toHaveBeenCalledWith(
@@ -300,7 +334,7 @@ describe('useTrainingSessionBootstrap', () => {
         status: 'failed',
         metadata: expect.objectContaining({
           sessionId: 'training-session-missing',
-          restoreSource: 'resume-target',
+          restoreSource: 'explicit',
         }),
       })
     );

@@ -478,7 +478,6 @@ class StoryDomainServicesTestCase(unittest.TestCase):
         )
         turn_service = SimpleNamespace(
             initialize_story=lambda **kwargs: {"delegated": "turn.init", **kwargs},
-            process_input=lambda **kwargs: {"delegated": "turn.input", **kwargs},
             submit_turn=lambda **kwargs: {"delegated": "turn.submit", **kwargs},
         )
         ending_service = SimpleNamespace(
@@ -504,10 +503,6 @@ class StoryDomainServicesTestCase(unittest.TestCase):
         self.assertEqual(
             service.initialize_story("thread-001", 7)["delegated"],
             "turn.init",
-        )
-        self.assertEqual(
-            service.process_input("thread-001", "继续")["delegated"],
-            "turn.input",
         )
         self.assertEqual(
             service.submit_story_turn(

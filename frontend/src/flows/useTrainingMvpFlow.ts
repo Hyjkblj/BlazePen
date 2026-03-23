@@ -110,7 +110,7 @@ export function useTrainingMvpFlow() {
         return null;
       }
 
-      setSessionView(buildTrainingSessionViewFromSummary(summaryResult, restoreIdentity.characterId));
+      setSessionView(buildTrainingSessionViewFromSummary(summaryResult));
       return summaryResult;
     },
     [bootstrap.restoreSession, sessionViewModel]
@@ -200,7 +200,7 @@ export function useTrainingMvpFlow() {
     roundRunner.dismissError();
     bootstrap.dismissError();
     setNoticeMessage(null);
-    await restoreSessionView(sessionViewModel.currentSessionId);
+    await restoreSessionView(sessionViewModel.currentSessionId ?? bootstrap.resumeTarget?.sessionId);
   }, [bootstrap, restoreSessionView, roundRunner, sessionViewModel.currentSessionId]);
 
   const submitCurrentRound = useCallback(async () => {
@@ -245,9 +245,7 @@ export function useTrainingMvpFlow() {
     }
 
     if (transition.summaryResult) {
-      setSessionView(
-        buildTrainingSessionViewFromSummary(transition.summaryResult, sessionView.characterId)
-      );
+      setSessionView(buildTrainingSessionViewFromSummary(transition.summaryResult));
 
       if (transition.recoveryReason === 'duplicate') {
         setNoticeMessage('检测到重复提交，页面已按服务端训练进度恢复。');

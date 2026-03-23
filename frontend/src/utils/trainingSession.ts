@@ -83,6 +83,25 @@ const normalizeOptionalString = (value: unknown): string | null => {
   return normalized;
 };
 
+const normalizeOptionalCharacterId = (value: unknown): string | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const normalized = Math.trunc(value);
+    return normalized > 0 ? String(normalized) : null;
+  }
+
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(normalized, 10);
+  if (Number.isInteger(parsed) && parsed > 0) {
+    return String(parsed);
+  }
+
+  return null;
+};
+
 const normalizeNumber = (value: unknown, fallback = 0): number => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -878,6 +897,7 @@ export const normalizeTrainingProgressPayload = (
 
   return {
     sessionId: normalizeOptionalString(payload?.session_id) ?? '',
+    characterId: normalizeOptionalCharacterId(payload?.character_id),
     status: normalizeOptionalString(payload?.status) ?? 'in_progress',
     roundNo,
     totalRounds: normalizeNumber(payload?.total_rounds),
@@ -900,6 +920,7 @@ export const normalizeTrainingSessionSummaryPayload = (
 
   return {
     sessionId: normalizeOptionalString(payload?.session_id) ?? '',
+    characterId: normalizeOptionalCharacterId(payload?.character_id),
     trainingMode: parseTrainingModeFromResponse(payload?.training_mode, 'training_mode'),
     status: normalizeOptionalString(payload?.status) ?? 'initialized',
     roundNo,
@@ -934,6 +955,7 @@ export const normalizeTrainingReportPayload = (
 
   return {
     sessionId: normalizeOptionalString(payload?.session_id) ?? '',
+    characterId: normalizeOptionalCharacterId(payload?.character_id),
     status: normalizeOptionalString(payload?.status) ?? 'completed',
     rounds,
     kStateFinal: normalizeNumberMap(payload?.k_state_final),
@@ -981,6 +1003,7 @@ export const normalizeTrainingDiagnosticsPayload = (
 
   return {
     sessionId: normalizeOptionalString(payload?.session_id) ?? '',
+    characterId: normalizeOptionalCharacterId(payload?.character_id),
     status: normalizeOptionalString(payload?.status) ?? 'completed',
     roundNo,
     playerProfile,

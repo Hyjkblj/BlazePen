@@ -1,0 +1,125 @@
+{
+  "session_id": "4e3f88f3-9dfd-4aaf-9626-7b5dc51a7ead",
+  "status": "in_progress",
+  "round_no": 0,
+  "k_state": {
+    "K1": 0.45,
+    "K2": 0.45,
+    "K3": 0.45,
+    "K4": 0.45,
+    "K5": 0.45,
+    "K6": 0.45,
+    "K7": 0.45,
+    "K8": 0.45
+  },
+  "s_state": {
+    "credibility": 0.6,
+    "accuracy": 0.6,
+    "public_panic": 0.3,
+    "source_safety": 0.65,
+    "editor_trust": 0.55,
+    "actionability": 0.5
+  },
+  "next_scenario": {
+    "id": "S1",
+    "title": "卢沟桥事变快讯发布",
+    "era_date": "1937-07-07",
+    "location": "北平宛平城外围",
+    "brief": "卢沟桥附近夜间突发交火，各方说法混杂，报馆催促你尽快回传第一版快讯。",
+    "mission": "在时间压力下决定首条快讯的发布策略，兼顾时效与核验。",
+    "decision_focus": "抢发速度与事实核验的平衡",
+    "target_skills": [
+      "K1",
+      "K2",
+      "K3",
+      "K4"
+    ],
+    "risk_tags": [
+      "fast_publish",
+      "rumor",
+      "headline_pressure"
+    ],
+    "briefing": "你手上只有前线巡查员口述、地方电台片段和两份互相矛盾的纸条。编辑部要求三十分钟内给出首版快讯口径。",
+    "options": [
+      {
+        "id": "A",
+        "label": "先发未经完全核实的快讯",
+        "impact_hint": "时效快，但容易带来失真和恐慌。"
+      },
+      {
+        "id": "B",
+        "label": "至少完成双来源交叉核验再发布",
+        "impact_hint": "更稳健，但会损失部分时效。"
+      },
+      {
+        "id": "C",
+        "label": "先发有限事实并声明仍在核验",
+        "impact_hint": "兼顾速度和可信度，适合训练首轮。"
+      }
+    ],
+    "completion_hint": "重点看你如何描述“已知事实、未知部分、后续核验动作”。",
+    "phase_tags": [
+      "opening"
+    ],
+    "branch_tags": [],
+    "next_rules": [
+      {
+        "go_to": "S2B",
+        "default": false,
+        "transition_type": "failure_branch",
+        "reason": "首轮快讯触发公众恐慌，必须先处理稳定沟通支线。",
+        "modes": [],
+        "when_any_flags": [
+          "panic_triggered"
+        ],
+        "when_all_flags": [],
+        "when_no_flags": []
+      }
+    ]
+  },
+  "player_profile": {
+    "name": "李敏",
+    "gender": "女",
+    "identity": "战地记者",
+    "age": 24
+  },
+  "runtime_state": {
+    "current_round_no": 0,
+    "k_state": {
+      "K1": 0.45,
+      "K2": 0.45,
+      "K3": 0.45,
+      "K4": 0.45,
+      "K5": 0.45,
+      "K6": 0.45,
+      "K7": 0.45,
+      "K8": 0.45
+    },
+    "s_state": {
+      "credibility": 0.6,
+      "accuracy": 0.6,
+      "public_panic": 0.3,
+      "source_safety": 0.65,
+      "editor_trust": 0.55,
+      "actionability": 0.5
+    },
+    "runtime_flags": {
+      "panic_triggered": false,
+      "source_exposed": false,
+      "editor_locked": false,
+      "high_risk_path": false
+    },
+    "state_bar": {
+      "editor_trust": 0.55,
+      "public_stability": 0.7,
+      "source_safety": 0.65
+    },
+    "current_scene_id": "S1",
+    "player_profile": {
+      "name": "李敏",
+      "gender": "女",
+      "identity": "战地记者",
+      "age": 24
+    }
+  }
+}

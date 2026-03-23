@@ -31,7 +31,9 @@ export function useTrainingReadQuery<TData>({
   fallbackErrorMessage,
 }: UseTrainingReadQueryOptions<TData>): UseTrainingReadQueryResult<TData> {
   const { state, clearActiveSession } = useTrainingFlow();
-  const sessionTarget = useTrainingSessionReadTarget(explicitSessionId);
+  const sessionTarget = useTrainingSessionReadTarget(explicitSessionId, {
+    allowResumeTargetFallback: false,
+  });
   const [data, setData] = useState<TData | null>(null);
   const [status, setStatus] = useState<TrainingReadQueryStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

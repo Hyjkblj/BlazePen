@@ -44,6 +44,14 @@ def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
     return max(lower, min(upper, value))
 
 
+def _normalize_character_id(value: Any) -> int | None:
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError):
+        return None
+    return normalized if normalized > 0 else None
+
+
 class TrainingQueryService:
     """Build stable read models directly from persisted training facts."""
 
@@ -113,6 +121,7 @@ class TrainingQueryService:
 
         return TrainingSessionSummaryOutput(
             session_id=session_id,
+            character_id=_normalize_character_id(getattr(session, "character_id", None)),
             status=session.status,
             training_mode=self._normalize_session_training_mode(session),
             current_round_no=session.current_round_no,
@@ -151,6 +160,7 @@ class TrainingQueryService:
 
         return TrainingProgressOutput(
             session_id=session_id,
+            character_id=_normalize_character_id(getattr(session, "character_id", None)),
             status=session.status,
             round_no=session.current_round_no,
             total_rounds=len(session_sequence),
@@ -178,6 +188,7 @@ class TrainingQueryService:
 
         return TrainingHistoryOutput(
             session_id=session_id,
+            character_id=_normalize_character_id(getattr(session, "character_id", None)),
             status=session.status,
             training_mode=self._normalize_session_training_mode(session),
             current_round_no=session.current_round_no,
@@ -251,6 +262,7 @@ class TrainingQueryService:
         )
         return TrainingReportOutput(
             session_id=session_id,
+            character_id=_normalize_character_id(getattr(session, "character_id", None)),
             status=session.status,
             rounds=session.current_round_no,
             k_state_final=final_k,
@@ -292,6 +304,7 @@ class TrainingQueryService:
 
         return TrainingDiagnosticsOutput(
             session_id=session_id,
+            character_id=_normalize_character_id(getattr(session, "character_id", None)),
             status=session.status,
             round_no=session.current_round_no,
             player_profile=self._resolve_session_player_profile(session),

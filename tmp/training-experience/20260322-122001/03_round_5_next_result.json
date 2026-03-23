@@ -1,0 +1,184 @@
+{
+  "session_id": "36bf00ea-bd72-4b8f-af3c-cdad1ab98cfd",
+  "status": "in_progress",
+  "round_no": 6,
+  "scenario": {
+    "id": "S6",
+    "title": "终战节点宣布性报道",
+    "era_date": "1945-08-15",
+    "location": "重庆报馆总编室",
+    "brief": "终战节点的信息高度敏感，社会情绪高涨，任何误报都会被迅速放大。",
+    "mission": "完成一版宣布性报道，兼顾准确表达、情绪节制与后续更新闭环。",
+    "decision_focus": "重大节点报道的确认、表达与更新机制",
+    "target_skills": [
+      "K1",
+      "K4",
+      "K7",
+      "K8"
+    ],
+    "risk_tags": [
+      "major_announcement",
+      "update_loop",
+      "public_expectation"
+    ],
+    "briefing": "你已经拿到多份相近消息，但最终正式文本尚未完全公开。编辑部希望立刻准备头版，同时要求你设计后续更正与更新方案。",
+    "options": [
+      {
+        "id": "A",
+        "label": "抢先定性并用情绪化语言放大标题",
+        "impact_hint": "传播爆发快，但误差代价极高。"
+      },
+      {
+        "id": "B",
+        "label": "以已确认事实为主，并预留后续更新口径",
+        "impact_hint": "更符合终局训练目标。"
+      },
+      {
+        "id": "C",
+        "label": "完全等正式公文全文再动笔",
+        "impact_hint": "最稳妥，但可能失去报道窗口。"
+      }
+    ],
+    "completion_hint": "重点看你是否明确写出确认范围、未确认部分和后续更新机制。",
+    "recommendation": {
+      "mode": "self-paced",
+      "rank_score": 0.4837,
+      "weakness_score": 0.4625,
+      "state_boost_score": 0.0,
+      "risk_boost_score": 0.0,
+      "phase_boost_score": 2.0,
+      "reasons": [
+        "当前处于收束阶段，优先推荐总结性和终局性场景",
+        "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+      ],
+      "rank": 1
+    },
+    "phase_tags": [
+      "closing"
+    ],
+    "branch_tags": [],
+    "next_rules": []
+  },
+  "k_state": {
+    "K1": 0.65,
+    "K2": 0.59,
+    "K3": 0.5,
+    "K4": 0.5,
+    "K5": 0.55,
+    "K6": 0.5,
+    "K7": 0.5,
+    "K8": 0.5
+  },
+  "s_state": {
+    "credibility": 0.69,
+    "accuracy": 0.72,
+    "public_panic": 0.3,
+    "source_safety": 0.7,
+    "editor_trust": 0.55,
+    "actionability": 0.5
+  },
+  "player_profile": {
+    "name": "李敏",
+    "gender": "女",
+    "identity": "战地记者",
+    "age": 24
+  },
+  "runtime_state": {
+    "current_round_no": 5,
+    "k_state": {
+      "K1": 0.65,
+      "K2": 0.59,
+      "K3": 0.5,
+      "K4": 0.5,
+      "K5": 0.55,
+      "K6": 0.5,
+      "K7": 0.5,
+      "K8": 0.5
+    },
+    "s_state": {
+      "credibility": 0.69,
+      "accuracy": 0.72,
+      "public_panic": 0.3,
+      "source_safety": 0.7,
+      "editor_trust": 0.55,
+      "actionability": 0.5
+    },
+    "runtime_flags": {
+      "panic_triggered": false,
+      "source_exposed": false,
+      "editor_locked": false,
+      "high_risk_path": false
+    },
+    "state_bar": {
+      "editor_trust": 0.55,
+      "public_stability": 0.7,
+      "source_safety": 0.7
+    },
+    "current_scene_id": "S6",
+    "player_profile": {
+      "name": "李敏",
+      "gender": "女",
+      "identity": "战地记者",
+      "age": 24
+    }
+  },
+  "scenario_candidates": [
+    {
+      "id": "S6",
+      "title": "终战节点宣布性报道",
+      "era_date": "1945-08-15",
+      "location": "重庆报馆总编室",
+      "brief": "终战节点的信息高度敏感，社会情绪高涨，任何误报都会被迅速放大。",
+      "mission": "完成一版宣布性报道，兼顾准确表达、情绪节制与后续更新闭环。",
+      "decision_focus": "重大节点报道的确认、表达与更新机制",
+      "target_skills": [
+        "K1",
+        "K4",
+        "K7",
+        "K8"
+      ],
+      "risk_tags": [
+        "major_announcement",
+        "update_loop",
+        "public_expectation"
+      ],
+      "briefing": "你已经拿到多份相近消息，但最终正式文本尚未完全公开。编辑部希望立刻准备头版，同时要求你设计后续更正与更新方案。",
+      "options": [
+        {
+          "id": "A",
+          "label": "抢先定性并用情绪化语言放大标题",
+          "impact_hint": "传播爆发快，但误差代价极高。"
+        },
+        {
+          "id": "B",
+          "label": "以已确认事实为主，并预留后续更新口径",
+          "impact_hint": "更符合终局训练目标。"
+        },
+        {
+          "id": "C",
+          "label": "完全等正式公文全文再动笔",
+          "impact_hint": "最稳妥，但可能失去报道窗口。"
+        }
+      ],
+      "completion_hint": "重点看你是否明确写出确认范围、未确认部分和后续更新机制。",
+      "recommendation": {
+        "mode": "self-paced",
+        "rank_score": 0.4837,
+        "weakness_score": 0.4625,
+        "state_boost_score": 0.0,
+        "risk_boost_score": 0.0,
+        "phase_boost_score": 2.0,
+        "reasons": [
+          "当前处于收束阶段，优先推荐总结性和终局性场景",
+          "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+        ],
+        "rank": 1
+      },
+      "phase_tags": [
+        "closing"
+      ],
+      "branch_tags": [],
+      "next_rules": []
+    }
+  ]
+}

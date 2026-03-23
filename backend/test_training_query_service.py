@@ -47,6 +47,7 @@ class TrainingQueryServiceTestCase(unittest.TestCase):
     def _create_seeded_session(self):
         init_result = self.service.init_training(
             user_id="u-query",
+            character_id=42,
             training_mode="self-paced",
             player_profile={"name": "Li Min", "identity": "Reporter"},
         )
@@ -66,6 +67,7 @@ class TrainingQueryServiceTestCase(unittest.TestCase):
         summary = self.query_service.get_session_summary(session_id)
 
         self.assertEqual(summary["session_id"], session_id)
+        self.assertEqual(summary["character_id"], 42)
         self.assertEqual(self.db.update_calls, [])
 
     def test_get_progress_should_not_write_during_query(self):
@@ -74,6 +76,7 @@ class TrainingQueryServiceTestCase(unittest.TestCase):
         progress = self.query_service.get_progress(session_id)
 
         self.assertEqual(progress["session_id"], session_id)
+        self.assertEqual(progress["character_id"], 42)
         self.assertEqual(self.db.update_calls, [])
 
     def test_query_read_models_should_freeze_progress_percent_as_real_percentage(self):
@@ -116,6 +119,7 @@ class TrainingQueryServiceTestCase(unittest.TestCase):
         history = self.query_service.get_history(session_id)
 
         self.assertEqual(history["session_id"], session_id)
+        self.assertEqual(history["character_id"], 42)
         self.assertEqual(history["history"][0]["scenario_id"], scenario_id)
         self.assertEqual(self.db.update_calls, [])
 
@@ -125,6 +129,7 @@ class TrainingQueryServiceTestCase(unittest.TestCase):
         report = self.query_service.get_report(session_id)
 
         self.assertEqual(report["session_id"], session_id)
+        self.assertEqual(report["character_id"], 42)
         self.assertEqual(report["history"][0]["scenario_id"], scenario_id)
         self.assertEqual(self.db.update_calls, [])
 
@@ -134,6 +139,7 @@ class TrainingQueryServiceTestCase(unittest.TestCase):
         diagnostics = self.query_service.get_diagnostics(session_id)
 
         self.assertEqual(diagnostics["session_id"], session_id)
+        self.assertEqual(diagnostics["character_id"], 42)
         self.assertEqual(self.db.update_calls, [])
 
     def test_get_session_summary_should_raise_typed_error_when_snapshots_are_missing(self):

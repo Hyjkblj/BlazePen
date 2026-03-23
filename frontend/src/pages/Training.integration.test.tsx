@@ -264,7 +264,7 @@ describe('Training route integration', () => {
     expectTrainingInsightLinks(container, 'training-session-1');
   });
 
-  it('restores a cached training session through the session summary endpoint on refresh', async () => {
+  it('restores a cached training session only after user-triggered resume', async () => {
     persistTrainingResumeTarget({
       sessionId: 'training-session-restore',
       trainingMode: 'adaptive',
@@ -273,6 +273,7 @@ describe('Training route integration', () => {
     });
     trainingApiMocks.getTrainingSessionSummary.mockResolvedValueOnce({
       sessionId: 'training-session-restore',
+      characterId: '12',
       trainingMode: 'adaptive',
       status: 'in_progress',
       roundNo: 2,
@@ -297,6 +298,12 @@ describe('Training route integration', () => {
 
     const { container } = renderRouterApp(ROUTES.TRAINING);
 
+    expect(await screen.findByText('training-session-restore')).toBeTruthy();
+    expect(trainingApiMocks.getTrainingSessionSummary).not.toHaveBeenCalled();
+    expect(screen.queryByRole('link', { name: '查看训练进度' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '恢复上次训练' }));
+
     await waitFor(() => {
       expect(trainingApiMocks.getTrainingSessionSummary).toHaveBeenCalledWith(
         'training-session-restore'
@@ -319,6 +326,7 @@ describe('Training route integration', () => {
     });
     trainingApiMocks.getTrainingSessionSummary.mockResolvedValueOnce({
       sessionId: 'training-session-active',
+      characterId: '58',
       trainingMode: 'adaptive',
       status: 'in_progress',
       roundNo: 1,
@@ -403,7 +411,7 @@ describe('Training route integration', () => {
     expect(readTrainingResumeTarget()).toMatchObject({
       sessionId: 'training-session-active',
       trainingMode: 'adaptive',
-      characterId: '42',
+      characterId: '58',
     });
 
     fireEvent.click(screen.getByRole('link', { name: '查看训练进度' }));
@@ -446,6 +454,11 @@ describe('Training route integration', () => {
     );
 
     renderRouterApp(ROUTES.TRAINING);
+
+    expect(await screen.findByText('training-session-broken')).toBeTruthy();
+    expect(trainingApiMocks.getTrainingSessionSummary).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '恢复上次训练' }));
 
     expect(
       await screen.findByText('训练会话恢复状态损坏，已清理本地恢复入口。')

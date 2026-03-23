@@ -143,4 +143,20 @@ describe('resolveTrainingSessionReadTarget', () => {
       source: 'none',
     });
   });
+
+  it('can disable resumeTarget fallback for canonical server reads', () => {
+    expect(
+      resolveTrainingSessionReadTarget({
+        activeSession: null,
+        resumeTarget: createResumeTarget(),
+        allowResumeTargetFallback: false,
+      })
+    ).toEqual({
+      sessionId: null,
+      trainingMode: null,
+      characterId: null,
+      status: null,
+      source: 'none',
+    });
+  });
 });

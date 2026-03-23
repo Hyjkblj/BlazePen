@@ -337,6 +337,33 @@ class TrainingOutputsTestCase(unittest.TestCase):
         self.assertEqual(payload["summary"]["recommended_vs_selected_mismatch_rounds"], [1])
         self.assertEqual(payload["summary"]["selection_source_counts"][0]["code"], "candidate_pool")
 
+    def test_scenario_output_should_backfill_brief_from_legacy_briefing(self):
+        scenario = TrainingScenarioOutput.from_payload(
+            {
+                "id": "S-legacy",
+                "title": "legacy",
+                "briefing": "legacy-only-briefing",
+            }
+        )
+
+        payload = scenario.to_dict()
+        self.assertEqual(payload["brief"], "legacy-only-briefing")
+        self.assertNotIn("briefing", payload)
+
+    def test_scenario_output_should_prefer_brief_as_canonical_source(self):
+        scenario = TrainingScenarioOutput.from_payload(
+            {
+                "id": "S-canonical",
+                "title": "canonical",
+                "brief": "canonical-brief",
+                "briefing": "stale-legacy-briefing",
+            }
+        )
+
+        payload = scenario.to_dict()
+        self.assertEqual(payload["brief"], "canonical-brief")
+        self.assertNotIn("briefing", payload)
+
 
 if __name__ == "__main__":
     unittest.main()

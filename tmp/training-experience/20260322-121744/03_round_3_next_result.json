@@ -1,0 +1,110 @@
+{
+  "session_id": "4e3f88f3-9dfd-4aaf-9626-7b5dc51a7ead",
+  "status": "in_progress",
+  "round_no": 4,
+  "scenario": {
+    "id": "S4",
+    "title": "武汉会战后方动员沟通",
+    "era_date": "1938-06-15",
+    "location": "武汉后方新闻站",
+    "brief": "后方需要动员民众配合转运和防护，但过度渲染会导致恐慌与秩序失控。",
+    "mission": "写出一版兼顾稳定情绪与行动引导的沟通文案。",
+    "decision_focus": "行动指引与群体情绪管理",
+    "target_skills": [
+      "K4",
+      "K7",
+      "K8"
+    ],
+    "risk_tags": [
+      "public_panic",
+      "action_guidance"
+    ],
+    "briefing": "城市即将进入更紧张的疏散阶段，群众既需要真实信息，也需要可执行的具体行动建议。",
+    "options": [
+      {
+        "id": "A",
+        "label": "强调最坏后果迫使群众立刻行动",
+        "impact_hint": "可能有效，但恐慌风险很高。"
+      },
+      {
+        "id": "B",
+        "label": "用事实说明风险并给出分步骤行动建议",
+        "impact_hint": "更适合训练稳定沟通。"
+      },
+      {
+        "id": "C",
+        "label": "弱化风险以维持秩序表面稳定",
+        "impact_hint": "短期平静，长期可能失信。"
+      }
+    ],
+    "completion_hint": "重点看你是否给出清晰、可执行、不过度煽动的行动指引。",
+    "phase_tags": [
+      "middle"
+    ],
+    "branch_tags": [],
+    "next_rules": []
+  },
+  "k_state": {
+    "K1": 0.58,
+    "K2": 0.54,
+    "K3": 0.48,
+    "K4": 0.48,
+    "K5": 0.53,
+    "K6": 0.48,
+    "K7": 0.48,
+    "K8": 0.48
+  },
+  "s_state": {
+    "credibility": 0.66,
+    "accuracy": 0.68,
+    "public_panic": 0.3,
+    "source_safety": 0.7,
+    "editor_trust": 0.55,
+    "actionability": 0.5
+  },
+  "player_profile": {
+    "name": "李敏",
+    "gender": "女",
+    "identity": "战地记者",
+    "age": 24
+  },
+  "runtime_state": {
+    "current_round_no": 3,
+    "k_state": {
+      "K1": 0.58,
+      "K2": 0.54,
+      "K3": 0.48,
+      "K4": 0.48,
+      "K5": 0.53,
+      "K6": 0.48,
+      "K7": 0.48,
+      "K8": 0.48
+    },
+    "s_state": {
+      "credibility": 0.66,
+      "accuracy": 0.68,
+      "public_panic": 0.3,
+      "source_safety": 0.7,
+      "editor_trust": 0.55,
+      "actionability": 0.5
+    },
+    "runtime_flags": {
+      "panic_triggered": false,
+      "source_exposed": false,
+      "editor_locked": false,
+      "high_risk_path": false
+    },
+    "state_bar": {
+      "editor_trust": 0.55,
+      "public_stability": 0.7,
+      "source_safety": 0.7
+    },
+    "current_scene_id": "S4",
+    "player_profile": {
+      "name": "李敏",
+      "gender": "女",
+      "identity": "战地记者",
+      "age": 24
+    }
+  }
+}

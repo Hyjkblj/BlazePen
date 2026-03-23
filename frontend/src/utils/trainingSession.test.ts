@@ -221,6 +221,7 @@ describe('trainingSession normalizers', () => {
 
     const progressResult = normalizeTrainingProgressPayload({
       session_id: 'session-2',
+      character_id: '24',
       status: 'active',
       round_no: 2,
       total_rounds: '6',
@@ -241,6 +242,7 @@ describe('trainingSession normalizers', () => {
 
     expect(progressResult).toEqual({
       sessionId: 'session-2',
+      characterId: '24',
       status: 'active',
       roundNo: 2,
       totalRounds: 6,
@@ -272,6 +274,7 @@ describe('trainingSession normalizers', () => {
   it('normalizes the training session summary into a resumable frontend read model', () => {
     const summaryResult = normalizeTrainingSessionSummaryPayload({
       session_id: 'session-restore',
+      character_id: '42',
       status: 'in_progress',
       training_mode: 'guided',
       current_round_no: '2',
@@ -311,6 +314,7 @@ describe('trainingSession normalizers', () => {
 
     expect(summaryResult).toMatchObject({
       sessionId: 'session-restore',
+      characterId: '42',
       trainingMode: 'guided',
       status: 'in_progress',
       roundNo: 2,
@@ -386,6 +390,7 @@ describe('trainingSession normalizers', () => {
   it('normalizes the training report payload into a display-first read model', () => {
     const reportResult = normalizeTrainingReportPayload({
       session_id: 'session-report',
+      character_id: 52,
       status: 'completed',
       rounds: '3',
       improvement: '0.27',
@@ -440,6 +445,7 @@ describe('trainingSession normalizers', () => {
 
     expect(reportResult).toMatchObject({
       sessionId: 'session-report',
+      characterId: '52',
       status: 'completed',
       rounds: 3,
       improvement: 0.27,
@@ -492,6 +498,7 @@ describe('trainingSession normalizers', () => {
   it('normalizes the training diagnostics payload into an explainable read model', () => {
     const diagnosticsResult = normalizeTrainingDiagnosticsPayload({
       session_id: 'session-diagnostics',
+      character_id: '61',
       status: 'completed',
       round_no: '3',
       summary: {
@@ -532,6 +539,7 @@ describe('trainingSession normalizers', () => {
 
     expect(diagnosticsResult).toMatchObject({
       sessionId: 'session-diagnostics',
+      characterId: '61',
       status: 'completed',
       roundNo: 3,
       summary: {

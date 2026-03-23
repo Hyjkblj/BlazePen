@@ -26,23 +26,27 @@
 - 让训练主页和 `progress / report / diagnostics` 读页统一消费同一套 `session target` 决策。
 - 明确 `sessionId` 是否是训练读链路的严格契约，而不是继续保持“有 URL 就用 URL，没有 URL 再兜底”的模糊状态。
 
+### 契约决议（2026-03-22）
+- 当前 canonical 读取契约：`explicit sessionId > activeSession > none`。
+- `resumeTarget` 仅作为 UX 提示与用户触发恢复入口，不参与默认读取判定。
+- 如果后续要切换为“严格显式 `sessionId` 必需”，必须单独提 PR，并补齐刷新/恢复/空态回归测试。
+
+### 已完成进展（截至 2026-03-22）
+- 训练主页 insight 跳转目标已由统一 selector 生成，不再在页面层手工拼接 fallback。
+- `progress / report / diagnostics` 已统一使用同一套 `sessionId` 解析与规范化入口。
+- `briefing` 兼容已收敛在 service/normalizer；页面层和训练领域类型只消费 `brief`。
+- 训练回合提交流程已补齐 hook 级恢复分支测试（duplicate / completed / not-found / corrupted / next-fetch-failed）。
+- 训练 read query 与 bootstrap 默认恢复已不再直接读取 `resumeTarget`，仅保留用户手动恢复入口。
+
 ### 当前问题
-- `frontend/src/pages/Training.tsx` 仍自己拼 `sessionView?.sessionId ?? resumeTarget?.sessionId`。
-- 训练主页与读页没有完全复用同一套 target 解析。
-- `briefing -> brief` 仍停留在 normalizer 和 API 类型层，canonical 契约还没完全定型。
+- `briefing` 兼容仍保留在 normalizer 层，等待后端字段彻底冻结后再移除历史 alias。
+- 若后续决定收紧为“严格显式 `sessionId` 必需”，需要单独 PR 评估刷新恢复路径与空态策略。
 
 ### 必做任务
-- 把训练主页 insight 跳转目标统一改为消费 `useTrainingSessionReadTarget` 或等价单一 selector。
-- 移除训练主页自己维护的 `sessionId` fallback 拼装逻辑。
-- 明确读页契约：
-  - 如果目标是严格显式 `sessionId`：
-    - 读页无 query `sessionId` 时直接空态，不再读取 `activeSession / resumeTarget`
-  - 如果目标是显式优先但允许 fallback：
-    - 在文档和测试中把这条规则固定为正式契约
+- 明确读页契约（已落地）：`explicit > active > none`，并持续保持文档与测试同步。
 - 清理 `briefing` 历史 alias：
-  - 前端 API 类型不再把 `briefing` 暴露给页面消费层
-  - `TrainingScenario` 只保留 `brief`
-  - 页面层禁止再出现 `brief || briefing`
+  - 页面层与领域类型继续禁止出现 `brief || briefing`
+  - 历史 alias 仅允许保留在 normalizer，待后端契约冻结后移除
 
 ### 明确不做
 - 不改训练提交 write-path。

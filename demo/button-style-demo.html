@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Button Style Demo</title>
+    <style>
+      :root {
+        --bg-top: #040509;
+        --bg-mid: #080a10;
+        --bg-bottom: #05070b;
+        --line-red: #e64036;
+        --line-hot: #ffb4a2;
+        --text-red: #df3c35;
+        --text-hover: #f3f5f8;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      body {
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        font-family: "Microsoft YaHei", "PingFang SC", "Source Han Sans SC", sans-serif;
+        background:
+          radial-gradient(circle at 50% 50%, rgba(255, 88, 70, 0.08), transparent 30%),
+          linear-gradient(180deg, var(--bg-top), var(--bg-mid) 48%, var(--bg-bottom));
+      }
+
+      .stage {
+        position: relative;
+        width: min(92vw, 1100px);
+        height: min(38vh, 250px);
+        display: grid;
+        place-items: center;
+        border-radius: 18px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background:
+          linear-gradient(180deg, rgba(0, 0, 0, 0.56), rgba(0, 0, 0, 0.22) 35%, rgba(0, 0, 0, 0.56)),
+          linear-gradient(90deg, rgba(13, 18, 34, 0.92), rgba(22, 7, 9, 0.38) 46%, rgba(10, 15, 30, 0.92));
+        box-shadow:
+          inset 0 0 72px rgba(255, 62, 40, 0.12),
+          0 20px 60px rgba(0, 0, 0, 0.45);
+      }
+
+      .stage::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(
+            90deg,
+            transparent 8%,
+            rgba(255, 90, 70, 0.25) 20%,
+            rgba(255, 167, 144, 0.65) 26%,
+            rgba(255, 86, 60, 0.22) 34%,
+            transparent 46%,
+            rgba(255, 95, 70, 0.2) 58%,
+            rgba(255, 170, 148, 0.55) 64%,
+            rgba(255, 90, 64, 0.2) 72%,
+            transparent 92%
+          );
+        mix-blend-mode: screen;
+        opacity: 0.58;
+        transform: translateX(-7%);
+        animation: track-shift 7.5s ease-in-out infinite alternate;
+      }
+
+      .stage::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          repeating-linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.03) 0px,
+            rgba(255, 255, 255, 0.03) 1px,
+            transparent 1px,
+            transparent 4px
+          );
+        opacity: 0.12;
+        pointer-events: none;
+      }
+
+      .story-btn {
+        position: relative;
+        z-index: 2;
+        width: 210px;
+        height: 62px;
+        border: 0;
+        background: transparent;
+        color: var(--text-red);
+        font-size: 36px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        transition: color 180ms ease, text-shadow 180ms ease, transform 140ms ease;
+      }
+
+      .story-btn::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 51%;
+        width: 185%;
+        height: 2px;
+        transform: translate(-50%, -50%);
+        background:
+          linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(230, 56, 47, 0.46) 16%,
+            rgba(255, 173, 150, 0.9) 48%,
+            rgba(230, 56, 47, 0.46) 84%,
+            transparent 100%
+          );
+        filter: blur(0.1px);
+        opacity: 0.95;
+        animation: line-pulse 2.6s ease-in-out infinite;
+        pointer-events: none;
+      }
+
+      .story-btn::after {
+        content: "";
+        position: absolute;
+        top: 51%;
+        left: -14%;
+        width: 42px;
+        height: 42px;
+        border-radius: 999px;
+        transform: translateY(-50%);
+        background: radial-gradient(circle, rgba(255, 183, 165, 0.92), rgba(226, 60, 48, 0.12) 70%, transparent 78%);
+        filter: blur(2px);
+        animation: spark-run 2.7s linear infinite;
+        pointer-events: none;
+      }
+
+      .story-btn:hover {
+        color: var(--text-hover);
+        text-shadow:
+          0 0 14px rgba(255, 240, 236, 0.55),
+          0 0 28px rgba(255, 82, 70, 0.22);
+      }
+
+      .story-btn:active {
+        transform: scale(0.985);
+      }
+
+      .story-btn:focus-visible {
+        outline: 2px solid rgba(255, 185, 165, 0.85);
+        outline-offset: 8px;
+      }
+
+      .tip {
+        position: absolute;
+        bottom: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: rgba(255, 226, 219, 0.6);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+      }
+
+      @keyframes track-shift {
+        0% {
+          transform: translateX(-7%);
+          opacity: 0.5;
+        }
+        100% {
+          transform: translateX(5%);
+          opacity: 0.72;
+        }
+      }
+
+      @keyframes line-pulse {
+        0%,
+        100% {
+          opacity: 0.72;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+
+      @keyframes spark-run {
+        0% {
+          left: -14%;
+          opacity: 0.12;
+        }
+        12% {
+          opacity: 0.75;
+        }
+        88% {
+          opacity: 0.72;
+        }
+        100% {
+          left: 112%;
+          opacity: 0.06;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <section class="stage" aria-label="按钮样式演示">
+      <button class="story-btn" type="button">角色档案</button>
+      <div class="tip">Hover / Focus to preview highlight state</div>
+    </section>
+  </body>
+</html>

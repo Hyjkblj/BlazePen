@@ -1,0 +1,46 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+
+- [Major] frontend/src/hooks/useTrainingSessionBootstrap.ts:195
+  问题：训练恢复成功后仍把 cached `characterId` 回写到 `activeSession` 和 `resumeTarget`，前端元数据仍不是单一事实源。
+  原因：当前恢复链路虽然已经把 `resumeTarget` 从默认读模型入口移出，但 `restoreSession()` 仍会把本地缓存里的 `characterId` 当成恢复元数据继续写回；结合 frontend/src/hooks/useTrainingSessionViewModel.ts:260-261，这意味着 localStorage 仍在承担会话身份元数据的事实源角色。
+  影响：一旦本地缓存里的角色信息过期、串号或跨用户污染，手动恢复后页面会持久化错误角色上下文，并继续影响训练主页展示、telemetry 和后续恢复。
+  建议：后端训练 query/read-model 返回 canonical `character_id`；前端 restore 成功后只采用服务端返回的身份元数据，不再把 cache metadata 回写为 `activeSession` 事实。
+
+- [Major] frontend/src/flows/useTrainingMvpFlow.ts:78
+  问题：训练页主流程仍集中在一个巨型 flow hook 中，启动、自动恢复、提交回合、notice 管理和 workspace state 仍混在一起。
+  原因：这次改动收紧了 read-model 恢复契约，但没有继续拆开 `useTrainingMvpFlow` 的职责边界，`flows / hooks / storage / view-model` 之间仍然高耦合。
+  影响：后续继续做训练前端成型时，报告消费、可视化、恢复提示和提交恢复路径仍会挤在同一个文件，冲突面大，回归面也大，测试只能以页面集成为主，难以稳定覆盖组合状态。
+  建议：把 bootstrap flow、round transition flow、workspace view-model、notice/feedback 拆成独立 hooks 或 executor，页面层只消费组合后的只读状态和动作。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+
+- [Major] backend/api/schemas.py:431
+  问题：训练 query/read-model 仍未返回 canonical `character_id`，恢复 DTO 仍不完整。
+  原因：仓储层已经持有 `character_id`，例如 backend/training/training_store.py:447-451，但 `TrainingProgressResponse`、`TrainingSessionSummaryResponse` 等读取模型没有暴露这个字段，导致前端只能继续依赖本地缓存回填角色身份。
+  影响：训练恢复仍存在双事实源，前后端无法就“恢复后当前角色是谁”建立稳定契约；跨设备、清缓存、缓存串号时容易出现 UI 身份漂移。
+  建议：把 `character_id` 纳入训练 read-model DTO，并在 query service / output assembler 上统一输出；同时补契约测试，明确前端不再从 localStorage 回填该字段。
+
+- [Major] backend/training/training_outputs.py:592
+  问题：训练场景输出继续保留并主动回写 `briefing` 兼容别名，DTO 仍是双字段契约。
+  原因：当前实现把 `brief` 和 `briefing` 同时输出为同一值，配合 backend/api/schemas.py:290-295 继续扩大兼容面，而不是冻结 canonical DTO。
+  影响：消费者无法判断何时可以安全移除 legacy 字段；前端 `brief` 收口之后，这个别名会继续拖慢契约清理，并增加跨端回归风险。
+  建议：把 `brief` 定为唯一场景摘要字段；如果必须兼容旧端，应下沉到版本化兼容层或单独 adapter，不要继续留在 canonical response schema / output model 中。
+
+## Open Questions
+- 后端训练读取模型是否计划在本轮 PR 中补出 canonical `character_id`？如果不补，这个字段最终由谁提供权威值？
+- `briefing` 当前是否还有真实线上或外部消费者依赖？如果有，退场计划和版本边界是什么？
+
+## 测试缺口
+- 前端缺少 frontend/src/flows/useTrainingMvpFlow.ts 的直接测试，尤其缺 `duplicate / completed / next-fetch-failed` 三条恢复 notice 在页面层的组合路径覆盖；现在主要只有 frontend/src/hooks/useTrainingRoundRunner.test.tsx 在 hook 级别验证。
+- 前端缺少“缓存角色元数据与服务端真实角色不一致”时的恢复测试路径；当前 frontend/src/hooks/useTrainingSessionBootstrap.test.tsx 只验证了缓存会被继续带回，没验证 canonical 身份源。
+- 后端缺少针对 training read-model 的 `character_id` 契约测试，backend/test_api_contract_standardization.py 目前没有冻结这一字段的存在与语义。
+- 后端当前的 backend/test_training_outputs.py 仍在强化 `briefing` 兼容输出，缺少“canonical response 只保留 `brief`”的收口测试，后续移除 alias 时容易反复回归。
+
+## Review Summary
+- 当前工作树未发现阻塞性问题，前端训练读取事实源比上一轮更清晰，后端 story facade 边界也比上一轮更收口。
+- 但这批改动还没有把训练恢复契约真正收死，最核心的剩余风险是 `character_id` 仍未进入后端 read-model，前端因此继续保留本地元数据回填。
+- 同时，训练场景 DTO 仍保留 `briefing` 兼容别名，契约面还没有真正冻结。
+- 前端训练主流程仍集中在 `useTrainingMvpFlow`，这会继续放大后续训练页成型阶段的改动冲突和测试成本。
+- 本次定向验证已通过：`npx vitest run ...` 共 8 个前端测试文件、43 个测试通过；`python -m pytest ... -q` 共 56 个后端测试通过。

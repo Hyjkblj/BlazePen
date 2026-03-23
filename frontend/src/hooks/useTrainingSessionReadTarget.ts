@@ -20,6 +20,17 @@ export interface TrainingSessionReadTarget {
   source: TrainingSessionReadTargetSource;
 }
 
+export interface ResolveTrainingSessionReadTargetParams {
+  explicitSessionId?: string | null;
+  activeSession: ActiveTrainingSessionState | null;
+  resumeTarget: TrainingResumeTarget | null;
+  allowResumeTargetFallback?: boolean;
+}
+
+export interface UseTrainingSessionReadTargetOptions {
+  allowResumeTargetFallback?: boolean;
+}
+
 export const normalizeTrainingSessionId = (value: string | null | undefined): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -108,11 +119,12 @@ export const resolveTrainingSessionReadTarget = ({
   explicitSessionId,
   activeSession,
   resumeTarget,
-}: {
-  explicitSessionId?: string | null;
-  activeSession: ActiveTrainingSessionState | null;
-  resumeTarget: TrainingResumeTarget | null;
-}): TrainingSessionReadTarget => {
+  allowResumeTargetFallback = true,
+}: ResolveTrainingSessionReadTargetParams): TrainingSessionReadTarget => {
+  // Canonical read contract:
+  // explicit sessionId > active-session > none.
+  // resume-target participates only when allowResumeTargetFallback is enabled,
+  // and should stay within user-triggered recovery/hint flows.
   const normalizedExplicitSessionId = normalizeSessionId(explicitSessionId);
   if (normalizedExplicitSessionId) {
     return resolveExplicitTarget(normalizedExplicitSessionId, activeSession, resumeTarget);
@@ -129,15 +141,17 @@ export const resolveTrainingSessionReadTarget = ({
     });
   }
 
-  const resumeTargetSessionId = normalizeSessionId(resumeTarget?.sessionId);
-  if (resumeTargetSessionId) {
-    return buildTarget({
-      sessionId: resumeTargetSessionId,
-      trainingMode: resumeTarget?.trainingMode ?? null,
-      characterId: normalizeCharacterId(resumeTarget?.characterId ?? null),
-      status: resumeTarget?.status ?? null,
-      source: 'resume-target',
-    });
+  if (allowResumeTargetFallback) {
+    const resumeTargetSessionId = normalizeSessionId(resumeTarget?.sessionId);
+    if (resumeTargetSessionId) {
+      return buildTarget({
+        sessionId: resumeTargetSessionId,
+        trainingMode: resumeTarget?.trainingMode ?? null,
+        characterId: normalizeCharacterId(resumeTarget?.characterId ?? null),
+        status: resumeTarget?.status ?? null,
+        source: 'resume-target',
+      });
+    }
   }
 
   return buildTarget({
@@ -150,14 +164,17 @@ export const resolveTrainingSessionReadTarget = ({
 };
 
 export function useTrainingSessionReadTarget(
-  explicitSessionId?: string | null
+  explicitSessionId?: string | null,
+  options: UseTrainingSessionReadTargetOptions = {}
 ): TrainingSessionReadTarget {
   const { state } = useTrainingFlow();
   const resumeTarget = readTrainingResumeTarget();
+  const allowResumeTargetFallback = options.allowResumeTargetFallback ?? true;
 
   return resolveTrainingSessionReadTarget({
     explicitSessionId,
     activeSession: state.activeSession,
     resumeTarget,
+    allowResumeTargetFallback,
   });
 }

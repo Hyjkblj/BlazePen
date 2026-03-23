@@ -1,0 +1,168 @@
+BlazePen 前后端测试文件与后期可删除候选清单
+日期: 2026-03-23
+
+说明:
+1. 这份清单只列“测试用途明显、后期可以删除或迁移出仓库”的候选文件。
+2. 不等于所有 test 文件都能删。大部分 frontend/backend 的 *.test.* 和 test_*.py 是正式回归资产，应保留。
+3. 尤其是 story/training 主链路、契约、恢复、smoke、entrypoint、router、query service 相关测试，不建议删除。
+
+一、前端
+
+当前结论:
+- 当前前端未发现明确建议“后期删除”的测试文件。
+
+原因:
+- `frontend/src/**/*.test.ts(x)`、`frontend/src/pages/*.integration.test.tsx`、`frontend/tests/electron/navigationPolicy.test.mjs`、`frontend/vite.app.config.test.ts`
+  目前都属于正式单测、集成测试、smoke 测试或配置回归测试。
+- 这些文件覆盖了 story/training 主链路、页面恢复、training insights、API normalizer、Vite 双端口代理和 Electron 导航策略。
+- 这些不是临时探针，而是正式回归保护，后期也应尽量保留。
+
+前端不建议删除的典型文件:
+- `frontend/src/utils/trainingSession.test.ts`
+- `frontend/src/services/trainingApi.test.ts`
+- `frontend/src/pages/TrainingMainPathSmoke.integration.test.tsx`
+- `frontend/src/pages/TrainingInsights.integration.test.tsx`
+- `frontend/src/pages/Training.integration.test.tsx`
+- `frontend/vite.app.config.test.ts`
+- `frontend/tests/electron/navigationPolicy.test.mjs`
+
+二、后端
+
+以下文件属于“手工验证脚本 / 本地探针 / 临时接口实验 / 产物文件”，后期可以删除，或更推荐迁移到本地不入库目录:
+
+1. `backend/test_doubao_tts.py`
+   用途: 手工验证 Doubao/火山 TTS 调用。
+   判定: 可删除。
+   原因: 不是正式 pytest 回归用例，直接调用外部服务，偏本地联调脚本。
+
+2. `backend/test_dashscope_api.py`
+   用途: 手工验证 DashScope TTS API。
+   判定: 可删除。
+   原因: 直接探测第三方服务，不属于稳定自动化回归。
+
+3. `backend/test_current_tts.py`
+   用途: 手工检查当前 TTS 配置与生成结果。
+   判定: 可删除。
+   原因: 本地诊断脚本，不是正式测试基线。
+
+4. `backend/test_tts_simple.py`
+   用途: 手工试跑 qwen3-tts-flash-realtime。
+   判定: 可删除，且建议优先处理。
+   原因: 明显属于临时探针脚本，并包含硬编码 API Key 风险。
+
+5. `backend/test_tts_websocket.py`
+   用途: 手工试跑 WebSocket TTS。
+   判定: 可删除，且建议优先处理。
+   原因: 临时联调脚本，并包含硬编码 API Key 风险。
+
+6. `backend/test_websocket_tts.py`
+   用途: 手工验证火山双向流式 WebSocket TTS。
+   判定: 可删除。
+   原因: 不是正式自动化测试，偏探索性调试脚本。
+
+7. `backend/test_working_tts.py`
+   用途: 手工验证“可用的”火山 TTS 请求配置并落地音频。
+   判定: 可删除。
+   原因: 明显为一次性验证脚本，且会生成测试音频产物。
+
+8. `backend/test_voice_api.py`
+   用途: 手工验证预设音色数据和本地 API 端点。
+   判定: 可删除。
+   原因: 本地接口探针，不是正式回归测试。
+
+9. `backend/test_voice_design_api.py`
+   用途: 手工验证 Voice Design API。
+   判定: 可删除，且建议优先处理。
+   原因: 临时外部服务实验脚本，并包含硬编码 API Key 风险。
+
+10. `backend/test_voice_preview.py`
+    用途: 手工验证音色试听功能。
+    判定: 可删除。
+    原因: 本地功能试跑脚本，不属于正式自动化测试。
+
+11. `backend/test_voice_frontend.html`
+    用途: 手工打开浏览器测试音色功能的静态页面。
+    判定: 可删除。
+    原因: 明显是临时手工测试页面，不属于正式前端应用或测试框架。
+
+12. `backend/tools/test_character_data_storage.py`
+    用途: 手工验证角色数据字典存储。
+    判定: 可删除。
+    原因: 偏一次性数据库验证脚本，不是正式回归资产。
+
+13. `backend/test_llm_framework.py`
+    用途: 手工检查 LLM 框架导入和基础配置。
+    判定: 可删除。
+    原因: 更像本地诊断脚本，不是稳定 pytest/unittest 回归测试。
+
+14. `backend/audio/test/test_success.wav`
+    用途: 手工测试脚本生成的音频产物。
+    判定: 可删除。
+    原因: 这是测试产物，不应长期作为仓库资产保留。
+
+三、后端目前不建议删除的测试或脚手架
+
+以下文件虽然名字里有 test/cli/smoke，但当前不应删除:
+
+1. `backend/test_training_*.py`
+   原因: 训练域正式回归测试，覆盖 service / store / query / outputs / policy / route / smoke。
+
+2. `backend/test_story_*.py`
+   原因: 故事域正式回归测试，覆盖 query/read-model、恢复、route、service、smoke。
+
+3. `backend/test_api_*.py`
+   原因: API 契约、边界、middleware、依赖注入、CORS 等基础回归保护。
+
+4. `backend/test_init_db_script.py`
+   原因: 显式数据库迁移脚本的正式 unittest，不是临时探针。
+
+5. `backend/test_check_database_status_script.py`
+   原因: 数据库状态检查脚本的正式 unittest，不是临时探针。
+
+6. `backend/test_training_cli_entry.py`
+   原因: 训练 CLI 入口回归测试，正式脚手架保护。
+
+7. `backend/test_story_cli_entry.py`
+   原因: 故事 CLI 入口回归测试，正式脚手架保护。
+
+8. `backend/test_training_runner_bootstrap.py`
+   原因: 训练 runner/bootstrap 边界回归测试。
+
+9. `backend/run_story_cli.py`
+   原因: 已被 runbook 和测试引用，是正式开发入口，不属于“后期可删的临时脚本”。
+
+10. `backend/run_training_cli.py`
+    原因: 已被 runbook 和测试引用，是正式训练体验/自检入口。
+
+11. `backend/run_training_service_cli.py`
+    原因: 虽然是 CLI，但它被 `run_training_cli.py` 调用，也是正式本地训练服务体验入口。
+
+12. `backend/start_story_backend.ps1`
+13. `backend/start_story_smoke.ps1`
+14. `backend/start_training_backend.ps1`
+15. `backend/start_training_experience.ps1`
+    原因: 这些脚本已进入 runbook 和双后端联调流程，不建议删除。
+
+四、建议的处理方式
+
+建议立即处理:
+- `backend/test_tts_simple.py`
+- `backend/test_tts_websocket.py`
+- `backend/test_voice_design_api.py`
+
+原因:
+- 文件中存在硬编码外部服务密钥风险，不应继续留在仓库中。
+
+建议处理策略:
+1. 真正有长期价值的本地探针脚本，迁移到不入库目录，例如 `tmp/local_tools/` 或开发者本地脚本目录。
+2. 没有长期价值的临时验证脚本，直接删除。
+3. 正式回归测试、smoke、runbook 依赖脚本保留，不要误删。
+
+五、最终结论
+
+前端:
+- 当前没有明确建议删除的测试文件。
+
+后端:
+- 主要是 TTS/Voice/LLM 相关的手工验证脚本和测试产物可以后期删除。
+- story/training/api 主线测试、smoke、CLI 入口测试和 runbook 依赖脚本不建议删除。

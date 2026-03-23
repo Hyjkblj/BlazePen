@@ -51,6 +51,7 @@ const createScenario = (id: string, title: string) => ({
 
 const createSummary = (sessionId: string) => ({
   sessionId,
+  characterId: '77',
   trainingMode: 'adaptive' as const,
   status: 'in_progress',
   roundNo: 2,
@@ -76,14 +77,13 @@ const createSummary = (sessionId: string) => ({
 describe('useTrainingSessionViewModel', () => {
   it('builds a session view directly from the training summary contract', () => {
     const sessionView = buildTrainingSessionViewFromSummary(
-      createSummary('training-session-summary'),
-      '42'
+      createSummary('training-session-summary')
     );
 
     expect(sessionView).toMatchObject({
       sessionId: 'training-session-summary',
       trainingMode: 'adaptive',
-      characterId: '42',
+      characterId: '77',
       roundNo: 2,
       canResume: true,
       isCompleted: false,
@@ -94,8 +94,7 @@ describe('useTrainingSessionViewModel', () => {
 
   it('prefers the current session view when resolving a manual restore target', () => {
     const sessionView = buildTrainingSessionViewFromSummary(
-      createSummary('training-session-1'),
-      '99'
+      createSummary('training-session-1')
     );
     const activeSession: ActiveTrainingSessionState = {
       sessionId: 'training-session-1',
@@ -124,7 +123,7 @@ describe('useTrainingSessionViewModel', () => {
     expect(restoreIdentity).toEqual({
       sessionId: 'training-session-1',
       trainingMode: 'adaptive',
-      characterId: '99',
+      characterId: '77',
       source: 'session-view',
     });
   });
@@ -164,8 +163,7 @@ describe('useTrainingSessionViewModel', () => {
 
   it('stops auto restore after a session view is present but still restores from the current session', () => {
     const sessionView = buildTrainingSessionViewFromSummary(
-      createSummary('training-session-view'),
-      '77'
+      createSummary('training-session-view')
     );
     const activeSession: ActiveTrainingSessionState = {
       sessionId: 'training-session-active',
@@ -204,7 +202,7 @@ describe('useTrainingSessionViewModel', () => {
     });
   });
 
-  it('keeps the homepage insight entry on the same target selector as the read pages', () => {
+  it('treats resumeTarget as hints only when no active session exists', () => {
     const resumeTarget: TrainingResumeTarget = {
       sessionId: 'training-session-resume',
       trainingMode: 'guided',
@@ -220,9 +218,9 @@ describe('useTrainingSessionViewModel', () => {
         resumeTarget,
       })
     ).toEqual({
-      currentSessionId: 'training-session-resume',
-      currentSessionSource: 'resume-target',
-      autoRestoreSessionId: 'training-session-resume',
+      currentSessionId: null,
+      currentSessionSource: 'none',
+      autoRestoreSessionId: null,
       preferredTrainingMode: 'guided',
       preferredCharacterId: '11',
     });

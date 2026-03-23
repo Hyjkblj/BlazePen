@@ -88,12 +88,11 @@ export const buildTrainingProgressAnchor = (
 };
 
 export const buildTrainingSessionViewFromSummary = (
-  summaryResult: TrainingSessionSummaryResult,
-  characterId: string | null
+  summaryResult: TrainingSessionSummaryResult
 ): TrainingSessionViewState => ({
   sessionId: summaryResult.sessionId,
   trainingMode: summaryResult.trainingMode,
-  characterId,
+  characterId: summaryResult.characterId,
   status: summaryResult.status,
   roundNo: summaryResult.roundNo,
   totalRounds: summaryResult.totalRounds,
@@ -250,14 +249,15 @@ export const resolveTrainingSessionWorkspaceSeed = ({
   const sessionTarget = resolveTrainingSessionReadTarget({
     activeSession,
     resumeTarget,
+    allowResumeTargetFallback: false,
   });
 
   return {
     currentSessionId: sessionTarget.sessionId,
     currentSessionSource: sessionTarget.source,
     autoRestoreSessionId: sessionTarget.sessionId,
-    preferredTrainingMode: sessionTarget.trainingMode,
-    preferredCharacterId: sessionTarget.characterId,
+    preferredTrainingMode: sessionTarget.trainingMode ?? resumeTarget?.trainingMode ?? null,
+    preferredCharacterId: sessionTarget.characterId ?? resumeTarget?.characterId ?? null,
   };
 };
 

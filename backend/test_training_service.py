@@ -1484,8 +1484,9 @@ class TrainingServiceTestCase(unittest.TestCase):
         result = self.service.get_next_scenario(session_id)
 
         self.assertEqual(result["scenario"]["id"], init_result["next_scenario"]["id"])
-        self.assertEqual(result["scenario"]["briefing"], init_result["next_scenario"]["briefing"])
-        self.assertNotEqual(result["scenario"]["briefing"], "这是变更后的最新场景正文")
+        self.assertEqual(result["scenario"]["brief"], init_result["next_scenario"]["brief"])
+        self.assertNotIn("briefing", result["scenario"])
+        self.assertNotEqual(result["scenario"]["brief"], "这是变更后的最新场景正文")
 
     def test_get_next_scenario_should_raise_typed_error_when_snapshot_catalog_is_missing(self):
         """主链路遇到缺快照会话时，应返回 typed recovery error，而不是静默回填。"""

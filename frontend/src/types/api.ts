@@ -415,6 +415,7 @@ export interface TrainingRoundSubmitResponse extends GenericApiRecord {
 
 export interface TrainingProgressResponse extends GenericApiRecord {
   session_id?: string;
+  character_id?: number | string | null;
   status?: string | null;
   round_no?: number | string | null;
   total_rounds?: number | string | null;
@@ -435,6 +436,7 @@ export interface TrainingSessionProgressAnchorResponse extends GenericApiRecord 
 
 export interface TrainingSessionSummaryResponse extends GenericApiRecord {
   session_id?: string;
+  character_id?: number | string | null;
   status?: string | null;
   training_mode?: string | null;
   current_round_no?: number | string | null;
@@ -472,6 +474,7 @@ export interface TrainingReportHistoryItemApiResponse extends GenericApiRecord {
 
 export interface TrainingHistoryResponse extends GenericApiRecord {
   session_id?: string;
+  character_id?: number | string | null;
   status?: string | null;
   training_mode?: string | null;
   current_round_no?: number | string | null;
@@ -628,6 +631,7 @@ export interface TrainingReportSummaryApiResponse extends GenericApiRecord {
 
 export interface TrainingReportResponse extends GenericApiRecord {
   session_id?: string;
+  character_id?: number | string | null;
   status?: string | null;
   rounds?: number | string | null;
   k_state_final?: Record<string, unknown> | null;
@@ -645,6 +649,7 @@ export interface TrainingReportResponse extends GenericApiRecord {
 
 export interface TrainingDiagnosticsResponse extends GenericApiRecord {
   session_id?: string;
+  character_id?: number | string | null;
   status?: string | null;
   round_no?: number | string | null;
   player_profile?: TrainingPlayerProfileApi | null;

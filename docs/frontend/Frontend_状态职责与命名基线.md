@@ -63,11 +63,11 @@
 - 正式优先级:
   - 显式 `sessionId`
   - 当前内存 `activeSession`
-  - 本地 `resumeTarget`
+  - 无会话目标（`none`）
 - 约束:
   - 训练主页的 insight 入口与 `progress / report / diagnostics` 读页必须复用同一套 target selector
   - 页面层不允许再手工拼 `sessionId` fallback
-  - 本地 `resumeTarget` 只作为 UX 恢复入口，不提升为服务端事实源
+  - 本地 `resumeTarget` 只作为 UX 恢复提示与手动恢复入口，不参与默认读取判定
 
 ### 2.5 本地缓存状态
 

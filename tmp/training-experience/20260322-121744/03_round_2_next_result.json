@@ -1,0 +1,111 @@
+{
+  "session_id": "4e3f88f3-9dfd-4aaf-9626-7b5dc51a7ead",
+  "status": "in_progress",
+  "round_no": 3,
+  "scenario": {
+    "id": "S3",
+    "title": "南京失守高冲突信息处置",
+    "era_date": "1937-12-13",
+    "location": "南京外围撤离点",
+    "brief": "你获得一份高敏感线索，内容涉及幸存者身份、撤离路线和未公开目击信息。",
+    "mission": "在保护线索人物安全的前提下完成关键信息报道。",
+    "decision_focus": "来源保护与公众知情权边界",
+    "target_skills": [
+      "K2",
+      "K5",
+      "K6"
+    ],
+    "risk_tags": [
+      "source_exposure",
+      "privacy_leak",
+      "ethical_boundary"
+    ],
+    "briefing": "幸存者愿意提供目击细节，但前提是不能暴露身份与藏身位置。编辑部同时要求你尽量给出具体细节证明报道真实。",
+    "options": [
+      {
+        "id": "A",
+        "label": "公开证人真实姓名和躲藏地点",
+        "impact_hint": "证据感强，但极高风险。"
+      },
+      {
+        "id": "B",
+        "label": "匿名处理身份并模糊敏感细节",
+        "impact_hint": "优先保护来源安全。"
+      },
+      {
+        "id": "C",
+        "label": "暂缓发布，等待更安全的核验路径",
+        "impact_hint": "牺牲时效换安全空间。"
+      }
+    ],
+    "completion_hint": "重点看你是否知道哪些细节必须删、哪些证据可以换方式呈现。",
+    "phase_tags": [
+      "middle"
+    ],
+    "branch_tags": [],
+    "next_rules": []
+  },
+  "k_state": {
+    "K1": 0.57,
+    "K2": 0.53,
+    "K3": 0.47,
+    "K4": 0.47,
+    "K5": 0.47,
+    "K6": 0.47,
+    "K7": 0.47,
+    "K8": 0.47
+  },
+  "s_state": {
+    "credibility": 0.66,
+    "accuracy": 0.68,
+    "public_panic": 0.3,
+    "source_safety": 0.65,
+    "editor_trust": 0.55,
+    "actionability": 0.5
+  },
+  "player_profile": {
+    "name": "李敏",
+    "gender": "女",
+    "identity": "战地记者",
+    "age": 24
+  },
+  "runtime_state": {
+    "current_round_no": 2,
+    "k_state": {
+      "K1": 0.57,
+      "K2": 0.53,
+      "K3": 0.47,
+      "K4": 0.47,
+      "K5": 0.47,
+      "K6": 0.47,
+      "K7": 0.47,
+      "K8": 0.47
+    },
+    "s_state": {
+      "credibility": 0.66,
+      "accuracy": 0.68,
+      "public_panic": 0.3,
+      "source_safety": 0.65,
+      "editor_trust": 0.55,
+      "actionability": 0.5
+    },
+    "runtime_flags": {
+      "panic_triggered": false,
+      "source_exposed": false,
+      "editor_locked": false,
+      "high_risk_path": false
+    },
+    "state_bar": {
+      "editor_trust": 0.55,
+      "public_stability": 0.7,
+      "source_safety": 0.65
+    },
+    "current_scene_id": "S3",
+    "player_profile": {
+      "name": "李敏",
+      "gender": "女",
+      "identity": "战地记者",
+      "age": 24
+    }
+  }
+}

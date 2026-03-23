@@ -47,7 +47,7 @@ function TrainingBootstrapPanels({
         <h2>开始训练</h2>
         <p className="training-shell__empty">
           本地缓存只记住可恢复的 `sessionId` 入口，不保存服务端会话事实。页面刷新后统一走
-          `session summary` 恢复。
+          `session summary` 手动恢复。
         </p>
 
         <div className="training-shell__mode-list" role="radiogroup" aria-label="训练模式">

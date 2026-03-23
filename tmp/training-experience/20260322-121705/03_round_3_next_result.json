@@ -1,0 +1,287 @@
+{
+  "session_id": "9e2ef64c-b56e-4f52-9f05-2d0d2fa93ddc",
+  "status": "in_progress",
+  "round_no": 4,
+  "scenario": {
+    "id": "S4",
+    "title": "武汉会战后方动员沟通",
+    "era_date": "1938-06-15",
+    "location": "武汉后方新闻站",
+    "brief": "后方需要动员民众配合转运和防护，但过度渲染会导致恐慌与秩序失控。",
+    "mission": "写出一版兼顾稳定情绪与行动引导的沟通文案。",
+    "decision_focus": "行动指引与群体情绪管理",
+    "target_skills": [
+      "K4",
+      "K7",
+      "K8"
+    ],
+    "risk_tags": [
+      "public_panic",
+      "action_guidance"
+    ],
+    "briefing": "城市即将进入更紧张的疏散阶段，群众既需要真实信息，也需要可执行的具体行动建议。",
+    "options": [
+      {
+        "id": "A",
+        "label": "强调最坏后果迫使群众立刻行动",
+        "impact_hint": "可能有效，但恐慌风险很高。"
+      },
+      {
+        "id": "B",
+        "label": "用事实说明风险并给出分步骤行动建议",
+        "impact_hint": "更适合训练稳定沟通。"
+      },
+      {
+        "id": "C",
+        "label": "弱化风险以维持秩序表面稳定",
+        "impact_hint": "短期平静，长期可能失信。"
+      }
+    ],
+    "completion_hint": "重点看你是否给出清晰、可执行、不过度煽动的行动指引。",
+    "recommendation": {
+      "mode": "self-paced",
+      "rank_score": 0.524,
+      "weakness_score": 0.52,
+      "state_boost_score": 0.0,
+      "risk_boost_score": 0.0,
+      "phase_boost_score": 2.0,
+      "reasons": [
+        "当前处于中段阶段，优先推荐承压决策和风险升级场景",
+        "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+      ],
+      "rank": 1
+    },
+    "phase_tags": [
+      "middle"
+    ],
+    "branch_tags": [],
+    "next_rules": []
+  },
+  "k_state": {
+    "K1": 0.58,
+    "K2": 0.54,
+    "K3": 0.48,
+    "K4": 0.48,
+    "K5": 0.53,
+    "K6": 0.48,
+    "K7": 0.48,
+    "K8": 0.48
+  },
+  "s_state": {
+    "credibility": 0.66,
+    "accuracy": 0.68,
+    "public_panic": 0.3,
+    "source_safety": 0.7,
+    "editor_trust": 0.55,
+    "actionability": 0.5
+  },
+  "player_profile": {
+    "name": "李敏",
+    "gender": "女",
+    "identity": "战地记者",
+    "age": 24
+  },
+  "runtime_state": {
+    "current_round_no": 3,
+    "k_state": {
+      "K1": 0.58,
+      "K2": 0.54,
+      "K3": 0.48,
+      "K4": 0.48,
+      "K5": 0.53,
+      "K6": 0.48,
+      "K7": 0.48,
+      "K8": 0.48
+    },
+    "s_state": {
+      "credibility": 0.66,
+      "accuracy": 0.68,
+      "public_panic": 0.3,
+      "source_safety": 0.7,
+      "editor_trust": 0.55,
+      "actionability": 0.5
+    },
+    "runtime_flags": {
+      "panic_triggered": false,
+      "source_exposed": false,
+      "editor_locked": false,
+      "high_risk_path": false
+    },
+    "state_bar": {
+      "editor_trust": 0.55,
+      "public_stability": 0.7,
+      "source_safety": 0.7
+    },
+    "current_scene_id": "S4",
+    "player_profile": {
+      "name": "李敏",
+      "gender": "女",
+      "identity": "战地记者",
+      "age": 24
+    }
+  },
+  "scenario_candidates": [
+    {
+      "id": "S4",
+      "title": "武汉会战后方动员沟通",
+      "era_date": "1938-06-15",
+      "location": "武汉后方新闻站",
+      "brief": "后方需要动员民众配合转运和防护，但过度渲染会导致恐慌与秩序失控。",
+      "mission": "写出一版兼顾稳定情绪与行动引导的沟通文案。",
+      "decision_focus": "行动指引与群体情绪管理",
+      "target_skills": [
+        "K4",
+        "K7",
+        "K8"
+      ],
+      "risk_tags": [
+        "public_panic",
+        "action_guidance"
+      ],
+      "briefing": "城市即将进入更紧张的疏散阶段，群众既需要真实信息，也需要可执行的具体行动建议。",
+      "options": [
+        {
+          "id": "A",
+          "label": "强调最坏后果迫使群众立刻行动",
+          "impact_hint": "可能有效，但恐慌风险很高。"
+        },
+        {
+          "id": "B",
+          "label": "用事实说明风险并给出分步骤行动建议",
+          "impact_hint": "更适合训练稳定沟通。"
+        },
+        {
+          "id": "C",
+          "label": "弱化风险以维持秩序表面稳定",
+          "impact_hint": "短期平静，长期可能失信。"
+        }
+      ],
+      "completion_hint": "重点看你是否给出清晰、可执行、不过度煽动的行动指引。",
+      "recommendation": {
+        "mode": "self-paced",
+        "rank_score": 0.524,
+        "weakness_score": 0.52,
+        "state_boost_score": 0.0,
+        "risk_boost_score": 0.0,
+        "phase_boost_score": 2.0,
+        "reasons": [
+          "当前处于中段阶段，优先推荐承压决策和风险升级场景",
+          "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+        ],
+        "rank": 1
+      },
+      "phase_tags": [
+        "middle"
+      ],
+      "branch_tags": [],
+      "next_rules": []
+    },
+    {
+      "id": "S6",
+      "title": "终战节点宣布性报道",
+      "era_date": "1945-08-15",
+      "location": "重庆报馆总编室",
+      "brief": "终战节点的信息高度敏感，社会情绪高涨，任何误报都会被迅速放大。",
+      "mission": "完成一版宣布性报道，兼顾准确表达、情绪节制与后续更新闭环。",
+      "decision_focus": "重大节点报道的确认、表达与更新机制",
+      "target_skills": [
+        "K1",
+        "K4",
+        "K7",
+        "K8"
+      ],
+      "risk_tags": [
+        "major_announcement",
+        "update_loop",
+        "public_expectation"
+      ],
+      "briefing": "你已经拿到多份相近消息，但最终正式文本尚未完全公开。编辑部希望立刻准备头版，同时要求你设计后续更正与更新方案。",
+      "options": [
+        {
+          "id": "A",
+          "label": "抢先定性并用情绪化语言放大标题",
+          "impact_hint": "传播爆发快，但误差代价极高。"
+        },
+        {
+          "id": "B",
+          "label": "以已确认事实为主，并预留后续更新口径",
+          "impact_hint": "更符合终局训练目标。"
+        },
+        {
+          "id": "C",
+          "label": "完全等正式公文全文再动笔",
+          "impact_hint": "最稳妥，但可能失去报道窗口。"
+        }
+      ],
+      "completion_hint": "重点看你是否明确写出确认范围、未确认部分和后续更新机制。",
+      "recommendation": {
+        "mode": "self-paced",
+        "rank_score": 0.3465,
+        "weakness_score": 0.495,
+        "state_boost_score": 0.0,
+        "risk_boost_score": 0.0,
+        "phase_boost_score": 0.0,
+        "reasons": [],
+        "rank": 2
+      },
+      "phase_tags": [
+        "closing"
+      ],
+      "branch_tags": [],
+      "next_rules": []
+    },
+    {
+      "id": "S5",
+      "title": "百团大战多源冲突核验",
+      "era_date": "1940-08-22",
+      "location": "华北多地战况汇总点",
+      "brief": "多地战况同时汇入，指挥部电文、地方通讯员和民间线索相互冲突。",
+      "mission": "完成一版多源冲突核验报告，给编辑部明确说明哪些内容可发、哪些要保留。",
+      "decision_focus": "多源核验与证据分层",
+      "target_skills": [
+        "K1",
+        "K2",
+        "K6",
+        "K8"
+      ],
+      "risk_tags": [
+        "multi_source_conflict",
+        "verification_chain"
+      ],
+      "briefing": "你必须在一小时内给出发稿建议，但当前材料里既有一手战况，也有未经证实的民间传闻，混在一起风险极高。",
+      "options": [
+        {
+          "id": "A",
+          "label": "把所有收到的信息整合成统一战报",
+          "impact_hint": "速度快，但容易把传闻一起带出。"
+        },
+        {
+          "id": "B",
+          "label": "分层标注来源可信度后再提交稿件",
+          "impact_hint": "更符合训练目标。"
+        },
+        {
+          "id": "C",
+          "label": "只保留最保守的已核实战果",
+          "impact_hint": "风险低，但可能损失信息量。"
+        }
+      ],
+      "completion_hint": "重点看你能不能明确区分“已核实、待核实、不可发”。",
+      "recommendation": {
+        "mode": "self-paced",
+        "rank_score": 0.336,
+        "weakness_score": 0.48,
+        "state_boost_score": 0.0,
+        "risk_boost_score": 0.0,
+        "phase_boost_score": 0.0,
+        "reasons": [],
+        "rank": 3
+      },
+      "phase_tags": [
+        "climax"
+      ],
+      "branch_tags": [],
+      "next_rules": []
+    }
+  ]
+}

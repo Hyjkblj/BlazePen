@@ -414,71 +414,17 @@ describe('Training insight routes', () => {
     expect(trainingApiMocks.getTrainingReport).toHaveBeenCalledTimes(2);
   });
 
-  it('falls back to the persisted resume target for diagnostics after refresh', async () => {
+  it('does not read diagnostics from persisted resumeTarget without explicit or active session', async () => {
     persistTrainingResumeTarget({
       sessionId: 'training-session-resume',
       trainingMode: 'guided',
       status: 'completed',
     });
-    trainingApiMocks.getTrainingDiagnostics.mockResolvedValueOnce({
-      sessionId: 'training-session-resume',
-      status: 'completed',
-      roundNo: 3,
-      playerProfile: null,
-      runtimeState: null,
-      summary: {
-        totalRecommendationLogs: 1,
-        totalAuditEvents: 1,
-        totalKtObservations: 1,
-        highRiskRoundCount: 1,
-        highRiskRoundNos: [2],
-        recommendedVsSelectedMismatchCount: 0,
-        recommendedVsSelectedMismatchRounds: [],
-        riskFlagCounts: [
-          {
-            code: 'source_exposure_risk',
-            count: 1,
-          },
-        ],
-        primarySkillFocusCounts: [],
-        topWeakSkills: [],
-        selectionSourceCounts: [],
-        eventTypeCounts: [],
-        phaseTagCounts: [],
-        phaseTransitionCount: 0,
-        phaseTransitionRounds: [],
-        panicTriggerRoundCount: 0,
-        panicTriggerRounds: [],
-        sourceExposedRoundCount: 0,
-        sourceExposedRounds: [],
-        editorLockedRoundCount: 0,
-        editorLockedRounds: [],
-        highRiskPathRoundCount: 0,
-        highRiskPathRounds: [],
-        branchTransitionCount: 0,
-        branchTransitionRounds: [],
-        branchTransitions: [],
-        lastPrimarySkillCode: null,
-        lastPrimaryRiskFlag: null,
-        lastEventType: null,
-        lastPhaseTags: [],
-        lastBranchTransition: null,
-      },
-      recommendationLogs: [],
-      auditEvents: [],
-      ktObservations: [],
-    });
 
     renderInsightRoute(ROUTES.TRAINING_DIAGNOSTICS);
 
-    await waitFor(() => {
-      expect(trainingApiMocks.getTrainingDiagnostics).toHaveBeenCalledWith(
-        'training-session-resume'
-      );
-    });
-
-    expect(await screen.findByText('Training Diagnostics')).toBeTruthy();
-    expect(screen.getByText('source_exposure_risk: 1')).toBeTruthy();
+    expect(await screen.findByText('暂无训练诊断')).toBeTruthy();
+    expect(trainingApiMocks.getTrainingDiagnostics).not.toHaveBeenCalled();
   });
 
   it('shows an empty state when there is no readable session target', async () => {

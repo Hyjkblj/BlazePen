@@ -1,0 +1,2023 @@
+{
+  "session_id": "0802d467-249d-4462-aeb5-704783128eaa",
+  "player_profile": {
+    "name": "李敏",
+    "gender": "女",
+    "identity": "战地记者",
+    "age": 24
+  },
+  "training_mode": "self-paced",
+  "total_rounds": 3,
+  "progress": {
+    "session_id": "0802d467-249d-4462-aeb5-704783128eaa",
+    "status": "in_progress",
+    "round_no": 3,
+    "total_rounds": 6,
+    "k_state": {
+      "K1": 0.58,
+      "K2": 0.54,
+      "K3": 0.48,
+      "K4": 0.48,
+      "K5": 0.53,
+      "K6": 0.48,
+      "K7": 0.48,
+      "K8": 0.48
+    },
+    "s_state": {
+      "credibility": 0.66,
+      "accuracy": 0.68,
+      "public_panic": 0.3,
+      "source_safety": 0.7,
+      "editor_trust": 0.55,
+      "actionability": 0.5
+    },
+    "player_profile": {
+      "name": "李敏",
+      "gender": "女",
+      "identity": "战地记者",
+      "age": 24
+    },
+    "runtime_state": {
+      "current_round_no": 3,
+      "k_state": {
+        "K1": 0.58,
+        "K2": 0.54,
+        "K3": 0.48,
+        "K4": 0.48,
+        "K5": 0.53,
+        "K6": 0.48,
+        "K7": 0.48,
+        "K8": 0.48
+      },
+      "s_state": {
+        "credibility": 0.66,
+        "accuracy": 0.68,
+        "public_panic": 0.3,
+        "source_safety": 0.7,
+        "editor_trust": 0.55,
+        "actionability": 0.5
+      },
+      "runtime_flags": {
+        "panic_triggered": false,
+        "source_exposed": false,
+        "editor_locked": false,
+        "high_risk_path": false
+      },
+      "state_bar": {
+        "editor_trust": 0.55,
+        "public_stability": 0.7,
+        "source_safety": 0.7
+      },
+      "current_scene_id": "S3",
+      "player_profile": {
+        "name": "李敏",
+        "gender": "女",
+        "identity": "战地记者",
+        "age": 24
+      }
+    }
+  },
+  "report": {
+    "session_id": "0802d467-249d-4462-aeb5-704783128eaa",
+    "status": "in_progress",
+    "rounds": 3,
+    "k_state_final": {
+      "K1": 0.58,
+      "K2": 0.54,
+      "K3": 0.48,
+      "K4": 0.48,
+      "K5": 0.53,
+      "K6": 0.48,
+      "K7": 0.48,
+      "K8": 0.48
+    },
+    "s_state_final": {
+      "credibility": 0.66,
+      "accuracy": 0.68,
+      "public_panic": 0.3,
+      "source_safety": 0.7,
+      "editor_trust": 0.55,
+      "actionability": 0.5
+    },
+    "improvement": 0.066,
+    "ending": null,
+    "summary": {
+      "weighted_score_initial": 0.45,
+      "weighted_score_final": 0.516,
+      "weighted_score_delta": 0.066,
+      "strongest_improved_skill_code": "K1",
+      "strongest_improved_skill_delta": 0.13,
+      "weakest_skill_code": "K3",
+      "weakest_skill_score": 0.48,
+      "dominant_risk_flag": null,
+      "high_risk_round_count": 0,
+      "high_risk_round_nos": [],
+      "panic_trigger_round_count": 0,
+      "source_exposed_round_count": 0,
+      "editor_locked_round_count": 0,
+      "high_risk_path_round_count": 0,
+      "branch_transition_count": 0,
+      "branch_transition_rounds": [],
+      "branch_transitions": [],
+      "risk_flag_counts": [],
+      "completed_scenario_ids": [
+        "S1",
+        "S2",
+        "S3"
+      ],
+      "review_suggestions": [
+        "建议优先补练 K3，当前最终得分 0.48，仍是本次训练最薄弱的能力项。"
+      ]
+    },
+    "ability_radar": [
+      {
+        "code": "K1",
+        "initial": 0.45,
+        "final": 0.58,
+        "delta": 0.13,
+        "is_lowest_final": false,
+        "is_highest_gain": true,
+        "weight": 0.2
+      },
+      {
+        "code": "K2",
+        "initial": 0.45,
+        "final": 0.54,
+        "delta": 0.09,
+        "is_lowest_final": false,
+        "is_highest_gain": false,
+        "weight": 0.1
+      },
+      {
+        "code": "K3",
+        "initial": 0.45,
+        "final": 0.48,
+        "delta": 0.03,
+        "is_lowest_final": true,
+        "is_highest_gain": false,
+        "weight": 0.1
+      },
+      {
+        "code": "K4",
+        "initial": 0.45,
+        "final": 0.48,
+        "delta": 0.03,
+        "is_lowest_final": false,
+        "is_highest_gain": false,
+        "weight": 0.1
+      },
+      {
+        "code": "K5",
+        "initial": 0.45,
+        "final": 0.53,
+        "delta": 0.08,
+        "is_lowest_final": false,
+        "is_highest_gain": false,
+        "weight": 0.2
+      },
+      {
+        "code": "K6",
+        "initial": 0.45,
+        "final": 0.48,
+        "delta": 0.03,
+        "is_lowest_final": false,
+        "is_highest_gain": false,
+        "weight": 0.15
+      },
+      {
+        "code": "K7",
+        "initial": 0.45,
+        "final": 0.48,
+        "delta": 0.03,
+        "is_lowest_final": false,
+        "is_highest_gain": false,
+        "weight": 0.1
+      },
+      {
+        "code": "K8",
+        "initial": 0.45,
+        "final": 0.48,
+        "delta": 0.03,
+        "is_lowest_final": false,
+        "is_highest_gain": false,
+        "weight": 0.05
+      }
+    ],
+    "state_radar": [
+      {
+        "code": "credibility",
+        "initial": 0.6,
+        "final": 0.66,
+        "delta": 0.06,
+        "is_lowest_final": false,
+        "is_highest_gain": false
+      },
+      {
+        "code": "accuracy",
+        "initial": 0.6,
+        "final": 0.68,
+        "delta": 0.08,
+        "is_lowest_final": false,
+        "is_highest_gain": true
+      },
+      {
+        "code": "public_panic",
+        "initial": 0.3,
+        "final": 0.3,
+        "delta": 0.0,
+        "is_lowest_final": true,
+        "is_highest_gain": false
+      },
+      {
+        "code": "source_safety",
+        "initial": 0.65,
+        "final": 0.7,
+        "delta": 0.05,
+        "is_lowest_final": false,
+        "is_highest_gain": false
+      },
+      {
+        "code": "editor_trust",
+        "initial": 0.55,
+        "final": 0.55,
+        "delta": 0.0,
+        "is_lowest_final": false,
+        "is_highest_gain": false
+      },
+      {
+        "code": "actionability",
+        "initial": 0.5,
+        "final": 0.5,
+        "delta": 0.0,
+        "is_lowest_final": false,
+        "is_highest_gain": false
+      }
+    ],
+    "growth_curve": [
+      {
+        "round_no": 0,
+        "k_state": {
+          "K1": 0.45,
+          "K2": 0.45,
+          "K3": 0.45,
+          "K4": 0.45,
+          "K5": 0.45,
+          "K6": 0.45,
+          "K7": 0.45,
+          "K8": 0.45
+        },
+        "s_state": {
+          "credibility": 0.6,
+          "accuracy": 0.6,
+          "public_panic": 0.3,
+          "source_safety": 0.65,
+          "editor_trust": 0.55,
+          "actionability": 0.5
+        },
+        "weighted_k_score": 0.45,
+        "scenario_title": "初始状态",
+        "is_high_risk": false,
+        "risk_flags": [],
+        "timestamp": null
+      },
+      {
+        "round_no": 1,
+        "k_state": {
+          "K1": 0.51,
+          "K2": 0.49,
+          "K3": 0.46,
+          "K4": 0.46,
+          "K5": 0.46,
+          "K6": 0.46,
+          "K7": 0.46,
+          "K8": 0.46
+        },
+        "s_state": {
+          "credibility": 0.63,
+          "accuracy": 0.64,
+          "public_panic": 0.3,
+          "source_safety": 0.65,
+          "editor_trust": 0.55,
+          "actionability": 0.5
+        },
+        "weighted_k_score": 0.473,
+        "scenario_title": "卢沟桥事变快讯发布",
+        "is_high_risk": false,
+        "risk_flags": [],
+        "timestamp": "2026-03-22T04:17:43.485295",
+        "scenario_id": "S1",
+        "primary_skill_code": "K1"
+      },
+      {
+        "round_no": 2,
+        "k_state": {
+          "K1": 0.57,
+          "K2": 0.53,
+          "K3": 0.47,
+          "K4": 0.47,
+          "K5": 0.47,
+          "K6": 0.47,
+          "K7": 0.47,
+          "K8": 0.47
+        },
+        "s_state": {
+          "credibility": 0.66,
+          "accuracy": 0.68,
+          "public_panic": 0.3,
+          "source_safety": 0.65,
+          "editor_trust": 0.55,
+          "actionability": 0.5
+        },
+        "weighted_k_score": 0.496,
+        "scenario_title": "淞沪会战连续战况",
+        "is_high_risk": false,
+        "risk_flags": [],
+        "timestamp": "2026-03-22T04:17:43.517356",
+        "scenario_id": "S2",
+        "primary_skill_code": "K3"
+      },
+      {
+        "round_no": 3,
+        "k_state": {
+          "K1": 0.58,
+          "K2": 0.54,
+          "K3": 0.48,
+          "K4": 0.48,
+          "K5": 0.53,
+          "K6": 0.48,
+          "K7": 0.48,
+          "K8": 0.48
+        },
+        "s_state": {
+          "credibility": 0.66,
+          "accuracy": 0.68,
+          "public_panic": 0.3,
+          "source_safety": 0.7,
+          "editor_trust": 0.55,
+          "actionability": 0.5
+        },
+        "weighted_k_score": 0.516,
+        "scenario_title": "南京失守高冲突信息处置",
+        "is_high_risk": false,
+        "risk_flags": [],
+        "timestamp": "2026-03-22T04:17:43.540354",
+        "scenario_id": "S3",
+        "primary_skill_code": "K5"
+      }
+    ],
+    "history": [
+      {
+        "round_no": 1,
+        "scenario_id": "S1",
+        "user_input": "我会先发布已经确认的事实，同时明确说明哪些信息仍在核验，避免把未证实内容写成定论。",
+        "selected_option": "C",
+        "evaluation": {
+          "llm_model": "rules_v1",
+          "confidence": 0.78,
+          "risk_flags": [],
+          "skill_delta": {
+            "K1": 0.06,
+            "K2": 0.04,
+            "K3": 0.01,
+            "K4": 0.01,
+            "K5": 0.01,
+            "K6": 0.01,
+            "K7": 0.01,
+            "K8": 0.01
+          },
+          "s_delta": {
+            "credibility": 0.03,
+            "accuracy": 0.04,
+            "public_panic": 0.0,
+            "source_safety": 0.0,
+            "editor_trust": 0.0,
+            "actionability": 0.0
+          },
+          "evidence": [
+            "包含事实核验或多源确认策略"
+          ],
+          "skill_scores_preview": {
+            "K1": 0.51,
+            "K2": 0.49,
+            "K3": 0.46,
+            "K4": 0.46,
+            "K5": 0.46,
+            "K6": 0.46,
+            "K7": 0.46,
+            "K8": 0.46
+          },
+          "eval_mode": "rules_only",
+          "calibration": {}
+        },
+        "k_state_before": {
+          "K1": 0.45,
+          "K2": 0.45,
+          "K3": 0.45,
+          "K4": 0.45,
+          "K5": 0.45,
+          "K6": 0.45,
+          "K7": 0.45,
+          "K8": 0.45
+        },
+        "k_state_after": {
+          "K1": 0.51,
+          "K2": 0.49,
+          "K3": 0.46,
+          "K4": 0.46,
+          "K5": 0.46,
+          "K6": 0.46,
+          "K7": 0.46,
+          "K8": 0.46
+        },
+        "s_state_before": {
+          "credibility": 0.6,
+          "accuracy": 0.6,
+          "public_panic": 0.3,
+          "source_safety": 0.65,
+          "editor_trust": 0.55,
+          "actionability": 0.5
+        },
+        "s_state_after": {
+          "credibility": 0.63,
+          "accuracy": 0.64,
+          "public_panic": 0.3,
+          "source_safety": 0.65,
+          "editor_trust": 0.55,
+          "actionability": 0.5
+        },
+        "timestamp": "2026-03-22T04:17:43.485295",
+        "decision_context": {
+          "mode": "self-paced",
+          "selection_source": "top_recommendation",
+          "selected_scenario_id": "S1",
+          "candidate_pool": [
+            {
+              "scenario_id": "S1",
+              "title": "卢沟桥事变快讯发布",
+              "rank_score": 0.545,
+              "is_selected": true,
+              "is_recommended": true,
+              "rank": 1
+            },
+            {
+              "scenario_id": "S2",
+              "title": "淞沪会战连续战况",
+              "rank_score": 0.501,
+              "is_selected": false,
+              "is_recommended": false,
+              "rank": 2
+            },
+            {
+              "scenario_id": "S3",
+              "title": "南京失守高冲突信息处置",
+              "rank_score": 0.385,
+              "is_selected": false,
+              "is_recommended": false,
+              "rank": 3
+            }
+          ],
+          "recommended_scenario_id": "S1",
+          "selected_recommendation": {
+            "mode": "self-paced",
+            "rank_score": 0.545,
+            "weakness_score": 0.55,
+            "state_boost_score": 0.0,
+            "risk_boost_score": 0.0,
+            "phase_boost_score": 2.0,
+            "reasons": [
+              "当前处于开场阶段，优先推荐建立背景和规则感的场景",
+              "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+            ],
+            "rank": 1
+          },
+          "recommended_recommendation": {
+            "mode": "self-paced",
+            "rank_score": 0.545,
+            "weakness_score": 0.55,
+            "state_boost_score": 0.0,
+            "risk_boost_score": 0.0,
+            "phase_boost_score": 2.0,
+            "reasons": [
+              "当前处于开场阶段，优先推荐建立背景和规则感的场景",
+              "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+            ],
+            "rank": 1
+          }
+        },
+        "kt_observation": {
+          "scenario_id": "S1",
+          "scenario_title": "卢沟桥事变快讯发布",
+          "training_mode": "self-paced",
+          "is_high_risk": false,
+          "target_skills": [
+            "K1",
+            "K2",
+            "K3",
+            "K4"
+          ],
+          "weak_skills_before": [
+            "K1",
+            "K2",
+            "K3"
+          ],
+          "risk_flags": [],
+          "focus_tags": [
+            "K1",
+            "K2",
+            "K3",
+            "K4",
+            "fast_publish",
+            "rumor",
+            "headline_pressure"
+          ],
+          "evidence": [
+            "包含事实核验或多源确认策略"
+          ],
+          "skill_observations": [
+            {
+              "code": "K1",
+              "before": 0.45,
+              "delta": 0.06,
+              "after": 0.51,
+              "is_target": true
+            },
+            {
+              "code": "K2",
+              "before": 0.45,
+              "delta": 0.04,
+              "after": 0.49,
+              "is_target": true
+            },
+            {
+              "code": "K3",
+              "before": 0.45,
+              "delta": 0.01,
+              "after": 0.46,
+              "is_target": true
+            },
+            {
+              "code": "K4",
+              "before": 0.45,
+              "delta": 0.01,
+              "after": 0.46,
+              "is_target": true
+            }
+          ],
+          "state_observations": [
+            {
+              "code": "accuracy",
+              "before": 0.6,
+              "delta": 0.04,
+              "after": 0.64,
+              "is_target": false
+            },
+            {
+              "code": "credibility",
+              "before": 0.6,
+              "delta": 0.03,
+              "after": 0.63,
+              "is_target": false
+            }
+          ],
+          "observation_summary": "第1轮场景《卢沟桥事变快讯发布》；重点关注 K1；能力变化 K1+0.0600、K2+0.0400",
+          "round_no": 1,
+          "primary_skill_code": "K1"
+        },
+        "runtime_state": {
+          "current_round_no": 1,
+          "k_state": {
+            "K1": 0.51,
+            "K2": 0.49,
+            "K3": 0.46,
+            "K4": 0.46,
+            "K5": 0.46,
+            "K6": 0.46,
+            "K7": 0.46,
+            "K8": 0.46
+          },
+          "s_state": {
+            "credibility": 0.63,
+            "accuracy": 0.64,
+            "public_panic": 0.3,
+            "source_safety": 0.65,
+            "editor_trust": 0.55,
+            "actionability": 0.5
+          },
+          "runtime_flags": {
+            "panic_triggered": false,
+            "source_exposed": false,
+            "editor_locked": false,
+            "high_risk_path": false
+          },
+          "state_bar": {
+            "editor_trust": 0.55,
+            "public_stability": 0.7,
+            "source_safety": 0.65
+          },
+          "current_scene_id": "S1",
+          "player_profile": {
+            "name": "李敏",
+            "gender": "女",
+            "identity": "战地记者",
+            "age": 24
+          }
+        },
+        "consequence_events": []
+      },
+      {
+        "round_no": 2,
+        "scenario_id": "S2",
+        "user_input": "我只写已经交叉核验过的战况和伤亡数据，并标清来源与不确定部分，避免情绪化放大。",
+        "selected_option": "B",
+        "evaluation": {
+          "llm_model": "rules_v1",
+          "confidence": 0.78,
+          "risk_flags": [],
+          "skill_delta": {
+            "K1": 0.06,
+            "K2": 0.04,
+            "K3": 0.01,
+            "K4": 0.01,
+            "K5": 0.01,
+            "K6": 0.01,
+            "K7": 0.01,
+            "K8": 0.01
+          },
+          "s_delta": {
+            "credibility": 0.03,
+            "accuracy": 0.04,
+            "public_panic": 0.0,
+            "source_safety": 0.0,
+            "editor_trust": 0.0,
+            "actionability": 0.0
+          },
+          "evidence": [
+            "包含事实核验或多源确认策略"
+          ],
+          "skill_scores_preview": {
+            "K1": 0.57,
+            "K2": 0.53,
+            "K3": 0.47,
+            "K4": 0.47,
+            "K5": 0.47,
+            "K6": 0.47,
+            "K7": 0.47,
+            "K8": 0.47
+          },
+          "eval_mode": "rules_only",
+          "calibration": {}
+        },
+        "k_state_before": {
+          "K1": 0.51,
+          "K2": 0.49,
+          "K3": 0.46,
+          "K4": 0.46,
+          "K5": 0.46,
+          "K6": 0.46,
+          "K7": 0.46,
+          "K8": 0.46
+        },
+        "k_state_after": {
+          "K1": 0.57,
+          "K2": 0.53,
+          "K3": 0.47,
+          "K4": 0.47,
+          "K5": 0.47,
+          "K6": 0.47,
+          "K7": 0.47,
+          "K8": 0.47
+        },
+        "s_state_before": {
+          "credibility": 0.63,
+          "accuracy": 0.64,
+          "public_panic": 0.3,
+          "source_safety": 0.65,
+          "editor_trust": 0.55,
+          "actionability": 0.5
+        },
+        "s_state_after": {
+          "credibility": 0.66,
+          "accuracy": 0.68,
+          "public_panic": 0.3,
+          "source_safety": 0.65,
+          "editor_trust": 0.55,
+          "actionability": 0.5
+        },
+        "timestamp": "2026-03-22T04:17:43.517356",
+        "decision_context": {
+          "mode": "self-paced",
+          "selection_source": "top_recommendation",
+          "selected_scenario_id": "S2",
+          "candidate_pool": [
+            {
+              "scenario_id": "S2",
+              "title": "淞沪会战连续战况",
+              "rank_score": 0.5293,
+              "is_selected": true,
+              "is_recommended": true,
+              "rank": 1
+            },
+            {
+              "scenario_id": "S4",
+              "title": "武汉会战后方动员沟通",
+              "rank_score": 0.378,
+              "is_selected": false,
+              "is_recommended": false,
+              "rank": 2
+            },
+            {
+              "scenario_id": "S3",
+              "title": "南京失守高冲突信息处置",
+              "rank_score": 0.371,
+              "is_selected": false,
+              "is_recommended": false,
+              "rank": 3
+            }
+          ],
+          "recommended_scenario_id": "S2",
+          "selected_recommendation": {
+            "mode": "self-paced",
+            "rank_score": 0.5293,
+            "weakness_score": 0.5275,
+            "state_boost_score": 0.0,
+            "risk_boost_score": 0.0,
+            "phase_boost_score": 2.0,
+            "reasons": [
+              "当前处于开场阶段，优先推荐建立背景和规则感的场景",
+              "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+            ],
+            "rank": 1
+          },
+          "recommended_recommendation": {
+            "mode": "self-paced",
+            "rank_score": 0.5293,
+            "weakness_score": 0.5275,
+            "state_boost_score": 0.0,
+            "risk_boost_score": 0.0,
+            "phase_boost_score": 2.0,
+            "reasons": [
+              "当前处于开场阶段，优先推荐建立背景和规则感的场景",
+              "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+            ],
+            "rank": 1
+          }
+        },
+        "kt_observation": {
+          "scenario_id": "S2",
+          "scenario_title": "淞沪会战连续战况",
+          "training_mode": "self-paced",
+          "is_high_risk": false,
+          "target_skills": [
+            "K1",
+            "K3",
+            "K4",
+            "K7"
+          ],
+          "weak_skills_before": [
+            "K3",
+            "K4",
+            "K5"
+          ],
+          "risk_flags": [],
+          "focus_tags": [
+            "K1",
+            "K3",
+            "K4",
+            "K7",
+            "emotional_language",
+            "casualty_conflict"
+          ],
+          "evidence": [
+            "包含事实核验或多源确认策略"
+          ],
+          "skill_observations": [
+            {
+              "code": "K3",
+              "before": 0.46,
+              "delta": 0.01,
+              "after": 0.47,
+              "is_target": true
+            },
+            {
+              "code": "K4",
+              "before": 0.46,
+              "delta": 0.01,
+              "after": 0.47,
+              "is_target": true
+            },
+            {
+              "code": "K7",
+              "before": 0.46,
+              "delta": 0.01,
+              "after": 0.47,
+              "is_target": true
+            },
+            {
+              "code": "K1",
+              "before": 0.51,
+              "delta": 0.06,
+              "after": 0.57,
+              "is_target": true
+            }
+          ],
+          "state_observations": [
+            {
+              "code": "accuracy",
+              "before": 0.64,
+              "delta": 0.04,
+              "after": 0.68,
+              "is_target": false
+            },
+            {
+              "code": "credibility",
+              "before": 0.63,
+              "delta": 0.03,
+              "after": 0.66,
+              "is_target": false
+            }
+          ],
+          "observation_summary": "第2轮场景《淞沪会战连续战况》；重点关注 K3；能力变化 K3+0.0100、K4+0.0100",
+          "round_no": 2,
+          "primary_skill_code": "K3"
+        },
+        "runtime_state": {
+          "current_round_no": 2,
+          "k_state": {
+            "K1": 0.57,
+            "K2": 0.53,
+            "K3": 0.47,
+            "K4": 0.47,
+            "K5": 0.47,
+            "K6": 0.47,
+            "K7": 0.47,
+            "K8": 0.47
+          },
+          "s_state": {
+            "credibility": 0.66,
+            "accuracy": 0.68,
+            "public_panic": 0.3,
+            "source_safety": 0.65,
+            "editor_trust": 0.55,
+            "actionability": 0.5
+          },
+          "runtime_flags": {
+            "panic_triggered": false,
+            "source_exposed": false,
+            "editor_locked": false,
+            "high_risk_path": false
+          },
+          "state_bar": {
+            "editor_trust": 0.55,
+            "public_stability": 0.7,
+            "source_safety": 0.65
+          },
+          "current_scene_id": "S2",
+          "player_profile": {
+            "name": "李敏",
+            "gender": "女",
+            "identity": "战地记者",
+            "age": 24
+          }
+        },
+        "consequence_events": []
+      },
+      {
+        "round_no": 3,
+        "scenario_id": "S3",
+        "user_input": "我会匿名化处理幸存者身份和藏身位置，只保留必要事实，优先保护线人和受访者安全。",
+        "selected_option": "B",
+        "evaluation": {
+          "llm_model": "rules_v1",
+          "confidence": 0.78,
+          "risk_flags": [],
+          "skill_delta": {
+            "K1": 0.01,
+            "K2": 0.01,
+            "K3": 0.01,
+            "K4": 0.01,
+            "K5": 0.06,
+            "K6": 0.01,
+            "K7": 0.01,
+            "K8": 0.01
+          },
+          "s_delta": {
+            "credibility": 0.0,
+            "accuracy": 0.0,
+            "public_panic": 0.0,
+            "source_safety": 0.05,
+            "editor_trust": 0.0,
+            "actionability": 0.0
+          },
+          "evidence": [
+            "体现来源保护与伦理边界"
+          ],
+          "skill_scores_preview": {
+            "K1": 0.58,
+            "K2": 0.54,
+            "K3": 0.48,
+            "K4": 0.48,
+            "K5": 0.53,
+            "K6": 0.48,
+            "K7": 0.48,
+            "K8": 0.48
+          },
+          "eval_mode": "rules_only",
+          "calibration": {}
+        },
+        "k_state_before": {
+          "K1": 0.57,
+          "K2": 0.53,
+          "K3": 0.47,
+          "K4": 0.47,
+          "K5": 0.47,
+          "K6": 0.47,
+          "K7": 0.47,
+          "K8": 0.47
+        },
+        "k_state_after": {
+          "K1": 0.58,
+          "K2": 0.54,
+          "K3": 0.48,
+          "K4": 0.48,
+          "K5": 0.53,
+          "K6": 0.48,
+          "K7": 0.48,
+          "K8": 0.48
+        },
+        "s_state_before": {
+          "credibility": 0.66,
+          "accuracy": 0.68,
+          "public_panic": 0.3,
+          "source_safety": 0.65,
+          "editor_trust": 0.55,
+          "actionability": 0.5
+        },
+        "s_state_after": {
+          "credibility": 0.66,
+          "accuracy": 0.68,
+          "public_panic": 0.3,
+          "source_safety": 0.7,
+          "editor_trust": 0.55,
+          "actionability": 0.5
+        },
+        "timestamp": "2026-03-22T04:17:43.540354",
+        "decision_context": {
+          "mode": "self-paced",
+          "selection_source": "top_recommendation",
+          "selected_scenario_id": "S3",
+          "candidate_pool": [
+            {
+              "scenario_id": "S3",
+              "title": "南京失守高冲突信息处置",
+              "rank_score": 0.517,
+              "is_selected": true,
+              "is_recommended": true,
+              "rank": 1
+            },
+            {
+              "scenario_id": "S4",
+              "title": "武汉会战后方动员沟通",
+              "rank_score": 0.487,
+              "is_selected": false,
+              "is_recommended": false,
+              "rank": 2
+            },
+            {
+              "scenario_id": "S6",
+              "title": "终战节点宣布性报道",
+              "rank_score": 0.3535,
+              "is_selected": false,
+              "is_recommended": false,
+              "rank": 3
+            }
+          ],
+          "recommended_scenario_id": "S3",
+          "selected_recommendation": {
+            "mode": "self-paced",
+            "rank_score": 0.517,
+            "weakness_score": 0.51,
+            "state_boost_score": 0.0,
+            "risk_boost_score": 0.0,
+            "phase_boost_score": 2.0,
+            "reasons": [
+              "当前处于中段阶段，优先推荐承压决策和风险升级场景",
+              "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+            ],
+            "rank": 1
+          },
+          "recommended_recommendation": {
+            "mode": "self-paced",
+            "rank_score": 0.517,
+            "weakness_score": 0.51,
+            "state_boost_score": 0.0,
+            "risk_boost_score": 0.0,
+            "phase_boost_score": 2.0,
+            "reasons": [
+              "当前处于中段阶段，优先推荐承压决策和风险升级场景",
+              "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+            ],
+            "rank": 1
+          }
+        },
+        "kt_observation": {
+          "scenario_id": "S3",
+          "scenario_title": "南京失守高冲突信息处置",
+          "training_mode": "self-paced",
+          "is_high_risk": false,
+          "target_skills": [
+            "K2",
+            "K5",
+            "K6"
+          ],
+          "weak_skills_before": [
+            "K3",
+            "K4",
+            "K5"
+          ],
+          "risk_flags": [],
+          "focus_tags": [
+            "K2",
+            "K5",
+            "K6",
+            "source_exposure",
+            "privacy_leak",
+            "ethical_boundary"
+          ],
+          "evidence": [
+            "体现来源保护与伦理边界"
+          ],
+          "skill_observations": [
+            {
+              "code": "K5",
+              "before": 0.47,
+              "delta": 0.06,
+              "after": 0.53,
+              "is_target": true
+            },
+            {
+              "code": "K6",
+              "before": 0.47,
+              "delta": 0.01,
+              "after": 0.48,
+              "is_target": true
+            },
+            {
+              "code": "K2",
+              "before": 0.53,
+              "delta": 0.01,
+              "after": 0.54,
+              "is_target": true
+            },
+            {
+              "code": "K1",
+              "before": 0.57,
+              "delta": 0.01,
+              "after": 0.58,
+              "is_target": false
+            }
+          ],
+          "state_observations": [
+            {
+              "code": "source_safety",
+              "before": 0.65,
+              "delta": 0.05,
+              "after": 0.7,
+              "is_target": false
+            }
+          ],
+          "observation_summary": "第3轮场景《南京失守高冲突信息处置》；重点关注 K5；能力变化 K5+0.0600、K6+0.0100",
+          "round_no": 3,
+          "primary_skill_code": "K5"
+        },
+        "runtime_state": {
+          "current_round_no": 3,
+          "k_state": {
+            "K1": 0.58,
+            "K2": 0.54,
+            "K3": 0.48,
+            "K4": 0.48,
+            "K5": 0.53,
+            "K6": 0.48,
+            "K7": 0.48,
+            "K8": 0.48
+          },
+          "s_state": {
+            "credibility": 0.66,
+            "accuracy": 0.68,
+            "public_panic": 0.3,
+            "source_safety": 0.7,
+            "editor_trust": 0.55,
+            "actionability": 0.5
+          },
+          "runtime_flags": {
+            "panic_triggered": false,
+            "source_exposed": false,
+            "editor_locked": false,
+            "high_risk_path": false
+          },
+          "state_bar": {
+            "editor_trust": 0.55,
+            "public_stability": 0.7,
+            "source_safety": 0.7
+          },
+          "current_scene_id": "S3",
+          "player_profile": {
+            "name": "李敏",
+            "gender": "女",
+            "identity": "战地记者",
+            "age": 24
+          }
+        },
+        "consequence_events": []
+      }
+    ],
+    "player_profile": {
+      "name": "李敏",
+      "gender": "女",
+      "identity": "战地记者",
+      "age": 24
+    },
+    "runtime_state": {
+      "current_round_no": 3,
+      "k_state": {
+        "K1": 0.58,
+        "K2": 0.54,
+        "K3": 0.48,
+        "K4": 0.48,
+        "K5": 0.53,
+        "K6": 0.48,
+        "K7": 0.48,
+        "K8": 0.48
+      },
+      "s_state": {
+        "credibility": 0.66,
+        "accuracy": 0.68,
+        "public_panic": 0.3,
+        "source_safety": 0.7,
+        "editor_trust": 0.55,
+        "actionability": 0.5
+      },
+      "runtime_flags": {
+        "panic_triggered": false,
+        "source_exposed": false,
+        "editor_locked": false,
+        "high_risk_path": false
+      },
+      "state_bar": {
+        "editor_trust": 0.55,
+        "public_stability": 0.7,
+        "source_safety": 0.7
+      },
+      "current_scene_id": "S3",
+      "player_profile": {
+        "name": "李敏",
+        "gender": "女",
+        "identity": "战地记者",
+        "age": 24
+      }
+    }
+  },
+  "diagnostics": {
+    "session_id": "0802d467-249d-4462-aeb5-704783128eaa",
+    "status": "in_progress",
+    "round_no": 3,
+    "summary": {
+      "total_recommendation_logs": 3,
+      "total_audit_events": 5,
+      "total_kt_observations": 3,
+      "high_risk_round_count": 0,
+      "high_risk_round_nos": [],
+      "recommended_vs_selected_mismatch_count": 0,
+      "recommended_vs_selected_mismatch_rounds": [],
+      "risk_flag_counts": [],
+      "primary_skill_focus_counts": [
+        {
+          "code": "K1",
+          "count": 1
+        },
+        {
+          "code": "K3",
+          "count": 1
+        },
+        {
+          "code": "K5",
+          "count": 1
+        }
+      ],
+      "top_weak_skills": [
+        {
+          "code": "K3",
+          "count": 3
+        },
+        {
+          "code": "K4",
+          "count": 2
+        },
+        {
+          "code": "K5",
+          "count": 2
+        }
+      ],
+      "selection_source_counts": [
+        {
+          "code": "top_recommendation",
+          "count": 3
+        }
+      ],
+      "event_type_counts": [
+        {
+          "code": "round_submitted",
+          "count": 3
+        },
+        {
+          "code": "phase_transition",
+          "count": 1
+        },
+        {
+          "code": "session_initialized",
+          "count": 1
+        }
+      ],
+      "phase_tag_counts": [
+        {
+          "code": "opening",
+          "count": 2
+        },
+        {
+          "code": "middle",
+          "count": 1
+        }
+      ],
+      "phase_transition_count": 1,
+      "phase_transition_rounds": [
+        3
+      ],
+      "panic_trigger_round_count": 0,
+      "panic_trigger_rounds": [],
+      "source_exposed_round_count": 0,
+      "source_exposed_rounds": [],
+      "editor_locked_round_count": 0,
+      "editor_locked_rounds": [],
+      "high_risk_path_round_count": 0,
+      "high_risk_path_rounds": [],
+      "branch_transition_count": 0,
+      "branch_transition_rounds": [],
+      "branch_transitions": [],
+      "last_phase_tags": [
+        "middle"
+      ],
+      "last_primary_skill_code": "K5",
+      "last_event_type": "phase_transition"
+    },
+    "recommendation_logs": [
+      {
+        "round_no": 1,
+        "training_mode": "self-paced",
+        "candidate_pool": [
+          {
+            "scenario_id": "S1",
+            "title": "卢沟桥事变快讯发布",
+            "rank_score": 0.545,
+            "is_selected": true,
+            "is_recommended": true,
+            "rank": 1
+          },
+          {
+            "scenario_id": "S2",
+            "title": "淞沪会战连续战况",
+            "rank_score": 0.501,
+            "is_selected": false,
+            "is_recommended": false,
+            "rank": 2
+          },
+          {
+            "scenario_id": "S3",
+            "title": "南京失守高冲突信息处置",
+            "rank_score": 0.385,
+            "is_selected": false,
+            "is_recommended": false,
+            "rank": 3
+          }
+        ],
+        "selection_source": "top_recommendation",
+        "recommended_scenario_id": "S1",
+        "selected_scenario_id": "S1",
+        "recommended_recommendation": {
+          "mode": "self-paced",
+          "rank_score": 0.545,
+          "weakness_score": 0.55,
+          "state_boost_score": 0.0,
+          "risk_boost_score": 0.0,
+          "phase_boost_score": 2.0,
+          "reasons": [
+            "当前处于开场阶段，优先推荐建立背景和规则感的场景",
+            "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+          ],
+          "rank": 1
+        },
+        "selected_recommendation": {
+          "mode": "self-paced",
+          "rank_score": 0.545,
+          "weakness_score": 0.55,
+          "state_boost_score": 0.0,
+          "risk_boost_score": 0.0,
+          "phase_boost_score": 2.0,
+          "reasons": [
+            "当前处于开场阶段，优先推荐建立背景和规则感的场景",
+            "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+          ],
+          "rank": 1
+        },
+        "decision_context": {
+          "mode": "self-paced",
+          "selection_source": "top_recommendation",
+          "selected_scenario_id": "S1",
+          "candidate_pool": [
+            {
+              "scenario_id": "S1",
+              "title": "卢沟桥事变快讯发布",
+              "rank_score": 0.545,
+              "is_selected": true,
+              "is_recommended": true,
+              "rank": 1
+            },
+            {
+              "scenario_id": "S2",
+              "title": "淞沪会战连续战况",
+              "rank_score": 0.501,
+              "is_selected": false,
+              "is_recommended": false,
+              "rank": 2
+            },
+            {
+              "scenario_id": "S3",
+              "title": "南京失守高冲突信息处置",
+              "rank_score": 0.385,
+              "is_selected": false,
+              "is_recommended": false,
+              "rank": 3
+            }
+          ],
+          "recommended_scenario_id": "S1",
+          "selected_recommendation": {
+            "mode": "self-paced",
+            "rank_score": 0.545,
+            "weakness_score": 0.55,
+            "state_boost_score": 0.0,
+            "risk_boost_score": 0.0,
+            "phase_boost_score": 2.0,
+            "reasons": [
+              "当前处于开场阶段，优先推荐建立背景和规则感的场景",
+              "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+            ],
+            "rank": 1
+          },
+          "recommended_recommendation": {
+            "mode": "self-paced",
+            "rank_score": 0.545,
+            "weakness_score": 0.55,
+            "state_boost_score": 0.0,
+            "risk_boost_score": 0.0,
+            "phase_boost_score": 2.0,
+            "reasons": [
+              "当前处于开场阶段，优先推荐建立背景和规则感的场景",
+              "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+            ],
+            "rank": 1
+          }
+        }
+      },
+      {
+        "round_no": 2,
+        "training_mode": "self-paced",
+        "candidate_pool": [
+          {
+            "scenario_id": "S2",
+            "title": "淞沪会战连续战况",
+            "rank_score": 0.5293,
+            "is_selected": true,
+            "is_recommended": true,
+            "rank": 1
+          },
+          {
+            "scenario_id": "S4",
+            "title": "武汉会战后方动员沟通",
+            "rank_score": 0.378,
+            "is_selected": false,
+            "is_recommended": false,
+            "rank": 2
+          },
+          {
+            "scenario_id": "S3",
+            "title": "南京失守高冲突信息处置",
+            "rank_score": 0.371,
+            "is_selected": false,
+            "is_recommended": false,
+            "rank": 3
+          }
+        ],
+        "selection_source": "top_recommendation",
+        "recommended_scenario_id": "S2",
+        "selected_scenario_id": "S2",
+        "recommended_recommendation": {
+          "mode": "self-paced",
+          "rank_score": 0.5293,
+          "weakness_score": 0.5275,
+          "state_boost_score": 0.0,
+          "risk_boost_score": 0.0,
+          "phase_boost_score": 2.0,
+          "reasons": [
+            "当前处于开场阶段，优先推荐建立背景和规则感的场景",
+            "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+          ],
+          "rank": 1
+        },
+        "selected_recommendation": {
+          "mode": "self-paced",
+          "rank_score": 0.5293,
+          "weakness_score": 0.5275,
+          "state_boost_score": 0.0,
+          "risk_boost_score": 0.0,
+          "phase_boost_score": 2.0,
+          "reasons": [
+            "当前处于开场阶段，优先推荐建立背景和规则感的场景",
+            "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+          ],
+          "rank": 1
+        },
+        "decision_context": {
+          "mode": "self-paced",
+          "selection_source": "top_recommendation",
+          "selected_scenario_id": "S2",
+          "candidate_pool": [
+            {
+              "scenario_id": "S2",
+              "title": "淞沪会战连续战况",
+              "rank_score": 0.5293,
+              "is_selected": true,
+              "is_recommended": true,
+              "rank": 1
+            },
+            {
+              "scenario_id": "S4",
+              "title": "武汉会战后方动员沟通",
+              "rank_score": 0.378,
+              "is_selected": false,
+              "is_recommended": false,
+              "rank": 2
+            },
+            {
+              "scenario_id": "S3",
+              "title": "南京失守高冲突信息处置",
+              "rank_score": 0.371,
+              "is_selected": false,
+              "is_recommended": false,
+              "rank": 3
+            }
+          ],
+          "recommended_scenario_id": "S2",
+          "selected_recommendation": {
+            "mode": "self-paced",
+            "rank_score": 0.5293,
+            "weakness_score": 0.5275,
+            "state_boost_score": 0.0,
+            "risk_boost_score": 0.0,
+            "phase_boost_score": 2.0,
+            "reasons": [
+              "当前处于开场阶段，优先推荐建立背景和规则感的场景",
+              "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+            ],
+            "rank": 1
+          },
+          "recommended_recommendation": {
+            "mode": "self-paced",
+            "rank_score": 0.5293,
+            "weakness_score": 0.5275,
+            "state_boost_score": 0.0,
+            "risk_boost_score": 0.0,
+            "phase_boost_score": 2.0,
+            "reasons": [
+              "当前处于开场阶段，优先推荐建立背景和规则感的场景",
+              "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+            ],
+            "rank": 1
+          }
+        }
+      },
+      {
+        "round_no": 3,
+        "training_mode": "self-paced",
+        "candidate_pool": [
+          {
+            "scenario_id": "S3",
+            "title": "南京失守高冲突信息处置",
+            "rank_score": 0.517,
+            "is_selected": true,
+            "is_recommended": true,
+            "rank": 1
+          },
+          {
+            "scenario_id": "S4",
+            "title": "武汉会战后方动员沟通",
+            "rank_score": 0.487,
+            "is_selected": false,
+            "is_recommended": false,
+            "rank": 2
+          },
+          {
+            "scenario_id": "S6",
+            "title": "终战节点宣布性报道",
+            "rank_score": 0.3535,
+            "is_selected": false,
+            "is_recommended": false,
+            "rank": 3
+          }
+        ],
+        "selection_source": "top_recommendation",
+        "recommended_scenario_id": "S3",
+        "selected_scenario_id": "S3",
+        "recommended_recommendation": {
+          "mode": "self-paced",
+          "rank_score": 0.517,
+          "weakness_score": 0.51,
+          "state_boost_score": 0.0,
+          "risk_boost_score": 0.0,
+          "phase_boost_score": 2.0,
+          "reasons": [
+            "当前处于中段阶段，优先推荐承压决策和风险升级场景",
+            "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+          ],
+          "rank": 1
+        },
+        "selected_recommendation": {
+          "mode": "self-paced",
+          "rank_score": 0.517,
+          "weakness_score": 0.51,
+          "state_boost_score": 0.0,
+          "risk_boost_score": 0.0,
+          "phase_boost_score": 2.0,
+          "reasons": [
+            "当前处于中段阶段，优先推荐承压决策和风险升级场景",
+            "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+          ],
+          "rank": 1
+        },
+        "decision_context": {
+          "mode": "self-paced",
+          "selection_source": "top_recommendation",
+          "selected_scenario_id": "S3",
+          "candidate_pool": [
+            {
+              "scenario_id": "S3",
+              "title": "南京失守高冲突信息处置",
+              "rank_score": 0.517,
+              "is_selected": true,
+              "is_recommended": true,
+              "rank": 1
+            },
+            {
+              "scenario_id": "S4",
+              "title": "武汉会战后方动员沟通",
+              "rank_score": 0.487,
+              "is_selected": false,
+              "is_recommended": false,
+              "rank": 2
+            },
+            {
+              "scenario_id": "S6",
+              "title": "终战节点宣布性报道",
+              "rank_score": 0.3535,
+              "is_selected": false,
+              "is_recommended": false,
+              "rank": 3
+            }
+          ],
+          "recommended_scenario_id": "S3",
+          "selected_recommendation": {
+            "mode": "self-paced",
+            "rank_score": 0.517,
+            "weakness_score": 0.51,
+            "state_boost_score": 0.0,
+            "risk_boost_score": 0.0,
+            "phase_boost_score": 2.0,
+            "reasons": [
+              "当前处于中段阶段，优先推荐承压决策和风险升级场景",
+              "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+            ],
+            "rank": 1
+          },
+          "recommended_recommendation": {
+            "mode": "self-paced",
+            "rank_score": 0.517,
+            "weakness_score": 0.51,
+            "state_boost_score": 0.0,
+            "risk_boost_score": 0.0,
+            "phase_boost_score": 2.0,
+            "reasons": [
+              "当前处于中段阶段，优先推荐承压决策和风险升级场景",
+              "与当前训练阶段直接对齐，作为未配置阶段标签时的兜底"
+            ],
+            "rank": 1
+          }
+        }
+      }
+    ],
+    "audit_events": [
+      {
+        "event_type": "session_initialized",
+        "payload": {
+          "training_mode": "self-paced",
+          "scenario_bank_version": "scenario_bank_v1",
+          "scenario_count": 6,
+          "phase": {
+            "round_no": 1,
+            "phase_tags": [
+              "opening"
+            ],
+            "window_reasons": [
+              "前两轮主要建立报道规则、角色压力和基础核验意识"
+            ],
+            "matched_window_count": 1
+          }
+        },
+        "round_no": 0,
+        "timestamp": "2026-03-22T04:17:43.466156"
+      },
+      {
+        "event_type": "round_submitted",
+        "payload": {
+          "training_mode": "self-paced",
+          "scenario_id": "S1",
+          "selected_option": "C",
+          "selection_source": "top_recommendation",
+          "risk_flags": [],
+          "confidence": 0.78,
+          "is_completed": false,
+          "phase": {
+            "round_no": 1,
+            "phase_tags": [
+              "opening"
+            ],
+            "window_reasons": [
+              "前两轮主要建立报道规则、角色压力和基础核验意识"
+            ],
+            "matched_window_count": 1
+          }
+        },
+        "round_no": 1,
+        "timestamp": "2026-03-22T04:17:43.496294"
+      },
+      {
+        "event_type": "round_submitted",
+        "payload": {
+          "training_mode": "self-paced",
+          "scenario_id": "S2",
+          "selected_option": "B",
+          "selection_source": "top_recommendation",
+          "risk_flags": [],
+          "confidence": 0.78,
+          "is_completed": false,
+          "phase": {
+            "round_no": 2,
+            "phase_tags": [
+              "opening"
+            ],
+            "window_reasons": [
+              "前两轮主要建立报道规则、角色压力和基础核验意识"
+            ],
+            "matched_window_count": 1
+          }
+        },
+        "round_no": 2,
+        "timestamp": "2026-03-22T04:17:43.522357"
+      },
+      {
+        "event_type": "round_submitted",
+        "payload": {
+          "training_mode": "self-paced",
+          "scenario_id": "S3",
+          "selected_option": "B",
+          "selection_source": "top_recommendation",
+          "risk_flags": [],
+          "confidence": 0.78,
+          "is_completed": false,
+          "phase": {
+            "round_no": 3,
+            "phase_tags": [
+              "middle"
+            ],
+            "window_reasons": [
+              "中段进入持续承压与伦理边界判断"
+            ],
+            "matched_window_count": 1
+          }
+        },
+        "round_no": 3,
+        "timestamp": "2026-03-22T04:17:43.543354"
+      },
+      {
+        "event_type": "phase_transition",
+        "payload": {
+          "training_mode": "self-paced",
+          "scenario_id": "S3",
+          "from_phase": {
+            "round_no": 2,
+            "phase_tags": [
+              "opening"
+            ],
+            "window_reasons": [
+              "前两轮主要建立报道规则、角色压力和基础核验意识"
+            ],
+            "matched_window_count": 1
+          },
+          "to_phase": {
+            "round_no": 3,
+            "phase_tags": [
+              "middle"
+            ],
+            "window_reasons": [
+              "中段进入持续承压与伦理边界判断"
+            ],
+            "matched_window_count": 1
+          }
+        },
+        "round_no": 3,
+        "timestamp": "2026-03-22T04:17:43.543354"
+      }
+    ],
+    "kt_observations": [
+      {
+        "scenario_id": "S1",
+        "scenario_title": "卢沟桥事变快讯发布",
+        "training_mode": "self-paced",
+        "is_high_risk": false,
+        "target_skills": [
+          "K1",
+          "K2",
+          "K3",
+          "K4"
+        ],
+        "weak_skills_before": [
+          "K1",
+          "K2",
+          "K3"
+        ],
+        "risk_flags": [],
+        "focus_tags": [
+          "K1",
+          "K2",
+          "K3",
+          "K4",
+          "fast_publish",
+          "rumor",
+          "headline_pressure"
+        ],
+        "evidence": [
+          "包含事实核验或多源确认策略"
+        ],
+        "skill_observations": [
+          {
+            "code": "K1",
+            "before": 0.45,
+            "delta": 0.06,
+            "after": 0.51,
+            "is_target": true
+          },
+          {
+            "code": "K2",
+            "before": 0.45,
+            "delta": 0.04,
+            "after": 0.49,
+            "is_target": true
+          },
+          {
+            "code": "K3",
+            "before": 0.45,
+            "delta": 0.01,
+            "after": 0.46,
+            "is_target": true
+          },
+          {
+            "code": "K4",
+            "before": 0.45,
+            "delta": 0.01,
+            "after": 0.46,
+            "is_target": true
+          }
+        ],
+        "state_observations": [
+          {
+            "code": "accuracy",
+            "before": 0.6,
+            "delta": 0.04,
+            "after": 0.64,
+            "is_target": false
+          },
+          {
+            "code": "credibility",
+            "before": 0.6,
+            "delta": 0.03,
+            "after": 0.63,
+            "is_target": false
+          }
+        ],
+        "observation_summary": "第1轮场景《卢沟桥事变快讯发布》；重点关注 K1；能力变化 K1+0.0600、K2+0.0400",
+        "round_no": 1,
+        "primary_skill_code": "K1"
+      },
+      {
+        "scenario_id": "S2",
+        "scenario_title": "淞沪会战连续战况",
+        "training_mode": "self-paced",
+        "is_high_risk": false,
+        "target_skills": [
+          "K1",
+          "K3",
+          "K4",
+          "K7"
+        ],
+        "weak_skills_before": [
+          "K3",
+          "K4",
+          "K5"
+        ],
+        "risk_flags": [],
+        "focus_tags": [
+          "K1",
+          "K3",
+          "K4",
+          "K7",
+          "emotional_language",
+          "casualty_conflict"
+        ],
+        "evidence": [
+          "包含事实核验或多源确认策略"
+        ],
+        "skill_observations": [
+          {
+            "code": "K3",
+            "before": 0.46,
+            "delta": 0.01,
+            "after": 0.47,
+            "is_target": true
+          },
+          {
+            "code": "K4",
+            "before": 0.46,
+            "delta": 0.01,
+            "after": 0.47,
+            "is_target": true
+          },
+          {
+            "code": "K7",
+            "before": 0.46,
+            "delta": 0.01,
+            "after": 0.47,
+            "is_target": true
+          },
+          {
+            "code": "K1",
+            "before": 0.51,
+            "delta": 0.06,
+            "after": 0.57,
+            "is_target": true
+          }
+        ],
+        "state_observations": [
+          {
+            "code": "accuracy",
+            "before": 0.64,
+            "delta": 0.04,
+            "after": 0.68,
+            "is_target": false
+          },
+          {
+            "code": "credibility",
+            "before": 0.63,
+            "delta": 0.03,
+            "after": 0.66,
+            "is_target": false
+          }
+        ],
+        "observation_summary": "第2轮场景《淞沪会战连续战况》；重点关注 K3；能力变化 K3+0.0100、K4+0.0100",
+        "round_no": 2,
+        "primary_skill_code": "K3"
+      },
+      {
+        "scenario_id": "S3",
+        "scenario_title": "南京失守高冲突信息处置",
+        "training_mode": "self-paced",
+        "is_high_risk": false,
+        "target_skills": [
+          "K2",
+          "K5",
+          "K6"
+        ],
+        "weak_skills_before": [
+          "K3",
+          "K4",
+          "K5"
+        ],
+        "risk_flags": [],
+        "focus_tags": [
+          "K2",
+          "K5",
+          "K6",
+          "source_exposure",
+          "privacy_leak",
+          "ethical_boundary"
+        ],
+        "evidence": [
+          "体现来源保护与伦理边界"
+        ],
+        "skill_observations": [
+          {
+            "code": "K5",
+            "before": 0.47,
+            "delta": 0.06,
+            "after": 0.53,
+            "is_target": true
+          },
+          {
+            "code": "K6",
+            "before": 0.47,
+            "delta": 0.01,
+            "after": 0.48,
+            "is_target": true
+          },
+          {
+            "code": "K2",
+            "before": 0.53,
+            "delta": 0.01,
+            "after": 0.54,
+            "is_target": true
+          },
+          {
+            "code": "K1",
+            "before": 0.57,
+            "delta": 0.01,
+            "after": 0.58,
+            "is_target": false
+          }
+        ],
+        "state_observations": [
+          {
+            "code": "source_safety",
+            "before": 0.65,
+            "delta": 0.05,
+            "after": 0.7,
+            "is_target": false
+          }
+        ],
+        "observation_summary": "第3轮场景《南京失守高冲突信息处置》；重点关注 K5；能力变化 K5+0.0600、K6+0.0100",
+        "round_no": 3,
+        "primary_skill_code": "K5"
+      }
+    ],
+    "player_profile": {
+      "name": "李敏",
+      "gender": "女",
+      "identity": "战地记者",
+      "age": 24
+    },
+    "runtime_state": {
+      "current_round_no": 3,
+      "k_state": {
+        "K1": 0.58,
+        "K2": 0.54,
+        "K3": 0.48,
+        "K4": 0.48,
+        "K5": 0.53,
+        "K6": 0.48,
+        "K7": 0.48,
+        "K8": 0.48
+      },
+      "s_state": {
+        "credibility": 0.66,
+        "accuracy": 0.68,
+        "public_panic": 0.3,
+        "source_safety": 0.7,
+        "editor_trust": 0.55,
+        "actionability": 0.5
+      },
+      "runtime_flags": {
+        "panic_triggered": false,
+        "source_exposed": false,
+        "editor_locked": false,
+        "high_risk_path": false
+      },
+      "state_bar": {
+        "editor_trust": 0.55,
+        "public_stability": 0.7,
+        "source_safety": 0.7
+      },
+      "current_scene_id": "S3",
+      "player_profile": {
+        "name": "李敏",
+        "gender": "女",
+        "identity": "战地记者",
+        "age": 24
+      }
+    }
+  }
+}

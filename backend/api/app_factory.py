@@ -16,6 +16,15 @@ from api.cors_config import ServiceScope, build_cors_middleware_options
 from api.middleware.error_handler import install_common_exception_handlers
 from database.db_manager import DatabaseManager
 
+_RESERVED_ROOT_METADATA_KEYS = frozenset(
+    {
+        "message",
+        "version",
+        "docs",
+        "service_scope",
+    }
+)
+
 
 def _build_database_check_lifespan(
     *,
@@ -66,6 +75,19 @@ def _install_service_metadata_routes(
         return payload
 
 
+def _validate_root_extra_metadata(root_extra: Mapping[str, Any] | None) -> None:
+    if not root_extra:
+        return
+
+    conflicts = sorted(set(root_extra.keys()) & _RESERVED_ROOT_METADATA_KEYS)
+    if conflicts:
+        conflict_list = ", ".join(conflicts)
+        raise ValueError(
+            "root_extra cannot override reserved root metadata keys: "
+            f"{conflict_list}"
+        )
+
+
 def create_api_app(
     *,
     title: str,
@@ -79,6 +101,8 @@ def create_api_app(
     root_extra: Mapping[str, Any] | None = None,
 ) -> FastAPI:
     """Create a backend entrypoint with shared runtime wiring."""
+
+    _validate_root_extra_metadata(root_extra)
 
     app = FastAPI(
         title=title,

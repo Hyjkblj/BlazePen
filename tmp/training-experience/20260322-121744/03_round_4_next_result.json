@@ -1,0 +1,111 @@
+{
+  "session_id": "4e3f88f3-9dfd-4aaf-9626-7b5dc51a7ead",
+  "status": "in_progress",
+  "round_no": 5,
+  "scenario": {
+    "id": "S5",
+    "title": "百团大战多源冲突核验",
+    "era_date": "1940-08-22",
+    "location": "华北多地战况汇总点",
+    "brief": "多地战况同时汇入，指挥部电文、地方通讯员和民间线索相互冲突。",
+    "mission": "完成一版多源冲突核验报告，给编辑部明确说明哪些内容可发、哪些要保留。",
+    "decision_focus": "多源核验与证据分层",
+    "target_skills": [
+      "K1",
+      "K2",
+      "K6",
+      "K8"
+    ],
+    "risk_tags": [
+      "multi_source_conflict",
+      "verification_chain"
+    ],
+    "briefing": "你必须在一小时内给出发稿建议，但当前材料里既有一手战况，也有未经证实的民间传闻，混在一起风险极高。",
+    "options": [
+      {
+        "id": "A",
+        "label": "把所有收到的信息整合成统一战报",
+        "impact_hint": "速度快，但容易把传闻一起带出。"
+      },
+      {
+        "id": "B",
+        "label": "分层标注来源可信度后再提交稿件",
+        "impact_hint": "更符合训练目标。"
+      },
+      {
+        "id": "C",
+        "label": "只保留最保守的已核实战果",
+        "impact_hint": "风险低，但可能损失信息量。"
+      }
+    ],
+    "completion_hint": "重点看你能不能明确区分“已核实、待核实、不可发”。",
+    "phase_tags": [
+      "climax"
+    ],
+    "branch_tags": [],
+    "next_rules": []
+  },
+  "k_state": {
+    "K1": 0.59,
+    "K2": 0.55,
+    "K3": 0.49,
+    "K4": 0.49,
+    "K5": 0.54,
+    "K6": 0.49,
+    "K7": 0.49,
+    "K8": 0.49
+  },
+  "s_state": {
+    "credibility": 0.66,
+    "accuracy": 0.68,
+    "public_panic": 0.3,
+    "source_safety": 0.7,
+    "editor_trust": 0.55,
+    "actionability": 0.5
+  },
+  "player_profile": {
+    "name": "李敏",
+    "gender": "女",
+    "identity": "战地记者",
+    "age": 24
+  },
+  "runtime_state": {
+    "current_round_no": 4,
+    "k_state": {
+      "K1": 0.59,
+      "K2": 0.55,
+      "K3": 0.49,
+      "K4": 0.49,
+      "K5": 0.54,
+      "K6": 0.49,
+      "K7": 0.49,
+      "K8": 0.49
+    },
+    "s_state": {
+      "credibility": 0.66,
+      "accuracy": 0.68,
+      "public_panic": 0.3,
+      "source_safety": 0.7,
+      "editor_trust": 0.55,
+      "actionability": 0.5
+    },
+    "runtime_flags": {
+      "panic_triggered": false,
+      "source_exposed": false,
+      "editor_locked": false,
+      "high_risk_path": false
+    },
+    "state_bar": {
+      "editor_trust": 0.55,
+      "public_stability": 0.7,
+      "source_safety": 0.7
+    },
+    "current_scene_id": "S5",
+    "player_profile": {
+      "name": "李敏",
+      "gender": "女",
+      "identity": "战地记者",
+      "age": 24
+    }
+  }
+}

@@ -56,6 +56,7 @@ describe('useTrainingReport', () => {
 
     firstRequest.resolve({
       sessionId: 'session-old',
+      characterId: null,
       status: 'completed',
       rounds: 1,
       kStateFinal: {},
@@ -73,6 +74,7 @@ describe('useTrainingReport', () => {
 
     secondRequest.resolve({
       sessionId: 'session-new',
+      characterId: null,
       status: 'completed',
       rounds: 2,
       kStateFinal: {},

@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react';
 import { useTrainingFlow } from '@/contexts';
 import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
 import { getNextTrainingScenario, submitTrainingRound } from '@/services/trainingApi';
-import { getServiceErrorMessage, isServiceError } from '@/services/serviceError';
 import { persistTrainingResumeTarget } from '@/storage/trainingSessionCache';
 import type {
   TrainingMode,
@@ -12,6 +11,12 @@ import type {
   TrainingScenarioNextResult,
   TrainingSessionSummaryResult,
 } from '@/types/training';
+import {
+  getTrainingRoundNextScenarioErrorMessage,
+  getTrainingRoundSubmitErrorMessage,
+  isTrainingRoundSessionLevelRecoveryError,
+  resolveTrainingRoundRecoveryReason,
+} from './trainingRoundRunnerExecutor';
 
 export type TrainingRoundRunnerStatus = 'idle' | 'submitting' | 'error';
 export type TrainingRoundRecoveryReason =
@@ -47,45 +52,6 @@ export interface UseTrainingRoundRunnerResult {
   ) => Promise<TrainingRoundTransition | null>;
   dismissError: () => void;
 }
-
-const SESSION_LEVEL_RECOVERY_CODES = new Set([
-  'TRAINING_ROUND_DUPLICATE',
-  'TRAINING_SESSION_COMPLETED',
-  'TRAINING_SESSION_NOT_FOUND',
-  'TRAINING_SESSION_RECOVERY_STATE_CORRUPTED',
-]);
-
-const getSubmitErrorMessage = (error: unknown): string => {
-  if (isServiceError(error) && error.code === 'REQUEST_TIMEOUT') {
-    return '提交训练回合超时，请重试。';
-  }
-
-  if (isServiceError(error) && error.code === 'SERVICE_UNAVAILABLE') {
-    return '训练提交服务暂时不可用，请稍后重试。';
-  }
-
-  if (isServiceError(error) && error.code === 'TRAINING_SESSION_NOT_FOUND') {
-    return '训练会话不存在，请重新开始训练。';
-  }
-
-  if (isServiceError(error) && error.code === 'TRAINING_SESSION_RECOVERY_STATE_CORRUPTED') {
-    return '训练会话恢复状态损坏，请重新开始训练。';
-  }
-
-  return getServiceErrorMessage(error, '提交训练回合失败。');
-};
-
-const getNextScenarioErrorMessage = (error: unknown): string => {
-  if (isServiceError(error) && error.code === 'REQUEST_TIMEOUT') {
-    return '回合已提交，但下一训练场景加载超时，请重试恢复当前训练。';
-  }
-
-  if (isServiceError(error) && error.code === 'SERVICE_UNAVAILABLE') {
-    return '回合已提交，但下一训练场景暂时不可用，请重试恢复当前训练。';
-  }
-
-  return getServiceErrorMessage(error, '回合已提交，但无法继续加载下一训练场景。');
-};
 
 export function useTrainingRoundRunner({
   restoreSession,
@@ -269,7 +235,7 @@ export function useTrainingRoundRunner({
             },
             cause: nextError,
           });
-          setErrorMessage(getNextScenarioErrorMessage(nextError));
+          setErrorMessage(getTrainingRoundNextScenarioErrorMessage(nextError));
           setStatus('error');
           return {
             submitResult,
@@ -279,9 +245,10 @@ export function useTrainingRoundRunner({
           };
         }
       } catch (error: unknown) {
-        if (isServiceError(error) && SESSION_LEVEL_RECOVERY_CODES.has(error.code)) {
+        if (isTrainingRoundSessionLevelRecoveryError(error)) {
           const summaryResult = await restoreCurrentSession();
           if (summaryResult) {
+            const recoveryReason = resolveTrainingRoundRecoveryReason(error);
             setStatus('idle');
             trackFrontendTelemetry({
               domain: 'training',
@@ -292,16 +259,14 @@ export function useTrainingRoundRunner({
                 roundNo: summaryResult.roundNo,
                 status: summaryResult.status,
                 isCompleted: summaryResult.isCompleted,
-                recoveryReason:
-                  error.code === 'TRAINING_ROUND_DUPLICATE' ? 'duplicate' : 'completed',
+                recoveryReason,
               },
             });
             return {
               submitResult: null,
               nextScenarioResult: null,
               summaryResult,
-              recoveryReason:
-                error.code === 'TRAINING_ROUND_DUPLICATE' ? 'duplicate' : 'completed',
+              recoveryReason,
             };
           }
         }
@@ -316,7 +281,7 @@ export function useTrainingRoundRunner({
           },
           cause: error,
         });
-        setErrorMessage(getSubmitErrorMessage(error));
+        setErrorMessage(getTrainingRoundSubmitErrorMessage(error));
         setStatus('error');
         return null;
       }

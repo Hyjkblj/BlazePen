@@ -1,0 +1,69 @@
+{
+  "session_id": "0802d467-249d-4462-aeb5-704783128eaa",
+  "status": "in_progress",
+  "round_no": 3,
+  "total_rounds": 6,
+  "k_state": {
+    "K1": 0.58,
+    "K2": 0.54,
+    "K3": 0.48,
+    "K4": 0.48,
+    "K5": 0.53,
+    "K6": 0.48,
+    "K7": 0.48,
+    "K8": 0.48
+  },
+  "s_state": {
+    "credibility": 0.66,
+    "accuracy": 0.68,
+    "public_panic": 0.3,
+    "source_safety": 0.7,
+    "editor_trust": 0.55,
+    "actionability": 0.5
+  },
+  "player_profile": {
+    "name": "李敏",
+    "gender": "女",
+    "identity": "战地记者",
+    "age": 24
+  },
+  "runtime_state": {
+    "current_round_no": 3,
+    "k_state": {
+      "K1": 0.58,
+      "K2": 0.54,
+      "K3": 0.48,
+      "K4": 0.48,
+      "K5": 0.53,
+      "K6": 0.48,
+      "K7": 0.48,
+      "K8": 0.48
+    },
+    "s_state": {
+      "credibility": 0.66,
+      "accuracy": 0.68,
+      "public_panic": 0.3,
+      "source_safety": 0.7,
+      "editor_trust": 0.55,
+      "actionability": 0.5
+    },
+    "runtime_flags": {
+      "panic_triggered": false,
+      "source_exposed": false,
+      "editor_locked": false,
+      "high_risk_path": false
+    },
+    "state_bar": {
+      "editor_trust": 0.55,
+      "public_stability": 0.7,
+      "source_safety": 0.7
+    },
+    "current_scene_id": "S3",
+    "player_profile": {
+      "name": "李敏",
+      "gender": "女",
+      "identity": "战地记者",
+      "age": 24
+    }
+  }
+}

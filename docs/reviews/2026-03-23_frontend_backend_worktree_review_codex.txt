@@ -1,0 +1,35 @@
+## 前端 Findings
+- [Major] frontend/src/hooks/useTrainingSessionViewModel.ts:259
+  问题：`resumeTarget` 在被排除出 canonical read target 之后，仍然作为 `preferredTrainingMode` 和 `preferredCharacterId` 回填新训练表单。
+  原因：这里把 `resumeTarget` 继续当成页面默认值来源，而 `frontend/src/flows/useTrainingMvpFlow.ts:143` 又会在没有 `sessionView` 时直接把这些值写进 `trainingMode` 和 `formDraft.characterId`。这重新引入了 `localStorage -> 页面可变状态` 的第二事实源，和“本地缓存只做恢复入口提示”的边界不一致。
+  影响：用户刷新后即使还没经过服务端 `session summary` 恢复，也可能直接用陈旧的模式和 `characterId` 启动一场新训练；缓存过期、账号切换、旧会话残留时尤其容易把上一会话上下文带进新会话。
+  建议：把 `resumeTarget` 严格降级为 hint-only 状态；只有显式恢复成功后，才允许用服务端 summary 回填表单，或者至少要求用户确认后再把 cached hint 写入 `formDraft`。
+
+- [Major] frontend/src/utils/trainingSession.ts:97
+  问题：`normalizeOptionalCharacterId()` 用 `Number.parseInt()` 宽松吞掉脏 `character_id`，例如 `"42abc"` 会被静默归一成 `"42"`。
+  原因：前端契约层在兼容后端脏字段，而不是显式把 malformed payload 视为 `null` 或无效；同时它又和 `frontend/src/hooks/useTrainingSessionReadTarget.ts:53`、`frontend/src/hooks/useTrainingSessionBootstrap.ts:59` 的 `characterId` 规则不一致，导致同一字段没有单一 canonical normalizer。
+  影响：错误 `characterId` 可以进入恢复 view model、resumeTarget 和新建会话表单，出现“服务端其实已无效，前端仍显示有效角色”的状态分叉，恢复问题会变得很难定位。
+  建议：抽出共享 `normalizeTrainingCharacterId`，只接受正整数 number 或完全匹配 `/^\d+$/` 的字符串；脏值一律返回 `null` 或抛 `INVALID_RESPONSE`，不要做宽松纠偏。
+
+## 后端 Findings
+- [Major] backend/api/services/game_service.py:165
+  问题：story turn 的 DTO 归一化被正式提升为 `GameService` 的公共 façade 方法，并且已经写进兼容 surface。
+  原因：`normalize_story_turn_payload()` 本质是 API contract/dto assembler，直接依赖 `backend/api/story_contract_utils.py:18`；但现在路由通过 `backend/api/routers/game.py:135` 调它，等于把 `router -> dto` 依赖改成了 `router -> service -> dto`，扩大了 `GameService` 的职责面。
+  影响：story split 之后 `GameService` 很难继续收缩，后续任何响应契约调整都要同步改 service façade 和对应冻结测试，过渡层会被长期保留下来。
+  建议：把 story turn/snapshot/ending 的响应组装收回到 router 层的独立 response assembler/dto builder，`GameService` 只暴露领域操作；现有 surface/boundary 测试也应改为保护 assembler 边界，而不是锁定 `normalize_story_turn_payload()` 这个 façade 方法。
+
+## Open Questions
+- 是否明确要求“恢复入口缓存”可以在未完成服务端 `session summary` 恢复前，直接参与“新训练启动”的默认值回填？如果不是，前端当前实现应改为只展示 hint，不写回表单。
+
+## 测试缺口
+- 前端：`frontend/src/hooks/useTrainingSessionViewModel.test.tsx` 和 `frontend/src/pages/Training.integration.test.tsx` 缺少“只有 `resumeTarget`、没有 active session 时，刷新后不得把缓存值直接写入新训练表单”的回归测试。
+- 前端：`frontend/src/utils/trainingSession.test.ts` 没有覆盖脏 `character_id` 输入，至少应补 `"42abc"`、`"abc"`、`0`、`-1`、`true` 这些值。
+- 后端：`backend/test_training_query_service.py` 和 `backend/test_training_outputs.py` 只覆盖了正常 `character_id`，没有覆盖 `None/0/True/"abc"` 在 summary/progress/history/report/diagnostics 五条读路径上的一致序列化。
+- 后端：`backend/test_game_service_facade_surface.py` 和 `backend/test_story_router_facade_boundaries.py` 没有为独立 story response assembler 预留测试位点；当前测试只会继续固化 router 对 `GameService.normalize_story_turn_payload()` 的依赖。
+
+## Review Summary
+- 本次改动在 training 读模型和 story dependency wiring 上有收口，但前端还没有彻底拔掉 `resumeTarget -> 表单状态` 这条本地双事实源路径。
+- `character_id` 契约虽然补到了前后端，但前端 normalizer 仍在宽松吞脏值，契约收紧不彻底。
+- 后端 story router 不再直连内部 collaborator 是进步，但把 DTO normalize 固化进 `GameService` façade 会让过渡层继续做大。
+- 相关目标测试我抽跑了，后端 `pytest` 53 个用例和前端 `vitest` 23 个用例都通过。
+- 问题主要集中在架构边界和契约消费方式上，现有 happy-path 测试还拦不住。

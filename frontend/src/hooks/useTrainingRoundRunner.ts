@@ -22,6 +22,7 @@ export type TrainingRoundRunnerStatus = 'idle' | 'submitting' | 'error';
 export type TrainingRoundRecoveryReason =
   | 'duplicate'
   | 'completed'
+  | 'scenario-mismatch'
   | 'next-fetch-failed'
   | null;
 

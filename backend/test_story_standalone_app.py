@@ -7,13 +7,14 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from api.app import app
-from api.dependencies import get_game_service
+from api.dependencies import get_story_service_bundle
 
 
 class _FakeStoryGameService:
@@ -34,11 +35,42 @@ class _FakeStoryGameService:
         }
 
 
+def _build_story_bundle(service: _FakeStoryGameService):
+    return SimpleNamespace(
+        story_asset_service=service.story_asset_service,
+        story_session_service=SimpleNamespace(
+            init_game=service.init_game,
+            get_session_snapshot=lambda thread_id: {"thread_id": thread_id},
+            list_recent_sessions=lambda **_: {"user_id": "story-user-001", "sessions": []},
+        ),
+        story_turn_service=SimpleNamespace(
+            initialize_story=lambda *args, **kwargs: {},
+            submit_turn=lambda *args, **kwargs: {},
+        ),
+        story_ending_service=SimpleNamespace(
+            get_ending_summary=lambda thread_id: {
+                "thread_id": thread_id,
+                "status": "initialized",
+                "round_no": 0,
+                "has_ending": False,
+                "ending": None,
+            },
+            check_ending=lambda thread_id: {"has_ending": False, "ending": None},
+            trigger_ending=lambda thread_id: {},
+        ),
+        story_history_service=SimpleNamespace(
+            get_story_history=lambda thread_id: {"thread_id": thread_id, "history": []},
+        ),
+    )
+
+
 class StoryStandaloneAppTestCase(unittest.TestCase):
     def setUp(self):
         self.database_manager_patcher = patch("api.app_factory.DatabaseManager")
         self.database_manager_patcher.start()
-        app.dependency_overrides[get_game_service] = lambda: _FakeStoryGameService()
+        app.dependency_overrides[get_story_service_bundle] = (
+            lambda: _build_story_bundle(_FakeStoryGameService())
+        )
         self.client = TestClient(app)
 
     def tearDown(self):

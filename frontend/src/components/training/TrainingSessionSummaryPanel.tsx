@@ -1,3 +1,4 @@
+import { Card, Descriptions, List, Tag, Typography } from 'antd';
 import type { TrainingRuntimeState } from '@/types/training';
 
 interface TrainingSessionSummaryPanelProps {
@@ -24,64 +25,58 @@ function TrainingSessionSummaryPanel({
   runtimeState,
 }: TrainingSessionSummaryPanelProps) {
   return (
-    <article className="training-shell__panel">
-      <h2>当前训练状态</h2>
-      <dl className="training-shell__summary">
-        <div>
-          <dt>sessionId</dt>
-          <dd>{sessionId}</dd>
-        </div>
-        <div>
-          <dt>训练模式</dt>
-          <dd>{trainingModeLabel}</dd>
-        </div>
-        <div>
-          <dt>状态</dt>
-          <dd>{status}</dd>
-        </div>
-        <div>
-          <dt>回合</dt>
-          <dd>
-            {roundNo}
-            {totalRounds !== null ? ` / ${totalRounds}` : ''}
-          </dd>
-        </div>
-        {progressLabel ? (
-          <div>
-            <dt>进度</dt>
-            <dd>{progressLabel}</dd>
-          </div>
-        ) : null}
-        <div>
-          <dt>characterId</dt>
-          <dd>{characterId ?? '未绑定'}</dd>
-        </div>
-        <div>
-          <dt>currentSceneId</dt>
-          <dd>{currentSceneId ?? '暂无'}</dd>
-        </div>
-      </dl>
+    <Card className="training-shell__panel training-shell__panel--antd" bordered={false}>
+      <Typography.Title level={4}>当前训练状态</Typography.Title>
+
+      <Descriptions
+        className="training-shell__summary training-shell__summary--antd"
+        column={1}
+        size="small"
+      >
+        <Descriptions.Item label="sessionId">{sessionId}</Descriptions.Item>
+        <Descriptions.Item label="训练模式">{trainingModeLabel ?? '未指定'}</Descriptions.Item>
+        <Descriptions.Item label="状态">
+          <Tag color="processing">{status}</Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label="回合">
+          {roundNo}
+          {totalRounds !== null ? ` / ${totalRounds}` : ''}
+        </Descriptions.Item>
+        {progressLabel ? <Descriptions.Item label="进度">{progressLabel}</Descriptions.Item> : null}
+        <Descriptions.Item label="characterId">{characterId ?? '未绑定'}</Descriptions.Item>
+        <Descriptions.Item label="currentSceneId">{currentSceneId ?? '暂无'}</Descriptions.Item>
+      </Descriptions>
 
       <div className="training-shell__state-grid">
         <div>
-          <h3>State Bar</h3>
-          <ul className="training-shell__metric-list">
-            <li>editorTrust: {runtimeState.stateBar.editorTrust}</li>
-            <li>publicStability: {runtimeState.stateBar.publicStability}</li>
-            <li>sourceSafety: {runtimeState.stateBar.sourceSafety}</li>
-          </ul>
+          <Typography.Title level={5}>State Bar</Typography.Title>
+          <List
+            size="small"
+            className="training-shell__metric-list training-shell__metric-list--antd"
+            dataSource={[
+              `editorTrust: ${runtimeState.stateBar.editorTrust}`,
+              `publicStability: ${runtimeState.stateBar.publicStability}`,
+              `sourceSafety: ${runtimeState.stateBar.sourceSafety}`,
+            ]}
+            renderItem={(item) => <List.Item>{item}</List.Item>}
+          />
         </div>
         <div>
-          <h3>Runtime Flags</h3>
-          <ul className="training-shell__metric-list">
-            <li>panicTriggered: {String(runtimeState.runtimeFlags.panicTriggered)}</li>
-            <li>sourceExposed: {String(runtimeState.runtimeFlags.sourceExposed)}</li>
-            <li>editorLocked: {String(runtimeState.runtimeFlags.editorLocked)}</li>
-            <li>highRiskPath: {String(runtimeState.runtimeFlags.highRiskPath)}</li>
-          </ul>
+          <Typography.Title level={5}>Runtime Flags</Typography.Title>
+          <List
+            size="small"
+            className="training-shell__metric-list training-shell__metric-list--antd"
+            dataSource={[
+              `panicTriggered: ${String(runtimeState.runtimeFlags.panicTriggered)}`,
+              `sourceExposed: ${String(runtimeState.runtimeFlags.sourceExposed)}`,
+              `editorLocked: ${String(runtimeState.runtimeFlags.editorLocked)}`,
+              `highRiskPath: ${String(runtimeState.runtimeFlags.highRiskPath)}`,
+            ]}
+            renderItem={(item) => <List.Item>{item}</List.Item>}
+          />
         </div>
       </div>
-    </article>
+    </Card>
   );
 }
 

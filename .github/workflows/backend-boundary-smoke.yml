@@ -48,6 +48,7 @@ jobs:
         run: |
           python -m pytest \
             backend/test_domain_import_boundaries.py \
+            backend/test_story_training_import_boundaries.py \
             backend/test_api_domain_boundaries.py \
             backend/test_runner_import_boundaries.py \
             backend/test_story_router_facade_boundaries.py \
@@ -68,5 +69,6 @@ jobs:
             backend/test_api_entrypoint_boundaries.py \
             backend/test_api_entry_common_middleware.py \
             backend/test_story_route_smoke.py \
+            backend/test_training_query_service.py \
             backend/test_training_route_smoke.py \
             -q

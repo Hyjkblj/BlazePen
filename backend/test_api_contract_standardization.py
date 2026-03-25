@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 import unittest
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.dependencies import get_game_service, get_training_query_service, get_training_service
+from api.dependencies import get_story_service_bundle, get_training_query_service, get_training_service
 from api.middleware.error_handler import install_common_exception_handlers
 from api.routers import characters, game, training
 from story.exceptions import (
@@ -273,6 +274,40 @@ class _DeniedSessionsGameService(_FakeGameService):
         )
 
 
+def _build_story_bundle(service: _FakeGameService):
+    return SimpleNamespace(
+        story_asset_service=service.story_asset_service,
+        story_session_service=SimpleNamespace(
+            init_game=service.init_game,
+            get_session_snapshot=service.get_story_session_snapshot,
+            list_recent_sessions=service.list_story_sessions,
+        ),
+        story_turn_service=SimpleNamespace(
+            initialize_story=service.initialize_story,
+            submit_turn=service.submit_story_turn,
+        ),
+        story_ending_service=SimpleNamespace(
+            check_ending=service.check_ending,
+            get_ending_summary=lambda thread_id: {
+                "thread_id": thread_id,
+                "status": "completed",
+                "round_no": 3,
+                "has_ending": bool(service.check_ending(thread_id).get("has_ending", False)),
+                "ending": service.check_ending(thread_id).get("ending"),
+            },
+            trigger_ending=service.trigger_ending,
+        ),
+        story_history_service=SimpleNamespace(
+            get_story_history=lambda thread_id: {
+                "thread_id": thread_id,
+                "status": "in_progress",
+                "current_round_no": 0,
+                "history": [],
+            },
+        ),
+    )
+
+
 class _FakeTrainingService:
     def init_training(self, user_id, character_id=None, training_mode="guided", player_profile=None):
         if training_mode == "sandbox":
@@ -282,6 +317,7 @@ class _FakeTrainingService:
             )
         return {
             "session_id": "s-001",
+            "character_id": 42 if character_id is None else character_id,
             "status": "in_progress",
             "round_no": 0,
             "k_state": {"K1": 0.4},
@@ -309,7 +345,41 @@ class _FakeTrainingService:
         }
 
     def get_next_scenario(self, session_id):
-        raise TrainingSessionNotFoundError(session_id=session_id)
+        if session_id == "missing":
+            raise TrainingSessionNotFoundError(session_id=session_id)
+        if session_id == "corrupted":
+            raise TrainingSessionRecoveryStateError(
+                session_id=session_id,
+                reason="scenario_flow_unavailable",
+                details={"phase": "resume_bundle"},
+            )
+        return {
+            "session_id": session_id,
+            "status": "in_progress",
+            "round_no": 1,
+            "scenario": {"id": "S2"},
+            "scenario_candidates": [{"id": "S2"}],
+            "k_state": {"K1": 0.5},
+            "s_state": {"credibility": 0.7},
+            "runtime_state": {
+                "current_round_no": 1,
+                "current_scene_id": "S2",
+                "k_state": {"K1": 0.5},
+                "s_state": {"credibility": 0.7},
+                "runtime_flags": {
+                    "panic_triggered": False,
+                    "source_exposed": False,
+                    "editor_locked": False,
+                    "high_risk_path": False,
+                },
+                "state_bar": {
+                    "editor_trust": 0.55,
+                    "public_stability": 0.75,
+                    "source_safety": 0.82,
+                },
+            },
+            "ending": None,
+        }
 
     def submit_round(self, session_id, scenario_id, user_input, selected_option=None):
         if scenario_id == "S999":
@@ -317,6 +387,12 @@ class _FakeTrainingService:
                 submitted_scenario_id=scenario_id,
                 expected_scenario_id="S1",
                 round_no=1,
+            )
+        if scenario_id == "S-BROKEN":
+            raise TrainingSessionRecoveryStateError(
+                session_id=session_id,
+                reason="scenario_flow_unavailable",
+                details={"phase": "submit_validation"},
             )
         return {
             "session_id": session_id,
@@ -445,7 +521,9 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         self.app.include_router(game.router, prefix="/api")
         self.app.include_router(characters.router, prefix="/api")
         self.app.include_router(training.router, prefix="/api")
-        self.app.dependency_overrides[get_game_service] = lambda: _FakeGameService()
+        self.app.dependency_overrides[get_story_service_bundle] = (
+            lambda: _build_story_bundle(_FakeGameService())
+        )
         fake_training_service = _FakeTrainingService()
         self.app.dependency_overrides[get_training_service] = lambda: fake_training_service
         self.app.dependency_overrides[get_training_query_service] = lambda: fake_training_service
@@ -532,7 +610,9 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
             self.assertEqual(payload["error"]["code"], "VALIDATION_ERROR")
 
     def test_story_initialize_routes_share_not_found_contract(self):
-        self.app.dependency_overrides[get_game_service] = lambda: _NotFoundInitGameService()
+        self.app.dependency_overrides[get_story_service_bundle] = (
+            lambda: _build_story_bundle(_NotFoundInitGameService())
+        )
 
         for route_path in (
             "/api/v1/characters/initialize-story",
@@ -548,7 +628,9 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
             self.assertEqual(payload["error"]["code"], "STORY_SESSION_NOT_FOUND")
 
     def test_story_initialize_routes_share_expired_contract(self):
-        self.app.dependency_overrides[get_game_service] = lambda: _ExpiredInitGameService()
+        self.app.dependency_overrides[get_story_service_bundle] = (
+            lambda: _build_story_bundle(_ExpiredInitGameService())
+        )
 
         for route_path in (
             "/api/v1/characters/initialize-story",
@@ -564,7 +646,9 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
             self.assertEqual(payload["error"]["code"], "STORY_SESSION_EXPIRED")
 
     def test_story_restore_path_returns_reselect_contract(self):
-        self.app.dependency_overrides[get_game_service] = lambda: _RestoringGameService()
+        self.app.dependency_overrides[get_story_service_bundle] = (
+            lambda: _build_story_bundle(_RestoringGameService())
+        )
 
         response = self.client.post(
             "/api/v1/game/input",
@@ -589,7 +673,9 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["updated_at"], "2026-03-19T12:00:00")
 
     def test_story_sessions_route_returns_stable_forbidden_error_code(self):
-        self.app.dependency_overrides[get_game_service] = lambda: _DeniedSessionsGameService()
+        self.app.dependency_overrides[get_story_service_bundle] = (
+            lambda: _build_story_bundle(_DeniedSessionsGameService())
+        )
 
         response = self.client.get(
             "/api/v1/game/sessions",
@@ -604,7 +690,9 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         self.assertTrue(payload["error"]["traceId"])
 
     def test_story_check_ending_route_returns_stable_not_found_error_code(self):
-        self.app.dependency_overrides[get_game_service] = lambda: _NotFoundCheckEndingGameService()
+        self.app.dependency_overrides[get_story_service_bundle] = (
+            lambda: _build_story_bundle(_NotFoundCheckEndingGameService())
+        )
 
         response = self.client.get("/api/v1/game/check-ending/missing-thread")
 
@@ -614,7 +702,9 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         self.assertTrue(payload["error"]["traceId"])
 
     def test_story_check_ending_route_returns_stable_expired_error_code(self):
-        self.app.dependency_overrides[get_game_service] = lambda: _ExpiredCheckEndingGameService()
+        self.app.dependency_overrides[get_story_service_bundle] = (
+            lambda: _build_story_bundle(_ExpiredCheckEndingGameService())
+        )
 
         response = self.client.get("/api/v1/game/check-ending/expired-thread")
 
@@ -634,6 +724,21 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["progress_anchor"]["next_round_no"], 2)
         self.assertEqual(payload["data"]["progress_anchor"]["progress_percent"], 16.67)
         self.assertEqual(payload["data"]["resumable_scenario"]["id"], "S2")
+        self.assertNotIn("briefing", payload["data"]["resumable_scenario"])
+        self.assertNotIn("briefing", payload["data"]["scenario_candidates"][0])
+
+    def test_training_init_route_returns_canonical_character_id(self):
+        response = self.client.post(
+            "/api/v1/training/init",
+            json={"user_id": "u-001", "character_id": 7, "training_mode": "guided"},
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["data"]["session_id"], "s-001")
+        self.assertEqual(payload["data"]["character_id"], 7)
+        self.assertNotIn("briefing", payload["data"]["next_scenario"])
+        self.assertNotIn("briefing", payload["data"]["scenario_candidates"][0])
 
     def test_training_session_summary_route_returns_stable_recovery_conflict(self):
         response = self.client.get("/api/v1/training/sessions/corrupted")
@@ -785,6 +890,41 @@ class ApiContractStandardizationTestCase(unittest.TestCase):
         payload = response.json()
         self.assertEqual(response.status_code, 404)
         self.assertEqual(payload["error"]["code"], "TRAINING_SESSION_NOT_FOUND")
+        self.assertTrue(payload["error"]["traceId"])
+
+    def test_training_next_corrupted_state_returns_stable_error_code(self):
+        response = self.client.post(
+            "/api/v1/training/scenario/next",
+            json={"session_id": "corrupted"},
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(payload["error"]["code"], "TRAINING_SESSION_RECOVERY_STATE_CORRUPTED")
+        self.assertEqual(payload["error"]["details"]["route"], "training.next")
+        self.assertEqual(payload["error"]["details"]["session_id"], "corrupted")
+        self.assertEqual(payload["error"]["details"]["recovery_reason"], "scenario_flow_unavailable")
+        self.assertEqual(payload["error"]["details"]["recovery_details"]["phase"], "resume_bundle")
+        self.assertTrue(payload["error"]["traceId"])
+
+    def test_training_submit_recovery_conflict_returns_stable_error_code(self):
+        response = self.client.post(
+            "/api/v1/training/round/submit",
+            json={
+                "session_id": "s-001",
+                "scenario_id": "S-BROKEN",
+                "user_input": "continue",
+            },
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(payload["error"]["code"], "TRAINING_SESSION_RECOVERY_STATE_CORRUPTED")
+        self.assertEqual(payload["error"]["details"]["route"], "training.submit_round")
+        self.assertEqual(payload["error"]["details"]["session_id"], "s-001")
+        self.assertEqual(payload["error"]["details"]["scenario_id"], "S-BROKEN")
+        self.assertEqual(payload["error"]["details"]["recovery_reason"], "scenario_flow_unavailable")
+        self.assertEqual(payload["error"]["details"]["recovery_details"]["phase"], "submit_validation")
         self.assertTrue(payload["error"]["traceId"])
 
 

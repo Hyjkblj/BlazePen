@@ -124,6 +124,36 @@ describe('Training insight routes', () => {
       roundNo: 2,
       totalRounds: 6,
       runtimeState: createRuntimeState('scenario-active', 2),
+      decisionContext: {
+        mode: 'guided',
+        selectionSource: 'candidate_pool',
+        selectedScenarioId: 'scenario-active',
+        recommendedScenarioId: 'scenario-recommended',
+        candidatePool: [],
+        selectedRecommendation: null,
+        recommendedRecommendation: null,
+        selectedBranchTransition: {
+          sourceScenarioId: 'scenario-previous',
+          targetScenarioId: 'scenario-active',
+          transitionType: 'branch',
+          reason: 'source_warning',
+          triggeredFlags: ['source_warning'],
+          matchedRule: {},
+        },
+        recommendedBranchTransition: null,
+      },
+      consequenceEvents: [
+        {
+          eventType: 'source_warning',
+          label: 'Source Warning',
+          summary: 'Need verification before publish.',
+          severity: 'high',
+          roundNo: 2,
+          relatedFlag: null,
+          stateBar: null,
+          payload: {},
+        },
+      ],
     });
 
     renderInsightRoute(ROUTES.TRAINING_PROGRESS, {
@@ -146,7 +176,9 @@ describe('Training insight routes', () => {
 
     expect(await screen.findByText('Training Progress')).toBeTruthy();
     expect(screen.getByText('33.3%')).toBeTruthy();
-    expect(screen.getByText('scenario-active')).toBeTruthy();
+    expect(screen.getAllByText('scenario-active').length).toBeGreaterThan(0);
+    expect(screen.getByText('candidate_pool')).toBeTruthy();
+    expect(screen.getByText(/Source Warning/)).toBeTruthy();
   });
 
   it('prefers an explicit query sessionId over the active session on the report route', async () => {
@@ -296,6 +328,42 @@ describe('Training insight routes', () => {
     expect(screen.getByText('source_exposure_risk: 1')).toBeTruthy();
   });
 
+  it('shows an in-progress notice when the report session is not completed', async () => {
+    trainingApiMocks.getTrainingReport.mockResolvedValueOnce({
+      sessionId: 'training-session-in-progress',
+      status: 'in_progress',
+      rounds: 2,
+      kStateFinal: {
+        K1: 0.56,
+      },
+      sStateFinal: {
+        source_safety: 0.89,
+      },
+      improvement: 0.22,
+      playerProfile: null,
+      runtimeState: createRuntimeState('scenario-active', 2),
+      ending: null,
+      summary: null,
+      abilityRadar: [],
+      stateRadar: [],
+      growthCurve: [],
+      history: [],
+    });
+
+    renderInsightRoute(`${ROUTES.TRAINING_REPORT}?sessionId=training-session-in-progress`);
+
+    expect(await screen.findByText('Training Report')).toBeTruthy();
+    expect(await screen.findByText('报告仍在生成中')).toBeTruthy();
+    expect(
+      screen.getByText(
+        '当前训练会话状态为',
+        {
+          exact: false,
+        }
+      )
+    ).toBeTruthy();
+  });
+
   it('treats dirty query sessionId as absent and keeps insight navigation canonical', async () => {
     trainingApiMocks.getTrainingReport.mockResolvedValueOnce({
       sessionId: 'training-session-active',
@@ -337,6 +405,7 @@ describe('Training insight routes', () => {
     });
 
     expect(await screen.findByText('Training Report')).toBeTruthy();
+    expect(screen.getByText('摘要暂未就绪')).toBeTruthy();
     expect(screen.getByRole('link', { name: '训练进度' }).getAttribute('href')).toBe(
       ROUTES.TRAINING_PROGRESS
     );

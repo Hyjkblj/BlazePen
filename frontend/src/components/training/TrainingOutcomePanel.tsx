@@ -1,78 +1,116 @@
+import { Card, Descriptions, Empty, List, Typography } from 'antd';
 import type {
   TrainingConsequenceEvent,
   TrainingEvaluation,
+  TrainingRoundDecisionContext,
 } from '@/types/training';
 
 interface TrainingOutcomeView {
   roundNo: number;
   evaluation: TrainingEvaluation;
   consequenceEvents: TrainingConsequenceEvent[];
+  decisionContext: TrainingRoundDecisionContext | null;
 }
 
 interface TrainingOutcomePanelProps {
   latestOutcome: TrainingOutcomeView | null;
 }
 
-function TrainingOutcomePanel({
-  latestOutcome,
-}: TrainingOutcomePanelProps) {
+const buildDecisionSummaryRows = (
+  decisionContext: TrainingRoundDecisionContext | null
+): string[] => {
+  if (!decisionContext) {
+    return ['No decision context returned for this round.'];
+  }
+
+  const diverged =
+    decisionContext.recommendedScenarioId !== null &&
+    decisionContext.selectedScenarioId !== decisionContext.recommendedScenarioId;
+
+  return [
+    `selectionSource: ${decisionContext.selectionSource}`,
+    `selectedScenarioId: ${decisionContext.selectedScenarioId}`,
+    `recommendedScenarioId: ${decisionContext.recommendedScenarioId ?? 'none'}`,
+    `candidatePool: ${decisionContext.candidatePool.length}`,
+    `recommendationDiverged: ${String(diverged)}`,
+  ];
+};
+
+function TrainingOutcomePanel({ latestOutcome }: TrainingOutcomePanelProps) {
   return (
-    <article className="training-shell__panel">
-      <h2>本轮结果</h2>
+    <Card className="training-shell__panel training-shell__panel--antd" bordered={false}>
+      <Typography.Title level={4}>Latest Round Outcome</Typography.Title>
       {latestOutcome ? (
         <>
-          <dl className="training-shell__summary">
-            <div>
-              <dt>roundNo</dt>
-              <dd>{latestOutcome.roundNo}</dd>
-            </div>
-            <div>
-              <dt>confidence</dt>
-              <dd>{latestOutcome.evaluation.confidence}</dd>
-            </div>
-            <div>
-              <dt>evalMode</dt>
-              <dd>{latestOutcome.evaluation.evalMode}</dd>
-            </div>
-            <div>
-              <dt>riskFlags</dt>
-              <dd>{latestOutcome.evaluation.riskFlags.join(', ') || '无'}</dd>
-            </div>
-          </dl>
+          <Descriptions
+            className="training-shell__summary training-shell__summary--antd"
+            column={1}
+            size="small"
+          >
+            <Descriptions.Item label="roundNo">{latestOutcome.roundNo}</Descriptions.Item>
+            <Descriptions.Item label="confidence">
+              {latestOutcome.evaluation.confidence}
+            </Descriptions.Item>
+            <Descriptions.Item label="evalMode">
+              {latestOutcome.evaluation.evalMode}
+            </Descriptions.Item>
+            <Descriptions.Item label="riskFlags">
+              {latestOutcome.evaluation.riskFlags.join(', ') || 'none'}
+            </Descriptions.Item>
+            <Descriptions.Item label="selectionSource">
+              {latestOutcome.decisionContext?.selectionSource ?? 'none'}
+            </Descriptions.Item>
+          </Descriptions>
 
           <div className="training-shell__state-grid">
             <div>
-              <h3>Evidence</h3>
-              <ul className="training-shell__metric-list">
-                {latestOutcome.evaluation.evidence.length > 0 ? (
-                  latestOutcome.evaluation.evidence.map((item) => <li key={item}>{item}</li>)
-                ) : (
-                  <li>无</li>
-                )}
-              </ul>
+              <Typography.Title level={5}>Evidence</Typography.Title>
+              <List
+                size="small"
+                className="training-shell__metric-list training-shell__metric-list--antd"
+                dataSource={
+                  latestOutcome.evaluation.evidence.length > 0
+                    ? latestOutcome.evaluation.evidence
+                    : ['No evidence returned.']
+                }
+                renderItem={(item) => <List.Item>{item}</List.Item>}
+              />
             </div>
+
             <div>
-              <h3>Consequence Events</h3>
-              <ul className="training-shell__metric-list">
-                {latestOutcome.consequenceEvents.length > 0 ? (
-                  latestOutcome.consequenceEvents.map((item) => (
-                    <li key={`${item.eventType}-${item.summary}`}>
-                      {item.label || item.eventType}: {item.summary || '无摘要'}
-                    </li>
-                  ))
-                ) : (
-                  <li>本轮暂无额外后果事件。</li>
-                )}
-              </ul>
+              <Typography.Title level={5}>Consequence Events</Typography.Title>
+              <List
+                size="small"
+                className="training-shell__metric-list training-shell__metric-list--antd"
+                dataSource={
+                  latestOutcome.consequenceEvents.length > 0
+                    ? latestOutcome.consequenceEvents.map(
+                        (item) => `${item.label || item.eventType}: ${item.summary || 'no summary'}`
+                      )
+                    : ['No consequence events in this round.']
+                }
+                renderItem={(item) => <List.Item>{item}</List.Item>}
+              />
+            </div>
+
+            <div>
+              <Typography.Title level={5}>Decision Context</Typography.Title>
+              <List
+                size="small"
+                className="training-shell__metric-list training-shell__metric-list--antd"
+                dataSource={buildDecisionSummaryRows(latestOutcome.decisionContext)}
+                renderItem={(item) => <List.Item>{item}</List.Item>}
+              />
             </div>
           </div>
         </>
       ) : (
-        <p className="training-shell__empty">
-          这里展示最近一次回合提交结果。刷新后只恢复服务端当前会话状态，不回填本地临时评估结果。
-        </p>
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="The latest submitted outcome will appear here."
+        />
       )}
-    </article>
+    </Card>
   );
 }
 

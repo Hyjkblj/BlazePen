@@ -590,11 +590,8 @@ class TrainingScenarioOutput:
             return None
 
         # Canonical scenario summary field is `brief`.
-        # Keep input-level compatibility for legacy `briefing`, but never
-        # emit `briefing` in canonical output DTO payloads.
-        brief_value = str(payload.get("brief") or "")
-        briefing_value = str(payload.get("briefing") or "")
-        canonical_brief = brief_value or briefing_value
+        # Ignore legacy `briefing` input and keep output DTO canonical-only.
+        canonical_brief = str(payload.get("brief") or "")
 
         option_items: List[TrainingScenarioOptionOutput] = []
         for option in payload.get("options", []) or []:
@@ -608,7 +605,6 @@ class TrainingScenarioOutput:
             "era_date",
             "location",
             "brief",
-            "briefing",
             "mission",
             "decision_focus",
             "target_skills",
@@ -620,7 +616,7 @@ class TrainingScenarioOutput:
         extra_fields = {
             str(key): value
             for key, value in payload.items()
-            if key not in known_keys
+            if key not in known_keys and str(key) != "briefing"
         }
 
         return cls(
@@ -1559,6 +1555,7 @@ class TrainingInitOutput:
     round_no: int
     k_state: Dict[str, float]
     s_state: Dict[str, float]
+    character_id: Optional[int] = None
     player_profile: Optional[TrainingPlayerProfileOutput | Dict[str, Any]] = None
     runtime_state: Optional["TrainingRuntimeStateOutput | Dict[str, Any]"] = None
     # 兼容旧测试和旧调用方，允许直接注入原始字典；服务内部仍优先传 DTO。
@@ -1569,6 +1566,7 @@ class TrainingInitOutput:
         """导出稳定字典结构，并按需省略可选字段。"""
         payload = {
             "session_id": self.session_id,
+            "character_id": self.character_id,
             "status": self.status,
             "round_no": self.round_no,
             "k_state": _copy_dict(self.k_state),
@@ -1672,6 +1670,8 @@ class TrainingProgressOutput:
     character_id: Optional[int] = None
     player_profile: Optional[TrainingPlayerProfileOutput | Dict[str, Any]] = None
     runtime_state: Optional["TrainingRuntimeStateOutput | Dict[str, Any]"] = None
+    decision_context: Optional["TrainingRoundDecisionContextOutput | Dict[str, Any]"] = None
+    consequence_events: List["TrainingConsequenceEventOutput | Dict[str, Any]"] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """导出训练进度。"""
@@ -1688,6 +1688,9 @@ class TrainingProgressOutput:
             payload["player_profile"] = _serialize_player_profile(self.player_profile)
         if self.runtime_state is not None:
             payload["runtime_state"] = _serialize_runtime_state(self.runtime_state)
+        if self.decision_context is not None:
+            payload["decision_context"] = _serialize_decision_context(self.decision_context)
+        payload["consequence_events"] = _serialize_consequence_event_list(self.consequence_events)
         return payload
 
 

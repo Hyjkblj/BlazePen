@@ -43,6 +43,8 @@ const TRAINING_ERROR_CODES = new Set<ServiceErrorCode>([
   'TRAINING_SESSION_COMPLETED',
   'TRAINING_SESSION_RECOVERY_STATE_CORRUPTED',
   'TRAINING_ROUND_DUPLICATE',
+  'TRAINING_MODE_UNSUPPORTED',
+  'TRAINING_SCENARIO_MISMATCH',
 ]);
 
 const normalizeOptionalString = (value: unknown): string | null => {

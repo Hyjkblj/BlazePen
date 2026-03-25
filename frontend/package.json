@@ -19,6 +19,11 @@
     "test:smoke": "npm run test:smoke:story",
     "test:smoke:story": "vitest run src/pages/MainPathSmoke.integration.test.tsx",
     "test:smoke:training": "vitest run src/pages/TrainingMainPathSmoke.integration.test.tsx",
+    "test:smoke:training:insights": "vitest run src/pages/TrainingInsights.integration.test.tsx",
+    "test:training:route-integration": "vitest run src/pages/Training.integration.test.tsx",
+    "test:boundary:training:legacy-briefing": "vitest run src/test/trainingLegacyBriefingBoundary.test.ts",
+    "test:smoke:training:all": "npm run test:smoke:training && npm run test:smoke:training:insights && npm run test:boundary:training:legacy-briefing",
+    "test:smoke:all": "npm run test:smoke:story && npm run test:smoke:training:all",
     "test:unit": "vitest run",
     "test:electron": "node --test tests/electron/navigationPolicy.test.mjs",
     "preview": "vite preview --config vite.story.config.ts",
@@ -29,6 +34,7 @@
     "electron:dist": "npm run build && electron-builder --publish=never"
   },
   "dependencies": {
+    "antd": "^6.3.3",
     "axios": "^1.13.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

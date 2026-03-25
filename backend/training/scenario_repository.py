@@ -60,7 +60,6 @@ class ScenarioDefinition(BaseModel):
     branch_tags: List[str] = Field(default_factory=list)
     target_skills: List[str] = Field(default_factory=list)
     risk_tags: List[str] = Field(default_factory=list)
-    briefing: str = ""
     options: List[ScenarioOption] = Field(default_factory=list)
     completion_hint: str = ""
     next_rules: List[ScenarioNextRule] = Field(default_factory=list)
@@ -215,6 +214,10 @@ class ScenarioRepository:
 
         scenario_payload.setdefault("id", scenario_id)
         scenario_payload.setdefault("title", scenario_id)
+        # Canonical scenario summary field is `brief`.
+        # Keep frozen payload canonical-only and drop legacy `briefing`.
+        scenario_payload.setdefault("brief", "")
+        scenario_payload.pop("briefing", None)
         scenario_payload["phase_tags"] = list(scenario_payload.get("phase_tags") or [])
         scenario_payload["branch_tags"] = list(scenario_payload.get("branch_tags") or [])
         scenario_payload["target_skills"] = list(scenario_payload.get("target_skills") or [])

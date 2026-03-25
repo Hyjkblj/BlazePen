@@ -17,7 +17,8 @@ from api.error_codes import (
 )
 from api.response import build_success_payload, error_response, not_found_response
 from api.schemas import InitializeStoryRequest
-from api.services.game_service import GameService
+from api.story_contract_utils import normalize_story_turn_payload
+from story.story_service_bundle import StoryServiceBundle
 from story.exceptions import StorySessionExpiredError, StorySessionNotFoundError
 from utils.logger import get_logger
 
@@ -26,7 +27,7 @@ logger = get_logger(__name__)
 
 async def handle_initialize_story_request(
     request: InitializeStoryRequest,
-    game_service: GameService,
+    story_service_bundle: StoryServiceBundle,
     *,
     route_name: str,
 ):
@@ -64,16 +65,17 @@ async def handle_initialize_story_request(
                 },
             )
 
-        result = game_service.initialize_story(
+        result = story_service_bundle.story_turn_service.initialize_story(
             request.thread_id,
             character_id,
             request.scene_id or "school",
             request.character_image_url,
             request.opening_event_id,
         )
-        payload = game_service.normalize_story_turn_payload(
+        payload = normalize_story_turn_payload(
             result,
             thread_id=request.thread_id,
+            story_asset_service=story_service_bundle.story_asset_service,
         )
         return build_success_payload(data=payload)
     except StorySessionExpiredError as exc:

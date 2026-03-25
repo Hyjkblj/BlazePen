@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 import unittest
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.dependencies import get_game_service
+from api.dependencies import get_story_service_bundle
 from api.routers import game
 from story.exceptions import StorySessionAccessDeniedError, StorySessionNotFoundError
 from story.story_asset_service import StoryAssetService
@@ -158,11 +159,34 @@ class _DefaultSecureStoryQueryGameService(_FakeStoryQueryGameService):
         )
 
 
+def _build_story_bundle(service: _FakeStoryQueryGameService):
+    return SimpleNamespace(
+        story_asset_service=service.story_asset_service,
+        story_session_service=SimpleNamespace(
+            list_recent_sessions=service.list_story_sessions,
+        ),
+        story_turn_service=SimpleNamespace(
+            initialize_story=lambda *args, **kwargs: {},
+            submit_turn=lambda *args, **kwargs: {},
+        ),
+        story_ending_service=SimpleNamespace(
+            get_ending_summary=service.get_story_ending_summary,
+            check_ending=service.check_ending,
+            trigger_ending=lambda thread_id: {},
+        ),
+        story_history_service=SimpleNamespace(
+            get_story_history=service.get_story_history,
+        ),
+    )
+
+
 class StoryQueryRoutesTestCase(unittest.TestCase):
     def setUp(self):
         app = FastAPI()
         app.include_router(game.router, prefix="/api")
-        app.dependency_overrides[get_game_service] = lambda: _FakeStoryQueryGameService()
+        app.dependency_overrides[get_story_service_bundle] = (
+            lambda: _build_story_bundle(_FakeStoryQueryGameService())
+        )
         self.app = app
         self.client = TestClient(app)
 
@@ -179,7 +203,9 @@ class StoryQueryRoutesTestCase(unittest.TestCase):
         self.assertTrue(payload["data"]["sessions"][0]["can_resume"])
 
     def test_recent_sessions_route_should_return_stable_forbidden_contract(self):
-        self.app.dependency_overrides[get_game_service] = lambda: _DeniedStoryQueryGameService()
+        self.app.dependency_overrides[get_story_service_bundle] = (
+            lambda: _build_story_bundle(_DeniedStoryQueryGameService())
+        )
 
         response = self.client.get(
             "/api/v1/game/sessions",
@@ -194,7 +220,9 @@ class StoryQueryRoutesTestCase(unittest.TestCase):
         self.assertTrue(payload["error"]["traceId"])
 
     def test_recent_sessions_route_should_deny_missing_actor_under_default_policy(self):
-        self.app.dependency_overrides[get_game_service] = lambda: _DefaultSecureStoryQueryGameService()
+        self.app.dependency_overrides[get_story_service_bundle] = (
+            lambda: _build_story_bundle(_DefaultSecureStoryQueryGameService())
+        )
 
         response = self.client.get("/api/v1/game/sessions", params={"user_id": "user-001"})
 

@@ -23,6 +23,7 @@ describe('trainingSession normalizers', () => {
     const result = normalizeTrainingInitPayload(
       {
         session_id: 'session-1',
+        character_id: '12',
         status: 'active',
         round_no: '0',
         k_state: {
@@ -60,6 +61,7 @@ describe('trainingSession normalizers', () => {
 
     expect(result).toEqual({
       sessionId: 'session-1',
+      characterId: '12',
       trainingMode: 'self-paced',
       status: 'active',
       roundNo: 0,
@@ -123,27 +125,25 @@ describe('trainingSession normalizers', () => {
     });
   });
 
-  it('normalizes legacy briefing into the canonical brief field before pages consume the scenario', () => {
+  it('treats brief as the only canonical scenario summary field', () => {
     const result = normalizeTrainingInitPayload(
       {
-        session_id: 'session-legacy-briefing',
+        session_id: 'session-canonical-brief',
         status: 'active',
         round_no: 0,
         next_scenario: {
-          id: 'scenario-legacy',
-          title: 'Legacy Briefing Scenario',
-          brief: '',
-          briefing: 'Use the archived briefing copy.',
+          id: 'scenario-canonical',
+          title: 'Canonical Brief Scenario',
+          brief: 'Use the canonical brief copy.',
         },
       },
       'guided'
     );
 
     expect(result.nextScenario).toMatchObject({
-      id: 'scenario-legacy',
-      brief: 'Use the archived briefing copy.',
+      id: 'scenario-canonical',
+      brief: 'Use the canonical brief copy.',
     });
-    expect('briefing' in (result.nextScenario ?? {})).toBe(false);
   });
 
   it('fails fast when the backend returns a non-canonical response training mode', () => {
@@ -268,6 +268,8 @@ describe('trainingSession normalizers', () => {
         },
         playerProfile: null,
       },
+      decisionContext: null,
+      consequenceEvents: [],
     });
   });
 

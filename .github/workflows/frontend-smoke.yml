@@ -1,0 +1,50 @@
+name: Frontend Smoke
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "docs/runbooks/story_training_dual_backend_runbook.md"
+      - ".github/workflows/frontend-smoke.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+      - "docs/runbooks/story_training_dual_backend_runbook.md"
+      - ".github/workflows/frontend-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: frontend-smoke (node${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["22"]
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Story + Training Smoke
+        run: npm run test:smoke:all
+
+      - name: Run Training Route Integration
+        run: npm run test:training:route-integration

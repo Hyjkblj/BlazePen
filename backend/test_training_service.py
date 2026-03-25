@@ -132,7 +132,7 @@ class _ChangedScenarioRepository:
                 {
                     "id": item["id"],
                     "title": item.get("title") or item["id"],
-                    "briefing": "这是变更后的最新场景正文",
+                    "brief": "这是变更后的最新场景正文",
                     "mission": "这是变更后的任务目标",
                     "target_skills": ["K8"],
                     "risk_tags": ["changed"],
@@ -159,7 +159,7 @@ class _ChangedScenarioRepository:
         return {
             "id": str(scenario_id),
             "title": str(scenario_id),
-            "briefing": "这是变更后的最新场景正文",
+            "brief": "这是变更后的最新场景正文",
             "mission": "这是变更后的任务目标",
             "target_skills": ["K8"],
             "risk_tags": ["changed"],
@@ -984,6 +984,14 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertIn("mission", result["next_scenario"])
         self.assertIn("options", result["next_scenario"])
         self.assertTrue(len(result["next_scenario"]["target_skills"]) >= 1)
+        self.assertIn("character_id", result)
+        self.assertIsNone(result["character_id"])
+
+    def test_init_training_should_return_canonical_character_id(self):
+        """初始化训练应回显 canonical character_id，避免前端回写本地缓存元数据。"""
+        result = self.service.init_training(user_id="u0-character", character_id=42)
+
+        self.assertEqual(result["character_id"], 42)
 
     def test_init_training_should_canonicalize_training_mode_alias(self):
         """训练模式别名入库时应统一成 canonical 值。"""
@@ -1877,6 +1885,24 @@ class TrainingServiceTestCase(unittest.TestCase):
         self.assertEqual(cm.exception.reason, "scenario_sequence_empty")
         self.assertEqual(cm.exception.session_id, session_id)
 
+    def test_get_next_scenario_should_raise_typed_error_when_flow_policy_build_fails(self):
+        service = TrainingService(db_manager=_FakeDbManager(), evaluator=self.evaluator)
+        init_result = service.init_training(user_id="u17-corrupted-next-flow")
+        session_id = init_result["session_id"]
+
+        def _broken_build_next_scenario_bundle(**kwargs):
+            raise ValueError("forced round scenario not found in session sequence")
+
+        service.flow_policy.build_next_scenario_bundle = _broken_build_next_scenario_bundle
+
+        with self.assertRaises(TrainingSessionRecoveryStateError) as cm:
+            service.get_next_scenario(session_id)
+
+        self.assertEqual(cm.exception.reason, "scenario_flow_unavailable")
+        self.assertEqual(cm.exception.details["phase"], "resume_bundle")
+        self.assertIn("forced round scenario not found", cm.exception.details["flow_error"])
+        self.assertEqual(cm.exception.session_id, session_id)
+
     def test_get_history_should_return_canonical_history_read_model(self):
         service = TrainingService(
             db_manager=_FakeDbManager(),
@@ -1955,6 +1981,36 @@ class TrainingServiceTestCase(unittest.TestCase):
             )
 
         self.assertEqual(cm.exception.reason, "scenario_sequence_empty")
+        self.assertEqual(service.db_manager.sessions[session_id].current_round_no, 0)
+        self.assertEqual(service.training_store.get_training_rounds(session_id), [])
+
+    def test_submit_round_should_raise_typed_error_when_flow_policy_validation_fails(self):
+        service = TrainingService(
+            db_manager=_FakeDbManager(),
+            evaluator=self.evaluator,
+            scenario_sequence=[
+                {"id": "S1", "title": "Intro"},
+                {"id": "S2", "title": "Follow Up"},
+            ],
+        )
+        init_result = service.init_training(user_id="u17-submit-flow-invalid", training_mode="self-paced")
+        session_id = init_result["session_id"]
+
+        def _broken_build_next_scenario_bundle(**kwargs):
+            raise ValueError("no available fallback scenario")
+
+        service.flow_policy.build_next_scenario_bundle = _broken_build_next_scenario_bundle
+
+        with self.assertRaises(TrainingSessionRecoveryStateError) as cm:
+            service.submit_round(
+                session_id=session_id,
+                scenario_id="S1",
+                user_input="hello",
+            )
+
+        self.assertEqual(cm.exception.reason, "scenario_flow_unavailable")
+        self.assertEqual(cm.exception.details["phase"], "submit_validation")
+        self.assertIn("no available fallback scenario", cm.exception.details["flow_error"])
         self.assertEqual(service.db_manager.sessions[session_id].current_round_no, 0)
         self.assertEqual(service.training_store.get_training_rounds(session_id), [])
 

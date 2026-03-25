@@ -22,6 +22,7 @@ import type {
 const DEFAULT_TRAINING_USER_ID = 'frontend-training-user';
 
 export interface TrainingFormDraft {
+  portraitPresetId: string;
   characterId: string;
   playerName: string;
   playerGender: string;
@@ -39,14 +40,35 @@ export interface TrainingRoundOutcomeView {
 }
 
 const TRAINING_MODE_LABELS: Record<TrainingMode, string> = {
-  guided: '引导训练',
-  'self-paced': '自主训练',
-  adaptive: '自适应训练',
+  guided: '\u5f15\u5bfc\u8bad\u7ec3',
+  'self-paced': '\u81ea\u4e3b\u8bad\u7ec3',
+  adaptive: '\u81ea\u9002\u5e94\u8bad\u7ec3',
 };
+
+const TRAINING_PORTRAIT_PRESET_IDS = new Set([
+  'correspondent-female',
+  'correspondent-male',
+  'frontline-photographer',
+  'radio-operator',
+]);
 
 const trimToNull = (value: string): string | null => {
   const normalized = value.trim();
   return normalized === '' ? null : normalized;
+};
+
+const normalizeCharacterIdInput = (value: string): string | null => {
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (!/^\d+$/.test(normalized)) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? String(parsed) : null;
 };
 
 const buildPlayerProfile = (draft: TrainingFormDraft): TrainingPlayerProfileInput | null => {
@@ -75,7 +97,7 @@ const resolveSelectedOptionLabel = (
   return selectedOption?.label?.trim() || null;
 };
 
-export function useTrainingMvpFlow() {
+export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
   const bootstrap = useTrainingSessionBootstrap();
   const roundRunner = useTrainingRoundRunner({
     restoreSession: bootstrap.restoreSession,
@@ -83,6 +105,7 @@ export function useTrainingMvpFlow() {
 
   const [trainingMode, setTrainingMode] = useState<TrainingMode>('guided');
   const [formDraft, setFormDraft] = useState<TrainingFormDraft>({
+    portraitPresetId: '',
     characterId: '',
     playerName: '',
     playerGender: '',
@@ -96,6 +119,7 @@ export function useTrainingMvpFlow() {
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const autoRestoreSessionIdRef = useRef<string | null>(null);
   const sessionViewModel = useTrainingSessionViewModel({
+    explicitSessionId,
     sessionView,
     activeSession: bootstrap.activeSession,
     resumeTarget: bootstrap.resumeTarget,
@@ -146,10 +170,21 @@ export function useTrainingMvpFlow() {
 
     const preferredCharacterId = sessionViewModel.preferredCharacterId;
     if (preferredCharacterId) {
-      setFormDraft((current) => ({
-        ...current,
-        characterId: preferredCharacterId,
-      }));
+      const normalizedPreferredCharacterId = normalizeCharacterIdInput(preferredCharacterId);
+      if (normalizedPreferredCharacterId) {
+        setFormDraft((current) => ({
+          ...current,
+          characterId: normalizedPreferredCharacterId,
+        }));
+      } else {
+        const legacyPresetId = preferredCharacterId.trim();
+        if (TRAINING_PORTRAIT_PRESET_IDS.has(legacyPresetId)) {
+          setFormDraft((current) => ({
+            ...current,
+            portraitPresetId: legacyPresetId,
+          }));
+        }
+      }
     }
   }, [sessionView, sessionViewModel.preferredCharacterId, sessionViewModel.preferredTrainingMode]);
 
@@ -183,24 +218,25 @@ export function useTrainingMvpFlow() {
 
     const initResult = await bootstrap.startTrainingSession({
       userId: DEFAULT_TRAINING_USER_ID,
-      characterId: trimToNull(formDraft.characterId),
+      characterId: normalizeCharacterIdInput(formDraft.characterId),
       trainingMode,
       playerProfile: buildPlayerProfile(formDraft),
     });
 
     if (!initResult) {
-      return;
+      return false;
     }
 
     setLatestOutcome(null);
-    setSessionView(buildTrainingSessionViewFromInit(initResult, trimToNull(formDraft.characterId)));
+    setSessionView(buildTrainingSessionViewFromInit(initResult));
+    return true;
   }, [bootstrap, formDraft, roundRunner, trainingMode]);
 
   const retryRestore = useCallback(async () => {
     roundRunner.dismissError();
     bootstrap.dismissError();
     setNoticeMessage(null);
-    await restoreSessionView(sessionViewModel.currentSessionId ?? bootstrap.resumeTarget?.sessionId);
+    return restoreSessionView(sessionViewModel.currentSessionId ?? bootstrap.resumeTarget?.sessionId);
   }, [bootstrap, restoreSessionView, roundRunner, sessionViewModel.currentSessionId]);
 
   const submitCurrentRound = useCallback(async () => {
@@ -213,7 +249,7 @@ export function useTrainingMvpFlow() {
     const userInput = normalizedResponse || selectedOptionLabel || '';
 
     if (!userInput) {
-      setNoticeMessage('请选择一个训练选项或填写本轮操作说明。');
+      setNoticeMessage('\u8bf7\u9009\u62e9\u4e00\u4e2a\u8bad\u7ec3\u9009\u9879\u6216\u586b\u5199\u672c\u8f6e\u64cd\u4f5c\u8bf4\u660e\u3002');
       return;
     }
 
@@ -248,11 +284,13 @@ export function useTrainingMvpFlow() {
       setSessionView(buildTrainingSessionViewFromSummary(transition.summaryResult));
 
       if (transition.recoveryReason === 'duplicate') {
-        setNoticeMessage('检测到重复提交，页面已按服务端训练进度恢复。');
+        setNoticeMessage('\u68c0\u6d4b\u5230\u91cd\u590d\u63d0\u4ea4\uff0c\u9875\u9762\u5df2\u6309\u670d\u52a1\u7aef\u8bad\u7ec3\u8fdb\u5ea6\u6062\u590d\u3002');
       } else if (transition.recoveryReason === 'completed') {
-        setNoticeMessage('训练已完成，页面已按服务端完成态恢复。');
+        setNoticeMessage('\u8bad\u7ec3\u5df2\u5b8c\u6210\uff0c\u9875\u9762\u5df2\u6309\u670d\u52a1\u7aef\u5b8c\u6210\u6001\u6062\u590d\u3002');
+      } else if (transition.recoveryReason === 'scenario-mismatch') {
+        setNoticeMessage('\u63d0\u4ea4\u573a\u666f\u5df2\u53d8\u66f4\uff0c\u5df2\u6309\u670d\u52a1\u7aef\u6700\u65b0\u4f1a\u8bdd\u72b6\u6001\u6062\u590d\u3002');
       } else if (transition.recoveryReason === 'next-fetch-failed') {
-        setNoticeMessage('下一训练场景加载失败，已按服务端状态恢复当前会话。');
+        setNoticeMessage('\u4e0b\u4e00\u8bad\u7ec3\u573a\u666f\u52a0\u8f7d\u5931\u8d25\uff0c\u5df2\u6309\u670d\u52a1\u7aef\u72b6\u6001\u6062\u590d\u5f53\u524d\u4f1a\u8bdd\u3002');
       }
 
       return;
@@ -265,13 +303,13 @@ export function useTrainingMvpFlow() {
 
     if (transition.submitResult?.isCompleted) {
       setSessionView(buildCompletedTrainingSessionView(sessionView, transition.submitResult));
-      setNoticeMessage('本次训练已完成。');
+      setNoticeMessage('\u672c\u6b21\u8bad\u7ec3\u5df2\u5b8c\u6210\u3002');
       return;
     }
 
     if (transition.submitResult) {
       setSessionView(buildBlockedTrainingSessionView(sessionView, transition.submitResult));
-      setNoticeMessage('回合已提交，请重试恢复当前训练会话。');
+      setNoticeMessage('\u56de\u5408\u5df2\u63d0\u4ea4\uff0c\u8bf7\u91cd\u8bd5\u6062\u590d\u5f53\u524d\u8bad\u7ec3\u4f1a\u8bdd\u3002');
     }
   }, [bootstrap, responseInput, roundRunner, selectedOptionId, sessionView]);
 

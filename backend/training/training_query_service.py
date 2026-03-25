@@ -157,6 +157,9 @@ class TrainingQueryService:
         session = self._get_session_or_raise(session_id)
         session_sequence = self._read_persisted_session_sequence_or_raise(session_id, session)
         self._read_session_snapshots_or_raise(session_id, session)
+        latest_decision_context, latest_consequence_events = (
+            self._get_latest_round_runtime_artifacts(session_id)
+        )
 
         return TrainingProgressOutput(
             session_id=session_id,
@@ -170,6 +173,8 @@ class TrainingQueryService:
             runtime_state=self._build_training_runtime_state_output(
                 self._build_runtime_state(session=session)
             ),
+            decision_context=latest_decision_context,
+            consequence_events=latest_consequence_events,
         ).to_dict()
 
     def get_history(self, session_id: str) -> Dict[str, Any]:
@@ -357,19 +362,29 @@ class TrainingQueryService:
         session_sequence: List[Dict[str, str]],
         snapshot_bundle: SessionScenarioSnapshotBundle,
     ) -> Any:
-        return self.flow_policy.build_next_scenario_bundle(
-            training_mode=self._normalize_session_training_mode(session),
-            current_round_no=session.current_round_no,
-            session_sequence=session_sequence,
-            scenario_payload_sequence=snapshot_bundle.scenario_payload_sequence,
-            scenario_payload_catalog=snapshot_bundle.scenario_payload_catalog,
-            completed_scenario_ids=self._get_completed_scenario_ids(session_id),
-            k_state=self._normalize_k_state(session.k_state),
-            s_state=self._normalize_s_state(session.s_state),
-            recent_risk_rounds=self._get_recent_risk_rounds(session_id),
-            runtime_flags=self.runtime_artifact_policy.resolve_session_runtime_flags(session),
-            current_scenario_id=getattr(session, "current_scenario_id", None),
-        )
+        try:
+            return self.flow_policy.build_next_scenario_bundle(
+                training_mode=self._normalize_session_training_mode(session),
+                current_round_no=session.current_round_no,
+                session_sequence=session_sequence,
+                scenario_payload_sequence=snapshot_bundle.scenario_payload_sequence,
+                scenario_payload_catalog=snapshot_bundle.scenario_payload_catalog,
+                completed_scenario_ids=self._get_completed_scenario_ids(session_id),
+                k_state=self._normalize_k_state(session.k_state),
+                s_state=self._normalize_s_state(session.s_state),
+                recent_risk_rounds=self._get_recent_risk_rounds(session_id),
+                runtime_flags=self.runtime_artifact_policy.resolve_session_runtime_flags(session),
+                current_scenario_id=getattr(session, "current_scenario_id", None),
+            )
+        except ValueError as exc:
+            raise TrainingSessionRecoveryStateError(
+                session_id=session_id,
+                reason="scenario_flow_unavailable",
+                details={
+                    "phase": "summary_resume",
+                    "flow_error": str(exc),
+                },
+            ) from exc
 
     def _get_completed_scenario_ids(self, session_id: str) -> List[str]:
         return [row.scenario_id for row in self.training_store.get_training_rounds(session_id)]
@@ -380,6 +395,19 @@ class TrainingQueryService:
             payload = RoundEvaluationPayload.from_raw(getattr(evaluation_row, "raw_payload", None)).to_dict()
             risk_rounds.append([str(flag) for flag in payload.get("risk_flags", []) if str(flag or "").strip()])
         return risk_rounds
+
+    def _get_latest_round_runtime_artifacts(self, session_id: str) -> tuple[Any, List[Any]]:
+        """Extract the latest round decision/consequence artifacts for progress reads."""
+        rounds = self.training_store.get_training_rounds(session_id)
+        if not rounds:
+            return None, []
+
+        latest_round = max(rounds, key=lambda row: int(getattr(row, "round_no", 0) or 0))
+        latest_user_action = getattr(latest_round, "user_action", None)
+        return (
+            self.runtime_artifact_policy.extract_round_decision_context(latest_user_action),
+            self.runtime_artifact_policy.extract_round_consequence_events(latest_user_action),
+        )
 
     def _normalize_session_training_mode(self, session: Any) -> str:
         return self.mode_catalog.normalize(

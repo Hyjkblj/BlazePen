@@ -67,10 +67,12 @@ class SessionScenarioSnapshotPolicy:
         scenario_payload_sequence = self.scenario_policy.resolve_session_payload_sequence(session)
         scenario_payload_catalog = self.scenario_policy.resolve_session_payload_catalog(session)
         if scenario_payload_sequence and scenario_payload_catalog:
+            normalized_sequence = self._normalize_snapshot_payloads(scenario_payload_sequence)
+            normalized_catalog = self._normalize_snapshot_payloads(scenario_payload_catalog)
             return SessionScenarioSnapshotBundle(
                 session=session,
-                scenario_payload_sequence=scenario_payload_sequence,
-                scenario_payload_catalog=scenario_payload_catalog,
+                scenario_payload_sequence=normalized_sequence,
+                scenario_payload_catalog=normalized_catalog,
             )
 
         updated_session_meta = dict(getattr(session, "session_meta", None) or {})
@@ -90,8 +92,8 @@ class SessionScenarioSnapshotPolicy:
         )
         return SessionScenarioSnapshotBundle(
             session=updated_session,
-            scenario_payload_sequence=scenario_payload_sequence,
-            scenario_payload_catalog=scenario_payload_catalog,
+            scenario_payload_sequence=self._normalize_snapshot_payloads(scenario_payload_sequence),
+            scenario_payload_catalog=self._normalize_snapshot_payloads(scenario_payload_catalog),
         )
 
     def require_session_snapshots(
@@ -124,10 +126,12 @@ class SessionScenarioSnapshotPolicy:
         session: Any,
     ) -> SessionScenarioSnapshotBundle:
         """只读取已持久化的会话快照，不做任何修复或回写。"""
+        scenario_payload_sequence = self.scenario_policy.resolve_session_payload_sequence(session)
+        scenario_payload_catalog = self.scenario_policy.resolve_session_payload_catalog(session)
         return SessionScenarioSnapshotBundle(
             session=session,
-            scenario_payload_sequence=self.scenario_policy.resolve_session_payload_sequence(session),
-            scenario_payload_catalog=self.scenario_policy.resolve_session_payload_catalog(session),
+            scenario_payload_sequence=self._normalize_snapshot_payloads(scenario_payload_sequence),
+            scenario_payload_catalog=self._normalize_snapshot_payloads(scenario_payload_catalog),
         )
 
     def resolve_scenario_payload_by_id(
@@ -141,18 +145,22 @@ class SessionScenarioSnapshotPolicy:
         has_snapshot_catalog = bool(scenario_payload_catalog)
         scenario_payload = self._find_scenario_payload_by_id(scenario_payload_sequence, scenario_id)
         if scenario_payload is not None:
-            return scenario_payload
+            return self._normalize_single_snapshot_payload(scenario_payload)
 
         scenario_payload = self._find_scenario_payload_by_id(scenario_payload_catalog or [], scenario_id)
         if scenario_payload is not None:
-            return scenario_payload
+            return self._normalize_single_snapshot_payload(scenario_payload)
 
         # 只有旧链路完全没有目录快照时，才保留仓储兜底兼容。
         if has_snapshot_catalog:
             return None
 
         repository_payload = self.scenario_repository.get_scenario(scenario_id)
-        return dict(repository_payload) if repository_payload is not None else None
+        return (
+            self._normalize_single_snapshot_payload(dict(repository_payload))
+            if repository_payload is not None
+            else None
+        )
 
     def _persist_session_meta_backfill(
         self,
@@ -194,3 +202,26 @@ class SessionScenarioSnapshotPolicy:
             if str(payload.get("id") or "").strip() == normalized_scenario_id:
                 return dict(payload)
         return None
+
+    def _normalize_snapshot_payloads(
+        self,
+        scenario_payloads: List[Dict[str, Any]] | None,
+    ) -> List[Dict[str, Any]]:
+        normalized_payloads: List[Dict[str, Any]] = []
+        for payload in scenario_payloads or []:
+            if not isinstance(payload, dict):
+                continue
+            normalized_payloads.append(self._normalize_single_snapshot_payload(payload))
+        return normalized_payloads
+
+    def _normalize_single_snapshot_payload(
+        self,
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        normalized_payload = dict(payload or {})
+        canonical_brief = str(normalized_payload.get("brief") or "").strip()
+        if not canonical_brief:
+            legacy_brief = str(normalized_payload.get("briefing") or "").strip()
+            normalized_payload["brief"] = legacy_brief
+        normalized_payload.pop("briefing", None)
+        return normalized_payload

@@ -303,6 +303,7 @@ export interface TrainingRoundSubmitParams {
 
 export interface TrainingInitResult {
   sessionId: TrainingSessionId;
+  characterId: string | null;
   trainingMode: TrainingMode;
   status: string;
   roundNo: number;
@@ -339,6 +340,8 @@ export interface TrainingProgressResult {
   roundNo: number;
   totalRounds: number;
   runtimeState: TrainingRuntimeState;
+  decisionContext: TrainingRoundDecisionContext | null;
+  consequenceEvents: TrainingConsequenceEvent[];
 }
 
 export interface TrainingProgressAnchor {

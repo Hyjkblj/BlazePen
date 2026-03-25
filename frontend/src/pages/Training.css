@@ -447,3 +447,496 @@
     grid-template-columns: 1fr;
   }
 }
+
+.training-page--entry {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  padding: 32px 20px 52px;
+  background-color: #080608;
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(6, 4, 5, 0.86) 0%,
+      rgba(9, 6, 7, 0.74) 22%,
+      rgba(10, 6, 6, 0.68) 100%
+    ),
+    url('../assets/images/home-fenghuo-main-bg.png');
+  background-position: center top;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.training-page--entry::before,
+.training-page--entry::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.training-page--entry::before {
+  z-index: 0;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.24) 40%, rgba(0, 0, 0, 0.82) 100%),
+    radial-gradient(circle at 50% 12%, rgba(150, 24, 24, 0.3), transparent 52%);
+}
+
+.training-page--entry::after {
+  z-index: 1;
+  opacity: 0.26;
+  background-image:
+    radial-gradient(circle at 18% 78%, rgba(255, 112, 82, 0.9) 0 1.6px, transparent 1.7px),
+    radial-gradient(circle at 48% 62%, rgba(255, 85, 72, 0.8) 0 1.3px, transparent 1.4px),
+    radial-gradient(circle at 74% 68%, rgba(255, 126, 88, 0.86) 0 1.5px, transparent 1.6px),
+    radial-gradient(circle at 84% 38%, rgba(255, 77, 66, 0.75) 0 1.2px, transparent 1.3px);
+  background-size: 300px 200px, 340px 240px, 380px 240px, 420px 280px;
+  animation: training-entry-embers 9s linear infinite;
+}
+
+.training-shell--entry {
+  position: relative;
+  z-index: 2;
+  width: min(1220px, 100%);
+  border: 1px solid rgba(255, 119, 97, 0.24);
+  background:
+    linear-gradient(180deg, rgba(12, 8, 8, 0.78) 0%, rgba(8, 6, 7, 0.72) 100%),
+    radial-gradient(circle at 50% 0%, rgba(113, 14, 14, 0.32), transparent 58%);
+  box-shadow:
+    inset 0 0 90px rgba(193, 38, 35, 0.12),
+    0 24px 56px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.training-shell--entry .training-shell__eyebrow,
+.training-shell--entry .training-shell__title,
+.training-shell--entry .training-shell__description {
+  display: none;
+}
+
+.training-entry-hero {
+  position: relative;
+  margin-bottom: 24px;
+  padding: clamp(16px, 3.8vw, 36px) 16px 8px;
+  text-align: center;
+}
+
+.training-entry-hero__tagline {
+  margin: 0 0 10px;
+  color: rgba(255, 194, 181, 0.82);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.training-entry-hero__title {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  margin: 0;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  font-size: clamp(56px, 9vw, 124px);
+  font-weight: 900;
+  font-family: 'STKaiti', 'KaiTi', 'STSong', 'Microsoft YaHei', serif;
+}
+
+.training-entry-hero__title span {
+  grid-area: 1 / 1;
+}
+
+.training-entry-hero__title-base {
+  background: linear-gradient(180deg, #ffd9ca 0%, #ff8f70 44%, #d02f2a 78%, #861415 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow:
+    0 3px 18px rgba(186, 36, 33, 0.44),
+    0 0 46px rgba(120, 16, 17, 0.5);
+}
+
+.training-entry-hero__title-glow {
+  color: rgba(255, 78, 62, 0.5);
+  filter: blur(7px);
+  transform: translateY(2px);
+}
+
+.training-entry-hero__title-shine {
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 12%,
+    rgba(255, 210, 198, 0.72) 42%,
+    rgba(255, 108, 84, 0.82) 52%,
+    rgba(255, 226, 218, 0.72) 62%,
+    rgba(255, 255, 255, 0) 86%
+  );
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  mix-blend-mode: screen;
+  animation: training-title-shine 3.4s linear infinite;
+}
+
+.training-entry-hero__title::after {
+  content: '';
+  position: absolute;
+  left: -8%;
+  right: -8%;
+  top: 59%;
+  height: clamp(3px, 0.48vw, 7px);
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 75, 68, 0) 0%,
+    rgba(255, 75, 68, 0.44) 24%,
+    rgba(255, 175, 148, 0.95) 50%,
+    rgba(255, 75, 68, 0.44) 76%,
+    rgba(255, 75, 68, 0) 100%
+  );
+  filter: blur(1px);
+  animation: training-title-fireline 2.6s ease-in-out infinite;
+}
+
+.training-entry-hero__description {
+  width: min(760px, 92%);
+  margin: 14px auto 0;
+  color: rgba(255, 230, 222, 0.84);
+  line-height: 1.68;
+}
+
+.training-shell--entry .training-shell__actions {
+  margin-top: 10px;
+}
+
+.training-shell--entry .training-shell__link,
+.training-shell--entry .training-shell__clear-button,
+.training-shell--entry .training-shell__subnav-link {
+  border-color: rgba(255, 132, 108, 0.32);
+  color: #ffe9e1;
+  background: linear-gradient(180deg, rgba(116, 21, 21, 0.88), rgba(78, 12, 13, 0.84));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+}
+
+.training-shell--entry .training-shell__clear-button,
+.training-shell--entry .training-shell__subnav-link {
+  background: linear-gradient(180deg, rgba(66, 15, 15, 0.86), rgba(44, 9, 10, 0.84));
+}
+
+.training-shell--entry .training-shell__link:hover,
+.training-shell--entry .training-shell__subnav-link:hover,
+.training-shell--entry .training-shell__clear-button:hover {
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.2),
+    0 0 22px rgba(202, 45, 41, 0.35);
+}
+
+.training-shell--entry .training-shell__workspace {
+  margin-top: 20px;
+}
+
+.training-shell--entry .training-shell__panel {
+  border-color: rgba(255, 130, 112, 0.2);
+  background:
+    linear-gradient(180deg, rgba(27, 13, 14, 0.86), rgba(18, 10, 12, 0.82)),
+    radial-gradient(circle at top right, rgba(146, 27, 27, 0.22), transparent 56%);
+}
+
+.training-shell--entry .training-shell__panel h2 {
+  color: #ffe8df;
+}
+
+.training-shell--entry .training-shell__empty,
+.training-shell--entry .training-shell__mode-card small,
+.training-shell--entry .training-shell__field span,
+.training-shell--entry .training-shell__summary dt {
+  color: rgba(255, 218, 208, 0.82);
+}
+
+.training-shell--entry .training-shell__mode-card,
+.training-shell--entry .training-shell__option,
+.training-shell--entry .training-shell__scenario-grid > div,
+.training-shell--entry .training-shell__state-grid > div {
+  border-color: rgba(255, 130, 110, 0.18);
+  background: rgba(47, 18, 20, 0.62);
+  color: #ffede7;
+}
+
+.training-shell--entry .training-shell__mode-card span,
+.training-shell--entry .training-shell__option strong,
+.training-shell--entry .training-shell__summary dd,
+.training-shell--entry .training-shell__scenario-grid h3,
+.training-shell--entry .training-shell__state-grid h3 {
+  color: #ffefe9;
+}
+
+.training-shell--entry .training-shell__scenario-grid p,
+.training-shell--entry .training-shell__state-grid p,
+.training-shell--entry .training-shell__option span {
+  color: rgba(255, 218, 208, 0.82);
+}
+
+.training-shell--entry .training-shell__mode-card--active,
+.training-shell--entry .training-shell__option--active {
+  border-color: rgba(255, 156, 131, 0.5);
+  background: linear-gradient(180deg, rgba(99, 29, 30, 0.7), rgba(56, 16, 17, 0.68));
+  box-shadow: 0 10px 24px rgba(160, 31, 29, 0.18);
+}
+
+.training-shell--entry .training-shell__field input,
+.training-shell--entry .training-shell__field textarea {
+  border-color: rgba(255, 137, 112, 0.26);
+  background: rgba(22, 10, 12, 0.9);
+  color: #fff0ea;
+}
+
+.training-shell--entry .training-shell__field input::placeholder,
+.training-shell--entry .training-shell__field textarea::placeholder {
+  color: rgba(255, 198, 180, 0.58);
+}
+
+.training-shell--entry .training-shell__primary-button {
+  background: linear-gradient(135deg, #cf2f2b, #8f1718);
+  color: #fff2ee;
+  box-shadow: 0 12px 28px rgba(121, 16, 17, 0.34);
+}
+
+.training-shell--entry .training-shell__secondary-button {
+  border-color: rgba(255, 136, 112, 0.34);
+  color: #ffe8e1;
+  background: linear-gradient(180deg, rgba(92, 21, 22, 0.9), rgba(55, 12, 14, 0.86));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+}
+
+.training-shell--entry .training-shell__banner {
+  background: rgba(91, 17, 18, 0.9);
+  color: #ffe5db;
+}
+
+@media (max-width: 768px) {
+  .training-page--entry {
+    padding: 18px 12px 28px;
+  }
+
+  .training-entry-hero {
+    margin-bottom: 12px;
+    padding-top: 6px;
+  }
+
+  .training-entry-hero__tagline {
+    letter-spacing: 0.12em;
+  }
+
+  .training-entry-hero__description {
+    margin-top: 10px;
+    font-size: 14px;
+  }
+}
+
+@keyframes training-title-shine {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -40% 0;
+  }
+}
+
+@keyframes training-title-fireline {
+  0%,
+  100% {
+    opacity: 0.52;
+    transform: scaleX(0.9);
+  }
+  50% {
+    opacity: 0.94;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes training-entry-embers {
+  0% {
+    transform: translateY(0);
+    opacity: 0.14;
+  }
+  50% {
+    transform: translateY(-8px);
+    opacity: 0.28;
+  }
+  100% {
+    transform: translateY(-16px);
+    opacity: 0.12;
+  }
+}
+
+.training-shell__panel--antd.ant-card {
+  border-radius: 20px;
+  box-shadow: none;
+}
+
+.training-shell__panel--antd.ant-card .ant-card-body {
+  padding: 22px;
+}
+
+.training-shell .ant-alert {
+  margin-top: 18px;
+  border-radius: 16px;
+  border: 0;
+}
+
+.training-shell .ant-alert .ant-alert-action {
+  margin-inline-start: 16px;
+}
+
+.training-shell .ant-alert .ant-btn {
+  border-radius: 999px;
+}
+
+.training-shell .ant-alert-info {
+  background: rgba(255, 242, 216, 0.96);
+}
+
+.training-shell .ant-alert-error {
+  background: rgba(107, 16, 27, 0.9);
+}
+
+.training-shell .ant-alert-success {
+  background: rgba(13, 76, 112, 0.92);
+}
+
+.training-shell .training-shell__summary--antd.ant-descriptions .ant-descriptions-item-label {
+  color: #7a5a3c;
+  font-weight: 700;
+}
+
+.training-shell .training-shell__summary--antd.ant-descriptions .ant-descriptions-item-content {
+  color: #2f2014;
+}
+
+.training-shell .training-shell__form-grid--antd .ant-form-item {
+  margin-bottom: 12px;
+}
+
+.training-shell .training-shell__form-grid--antd .ant-form-item-label > label {
+  color: #6a5138;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.training-shell .training-shell__form-grid--antd .ant-input,
+.training-shell .training-shell__form-grid--antd .ant-input-affix-wrapper {
+  border-radius: 14px;
+}
+
+.training-shell .training-shell__mode-list--antd .ant-radio-wrapper {
+  width: 100%;
+  margin-inline-end: 0;
+  display: grid;
+  gap: 6px;
+  align-items: start;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(95, 65, 23, 0.12);
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.training-shell .training-shell__mode-list--antd .ant-radio-wrapper-checked {
+  border-color: rgba(34, 97, 137, 0.44);
+  background: linear-gradient(180deg, rgba(228, 245, 255, 0.88), rgba(246, 250, 255, 0.92));
+}
+
+.training-shell__mode-radio-title {
+  display: block;
+  color: #2f2014;
+  font-weight: 700;
+}
+
+.training-shell__mode-radio-desc {
+  display: block;
+  color: #6a5138;
+  line-height: 1.6;
+}
+
+.training-shell .training-shell__option-list--antd .ant-radio-wrapper {
+  width: 100%;
+  margin-inline-end: 0;
+  display: grid;
+  gap: 6px;
+  align-items: start;
+  padding: 14px 16px;
+  border: 1px solid rgba(95, 65, 23, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.training-shell .training-shell__option-list--antd .ant-radio-wrapper strong {
+  display: block;
+  color: #2f2014;
+}
+
+.training-shell .training-shell__option-list--antd .ant-radio-wrapper span {
+  color: #6a5138;
+}
+
+.training-shell .training-shell__option-list--antd .ant-radio-wrapper-checked {
+  border-color: rgba(156, 87, 26, 0.38);
+  background: linear-gradient(180deg, rgba(255, 242, 221, 0.96), rgba(255, 248, 238, 0.92));
+}
+
+.training-shell .training-shell__metric-list--antd.ant-list .ant-list-item {
+  color: #5f472f;
+  border-block-end: 0;
+  padding: 3px 0;
+}
+
+.training-shell .training-shell__primary-button.ant-btn,
+.training-shell .training-shell__secondary-button.ant-btn,
+.training-shell .training-shell__link.ant-btn,
+.training-shell .training-shell__clear-button.ant-btn,
+.training-shell .training-shell__subnav-link.ant-btn {
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.training-shell--entry .ant-alert-info {
+  background: rgba(91, 17, 18, 0.9);
+}
+
+.training-shell--entry .ant-alert-info .ant-alert-message,
+.training-shell--entry .ant-alert-info .ant-alert-description {
+  color: #ffe5db;
+}
+
+.training-shell--entry .training-shell__summary--antd.ant-descriptions .ant-descriptions-item-label,
+.training-shell--entry .training-shell__summary--antd.ant-descriptions .ant-descriptions-item-content,
+.training-shell--entry .training-shell__form-grid--antd .ant-form-item-label > label,
+.training-shell--entry .training-shell__metric-list--antd.ant-list .ant-list-item,
+.training-shell--entry .training-shell__option-list--antd .ant-radio-wrapper strong,
+.training-shell--entry .training-shell__option-list--antd .ant-radio-wrapper span {
+  color: #ffe8df;
+}
+
+.training-shell--entry .training-shell__mode-list--antd .ant-radio-wrapper,
+.training-shell--entry .training-shell__option-list--antd .ant-radio-wrapper {
+  border-color: rgba(255, 130, 110, 0.18);
+  background: rgba(47, 18, 20, 0.62);
+}
+
+.training-shell--entry .training-shell__mode-list--antd .ant-radio-wrapper-checked,
+.training-shell--entry .training-shell__option-list--antd .ant-radio-wrapper-checked {
+  border-color: rgba(255, 156, 131, 0.5);
+  background: linear-gradient(180deg, rgba(99, 29, 30, 0.7), rgba(56, 16, 17, 0.68));
+}
+
+.training-shell--entry .training-shell__form-grid--antd .ant-input,
+.training-shell--entry .training-shell__form-grid--antd .ant-input-affix-wrapper,
+.training-shell--entry .training-shell__field .ant-input {
+  border-color: rgba(255, 137, 112, 0.26);
+  background: rgba(22, 10, 12, 0.9);
+  color: #fff0ea;
+}
+
+.training-shell--entry .training-shell__form-grid--antd .ant-input::placeholder,
+.training-shell--entry .training-shell__field .ant-input::placeholder {
+  color: rgba(255, 198, 180, 0.58);
+}

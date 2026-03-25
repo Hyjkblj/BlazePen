@@ -9,6 +9,7 @@ from training.training_outputs import (
     TrainingDiagnosticsSummaryOutput,
     TrainingInitOutput,
     TrainingNextScenarioOutput,
+    TrainingProgressOutput,
     TrainingReportHistoryItemOutput,
     TrainingReportOutput,
     TrainingRoundDecisionContextOutput,
@@ -34,6 +35,20 @@ class TrainingOutputsTestCase(unittest.TestCase):
 
         self.assertNotIn("scenario_candidates", payload)
         self.assertEqual(payload["next_scenario"]["id"], "S1")
+
+    def test_init_output_should_export_canonical_character_id(self):
+        """初始化输出应统一导出 canonical character_id 字段。"""
+        payload = TrainingInitOutput(
+            session_id="s-1",
+            character_id=42,
+            status="in_progress",
+            round_no=0,
+            k_state={"K1": 0.4},
+            s_state={"credibility": 0.6},
+            next_scenario={"id": "S1"},
+        ).to_dict()
+
+        self.assertEqual(payload["character_id"], 42)
 
     def test_next_output_should_keep_empty_candidates_for_completed_state(self):
         """已完成状态下，空候选列表也应显式保留。"""
@@ -211,6 +226,43 @@ class TrainingOutputsTestCase(unittest.TestCase):
         self.assertEqual(payload["decision_context"]["candidate_pool"][0]["rank_score"], 0.91)
         self.assertTrue(payload["decision_context"]["candidate_pool"][1]["is_selected"])
 
+    def test_progress_output_should_serialize_latest_decision_context_and_consequence_events(self):
+        """进度读模型应回显最近一次回合的决策与后果工件。"""
+        payload = TrainingProgressOutput(
+            session_id="s-1",
+            status="in_progress",
+            round_no=1,
+            total_rounds=6,
+            k_state={"K1": 0.5},
+            s_state={"credibility": 0.7},
+            decision_context={
+                "mode": "guided",
+                "selection_source": "ordered_sequence",
+                "selected_scenario_id": "S1",
+                "candidate_pool": [],
+                "selected_branch_transition": {
+                    "source_scenario_id": "S1",
+                    "target_scenario_id": "S2B",
+                    "transition_type": "branch",
+                },
+            },
+            consequence_events=[
+                {
+                    "event_type": "source_exposed",
+                    "label": "Source Exposed",
+                    "summary": "Source identity leaked.",
+                    "severity": "high",
+                }
+            ],
+        ).to_dict()
+
+        self.assertEqual(payload["decision_context"]["selected_scenario_id"], "S1")
+        self.assertEqual(
+            payload["decision_context"]["selected_branch_transition"]["target_scenario_id"],
+            "S2B",
+        )
+        self.assertEqual(payload["consequence_events"][0]["event_type"], "source_exposed")
+
     def test_report_history_item_should_serialize_decision_context(self):
         """报告历史项应保留提交时的决策上下文，供训练复盘使用。"""
         decision_context = TrainingRoundDecisionContextOutput.from_payload(
@@ -337,7 +389,7 @@ class TrainingOutputsTestCase(unittest.TestCase):
         self.assertEqual(payload["summary"]["recommended_vs_selected_mismatch_rounds"], [1])
         self.assertEqual(payload["summary"]["selection_source_counts"][0]["code"], "candidate_pool")
 
-    def test_scenario_output_should_backfill_brief_from_legacy_briefing(self):
+    def test_scenario_output_should_ignore_legacy_briefing_field(self):
         scenario = TrainingScenarioOutput.from_payload(
             {
                 "id": "S-legacy",
@@ -347,10 +399,10 @@ class TrainingOutputsTestCase(unittest.TestCase):
         )
 
         payload = scenario.to_dict()
-        self.assertEqual(payload["brief"], "legacy-only-briefing")
+        self.assertEqual(payload["brief"], "")
         self.assertNotIn("briefing", payload)
 
-    def test_scenario_output_should_prefer_brief_as_canonical_source(self):
+    def test_scenario_output_should_use_brief_as_the_only_canonical_source(self):
         scenario = TrainingScenarioOutput.from_payload(
             {
                 "id": "S-canonical",

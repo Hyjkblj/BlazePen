@@ -66,6 +66,14 @@ def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
     return max(lower, min(upper, value))
 
 
+def _normalize_character_id(value: Any) -> int | None:
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError):
+        return None
+    return normalized if normalized > 0 else None
+
+
 class TrainingService:
     """训练服务：只做业务编排，不关心底层数据库异常细节。"""
 
@@ -339,6 +347,7 @@ class TrainingService:
         )
         return TrainingInitOutput(
             session_id=session_id,
+            character_id=_normalize_character_id(getattr(row, "character_id", None)),
             status=row.status,
             round_no=row.current_round_no,
             # 对外统一返回补齐后的状态结构，避免前端处理历史脏数据时缺键。
@@ -430,33 +439,44 @@ class TrainingService:
         round_no = session.current_round_no + 1
 
         # 先基于当前上下文生成推荐结果，确保“前端看到的候选集”和“提交时回放的决策上下文”来自同一份数据。
-        next_scenario_bundle = self.flow_policy.build_next_scenario_bundle(
-            training_mode=training_mode,
-            current_round_no=session.current_round_no,
-            session_sequence=session_sequence,
-            scenario_payload_sequence=scenario_payload_sequence,
-            scenario_payload_catalog=scenario_payload_catalog,
-            completed_scenario_ids=completed_scenario_ids,
-            k_state=k_before,
-            s_state=s_before,
-            recent_risk_rounds=recent_risk_rounds,
-            runtime_flags=self._resolve_session_runtime_flags(session),
-            current_scenario_id=getattr(session, "current_scenario_id", None),
-        )
-        self.flow_policy.validate_submission(
-            training_mode=training_mode,
-            current_round_no=session.current_round_no,
-            submitted_scenario_id=scenario_id,
-            session_sequence=session_sequence,
-            scenario_payload_sequence=scenario_payload_sequence,
-            scenario_payload_catalog=scenario_payload_catalog,
-            completed_scenario_ids=completed_scenario_ids,
-            k_state=k_before,
-            s_state=s_before,
-            recent_risk_rounds=recent_risk_rounds,
-            runtime_flags=self._resolve_session_runtime_flags(session),
-            current_scenario_id=getattr(session, "current_scenario_id", None),
-        )
+        runtime_flags = self._resolve_session_runtime_flags(session)
+        try:
+            next_scenario_bundle = self.flow_policy.build_next_scenario_bundle(
+                training_mode=training_mode,
+                current_round_no=session.current_round_no,
+                session_sequence=session_sequence,
+                scenario_payload_sequence=scenario_payload_sequence,
+                scenario_payload_catalog=scenario_payload_catalog,
+                completed_scenario_ids=completed_scenario_ids,
+                k_state=k_before,
+                s_state=s_before,
+                recent_risk_rounds=recent_risk_rounds,
+                runtime_flags=runtime_flags,
+                current_scenario_id=getattr(session, "current_scenario_id", None),
+            )
+            self.flow_policy.validate_submission(
+                training_mode=training_mode,
+                current_round_no=session.current_round_no,
+                submitted_scenario_id=scenario_id,
+                session_sequence=session_sequence,
+                scenario_payload_sequence=scenario_payload_sequence,
+                scenario_payload_catalog=scenario_payload_catalog,
+                completed_scenario_ids=completed_scenario_ids,
+                k_state=k_before,
+                s_state=s_before,
+                recent_risk_rounds=recent_risk_rounds,
+                runtime_flags=runtime_flags,
+                current_scenario_id=getattr(session, "current_scenario_id", None),
+            )
+        except ValueError as exc:
+            raise TrainingSessionRecoveryStateError(
+                session_id=session_id,
+                reason="scenario_flow_unavailable",
+                details={
+                    "phase": "submit_validation",
+                    "flow_error": str(exc),
+                },
+            ) from exc
         decision_context = self._build_round_decision_context(
             training_mode=training_mode,
             submitted_scenario_id=scenario_id,
@@ -754,19 +774,29 @@ class TrainingService:
             session=session,
         )
 
-        next_scenario_bundle = self.flow_policy.build_next_scenario_bundle(
-            training_mode=self._normalize_session_training_mode(session),
-            current_round_no=session.current_round_no,
-            session_sequence=session_sequence,
-            scenario_payload_sequence=scenario_payload_sequence,
-            scenario_payload_catalog=scenario_payload_catalog,
-            completed_scenario_ids=self._get_completed_scenario_ids(session_id),
-            k_state=self._normalize_k_state(session.k_state),
-            s_state=self._normalize_s_state(session.s_state),
-            recent_risk_rounds=self._get_recent_risk_rounds(session_id),
-            runtime_flags=self._resolve_session_runtime_flags(session),
-            current_scenario_id=getattr(session, "current_scenario_id", None),
-        )
+        try:
+            next_scenario_bundle = self.flow_policy.build_next_scenario_bundle(
+                training_mode=self._normalize_session_training_mode(session),
+                current_round_no=session.current_round_no,
+                session_sequence=session_sequence,
+                scenario_payload_sequence=scenario_payload_sequence,
+                scenario_payload_catalog=scenario_payload_catalog,
+                completed_scenario_ids=self._get_completed_scenario_ids(session_id),
+                k_state=self._normalize_k_state(session.k_state),
+                s_state=self._normalize_s_state(session.s_state),
+                recent_risk_rounds=self._get_recent_risk_rounds(session_id),
+                runtime_flags=self._resolve_session_runtime_flags(session),
+                current_scenario_id=getattr(session, "current_scenario_id", None),
+            )
+        except ValueError as exc:
+            raise TrainingSessionRecoveryStateError(
+                session_id=session_id,
+                reason="scenario_flow_unavailable",
+                details={
+                    "phase": "resume_bundle",
+                    "flow_error": str(exc),
+                },
+            ) from exc
         return session, session_sequence, next_scenario_bundle
 
     def _build_training_session_progress_anchor(

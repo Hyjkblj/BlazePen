@@ -11,9 +11,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import models.story  # noqa: F401
-from api.dependencies import get_game_service
+from api.dependencies import get_story_service_bundle
 from api.routers import game
-from api.services.game_service import GameService
 from api.services.game_session import GameSessionManager
 from models.character import Base, Character
 from story.story_asset_service import StoryAssetService
@@ -237,7 +236,7 @@ class StoryRestoreSmokeTestCase(unittest.TestCase):
             session_manager=restarted_manager,
             get_story_history=lambda thread_id: {"thread_id": thread_id, "history": []},
         )
-        game_service = GameService(
+        story_service_bundle = SimpleNamespace(
             story_asset_service=asset_service,
             story_session_service=story_session_service,
             story_turn_service=story_turn_service,
@@ -247,7 +246,7 @@ class StoryRestoreSmokeTestCase(unittest.TestCase):
 
         app = FastAPI()
         app.include_router(game.router, prefix="/api")
-        app.dependency_overrides[get_game_service] = lambda: game_service
+        app.dependency_overrides[get_story_service_bundle] = lambda: story_service_bundle
         client = TestClient(app)
 
         response = client.get(f"/api/v1/game/sessions/{thread_id}")

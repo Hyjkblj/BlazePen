@@ -46,6 +46,8 @@ export const createAppViteConfig = ({
   defineConfig(({ mode }) => {
     const env = loadEnv(mode, __dirname, '');
     const apiTarget = resolveApiTarget(env[apiTargetEnvVar], defaultApiTarget);
+    const devHost = (env.VITE_DEV_HOST || 'localhost').trim() || 'localhost';
+    const hmrHost = (env.VITE_HMR_HOST || devHost).trim() || devHost;
 
     return {
       root: path.resolve(__dirname, rootDir),
@@ -57,13 +59,20 @@ export const createAppViteConfig = ({
         },
       },
       server: {
+        host: devHost,
         port,
+        strictPort: true,
+        hmr: {
+          host: hmrHost,
+          port,
+        },
         proxy: createBackendProxy(apiTarget),
         fs: {
           allow: [searchForWorkspaceRoot(__dirname), path.resolve(__dirname, 'src')],
         },
       },
       preview: {
+        host: devHost,
         port,
       },
       base: './',

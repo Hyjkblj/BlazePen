@@ -7,6 +7,8 @@ export const ROUTES = {
   FIRST_MEETING: '/firstmeeting',
   GAME: '/game',
   TRAINING: '/training',
+  TRAINING_MAINHOME: '/training/mainhome',
+  TRAINING_LANDING: '/training/landing',
   TRAINING_PROGRESS: '/training/progress',
   TRAINING_REPORT: '/training/report',
   TRAINING_DIAGNOSTICS: '/training/diagnostics',

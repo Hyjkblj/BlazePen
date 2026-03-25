@@ -337,7 +337,6 @@ def _build_format_context(
         "era_date": str(payload.get("era_date") or "").strip(),
         "location": str(payload.get("location") or "").strip(),
         "brief": str(payload.get("brief") or "").strip(),
-        "briefing": str(payload.get("briefing") or "").strip(),
         "mission": _strip_terminal_punctuation(str(payload.get("mission") or "").strip()),
         "decision_focus": str(payload.get("decision_focus") or "").strip(),
         "completion_hint": str(payload.get("completion_hint") or "").strip(),

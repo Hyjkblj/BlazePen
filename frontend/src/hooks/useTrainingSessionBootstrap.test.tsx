@@ -193,6 +193,7 @@ describe('useTrainingSessionBootstrap', () => {
   it('emits telemetry when starting a training session succeeds', async () => {
     trainingApiMocks.initTraining.mockResolvedValueOnce({
       sessionId: 'training-session-start',
+      characterId: '12',
       trainingMode: 'guided',
       status: 'initialized',
       roundNo: 0,
@@ -229,6 +230,39 @@ describe('useTrainingSessionBootstrap', () => {
         }),
       })
     );
+  });
+
+  it('prefers backend characterId when start response and local input conflict', async () => {
+    trainingApiMocks.initTraining.mockResolvedValueOnce({
+      sessionId: 'training-session-start',
+      characterId: '66',
+      trainingMode: 'guided',
+      status: 'initialized',
+      roundNo: 0,
+      runtimeState: createRuntimeState(),
+      nextScenario: null,
+      scenarioCandidates: [],
+    });
+
+    const { result } = renderHook(() => useTrainingSessionBootstrap(), { wrapper });
+
+    await act(async () => {
+      await result.current.startTrainingSession({
+        userId: 'frontend-training-user',
+        trainingMode: 'guided',
+        characterId: '12',
+        playerProfile: null,
+      });
+    });
+
+    expect(result.current.activeSession).toMatchObject({
+      sessionId: 'training-session-start',
+      characterId: '66',
+    });
+    expect(readTrainingResumeTarget()).toMatchObject({
+      sessionId: 'training-session-start',
+      characterId: '66',
+    });
   });
 
   it('emits telemetry for a successful explicit training session restore', async () => {

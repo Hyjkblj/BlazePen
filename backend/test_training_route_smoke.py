@@ -117,6 +117,8 @@ class TrainingRouteSqliteSmokeTestCase(unittest.TestCase):
         init_payload = init_response.json()["data"]
         session_id = init_payload["session_id"]
         scenario_id = init_payload["next_scenario"]["id"]
+        self.assertNotIn("briefing", init_payload["next_scenario"])
+        self.assertNotIn("briefing", init_payload["scenario_candidates"][0])
 
         next_response = self.client.post(
             "/api/v1/training/scenario/next",
@@ -127,6 +129,8 @@ class TrainingRouteSqliteSmokeTestCase(unittest.TestCase):
         self.assertEqual(next_payload["session_id"], session_id)
         self.assertEqual(next_payload["round_no"], 1)
         self.assertEqual(next_payload["scenario"]["id"], scenario_id)
+        self.assertNotIn("briefing", next_payload["scenario"])
+        self.assertNotIn("briefing", next_payload["scenario_candidates"][0])
 
         submit_response = self.client.post(
             "/api/v1/training/round/submit",
@@ -149,12 +153,16 @@ class TrainingRouteSqliteSmokeTestCase(unittest.TestCase):
         self.assertEqual(progress_payload["session_id"], session_id)
         self.assertEqual(progress_payload["round_no"], 1)
         self.assertEqual(progress_payload["total_rounds"], 2)
+        self.assertEqual(progress_payload["decision_context"]["selected_scenario_id"], scenario_id)
+        self.assertIsInstance(progress_payload["consequence_events"], list)
 
         summary_response = self.client.get(f"/api/v1/training/sessions/{session_id}")
         self.assertEqual(summary_response.status_code, 200)
         summary_payload = summary_response.json()["data"]
         self.assertEqual(summary_payload["progress_anchor"]["progress_percent"], 50.0)
         self.assertEqual(summary_payload["progress_anchor"]["next_round_no"], 2)
+        self.assertNotIn("briefing", summary_payload["resumable_scenario"])
+        self.assertNotIn("briefing", summary_payload["scenario_candidates"][0])
 
         history_response = self.client.get(f"/api/v1/training/sessions/{session_id}/history")
         self.assertEqual(history_response.status_code, 200)

@@ -133,10 +133,13 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
           metadata: initTelemetryMetadata,
         });
         const initResult = await initTraining(params);
+        const resolvedCharacterId = normalizeCharacterId(
+          initResult.characterId ?? normalizedCharacterId
+        );
         setActiveSession({
           sessionId: initResult.sessionId,
           trainingMode: initResult.trainingMode,
-          characterId: normalizedCharacterId,
+          characterId: resolvedCharacterId,
           status: initResult.status,
           roundNo: initResult.roundNo,
           totalRounds: null,
@@ -145,7 +148,7 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
         persistTrainingResumeTarget({
           sessionId: initResult.sessionId,
           trainingMode: initResult.trainingMode,
-          characterId: normalizedCharacterId,
+          characterId: resolvedCharacterId,
           status: initResult.status,
         });
         refreshResumeTarget();
@@ -156,6 +159,7 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
           status: 'succeeded',
           metadata: {
             ...initTelemetryMetadata,
+            hasCharacterId: resolvedCharacterId !== null,
             sessionId: initResult.sessionId,
             status: initResult.status,
             roundNo: initResult.roundNo,

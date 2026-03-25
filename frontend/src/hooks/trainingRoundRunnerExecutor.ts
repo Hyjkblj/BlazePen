@@ -5,9 +5,14 @@ const SESSION_LEVEL_RECOVERY_CODES = new Set<string>([
   'TRAINING_SESSION_COMPLETED',
   'TRAINING_SESSION_NOT_FOUND',
   'TRAINING_SESSION_RECOVERY_STATE_CORRUPTED',
+  'TRAINING_SCENARIO_MISMATCH',
 ]);
 
-export type TrainingRoundRecoveryReason = 'duplicate' | 'completed' | null;
+export type TrainingRoundRecoveryReason =
+  | 'duplicate'
+  | 'completed'
+  | 'scenario-mismatch'
+  | null;
 
 export const isTrainingRoundSessionLevelRecoveryError = (error: unknown): boolean =>
   isServiceError(error) && SESSION_LEVEL_RECOVERY_CODES.has(error.code);
@@ -27,41 +32,49 @@ export const resolveTrainingRoundRecoveryReason = (
     return 'completed';
   }
 
+  if (error.code === 'TRAINING_SCENARIO_MISMATCH') {
+    return 'scenario-mismatch';
+  }
+
   return null;
 };
 
 export const getTrainingRoundSubmitErrorMessage = (error: unknown): string => {
   if (isServiceError(error) && error.code === 'REQUEST_TIMEOUT') {
-    return '提交训练回合超时，请重试。';
+    return '\u63d0\u4ea4\u8bad\u7ec3\u56de\u5408\u8d85\u65f6\uff0c\u8bf7\u91cd\u8bd5\u3002';
   }
 
   if (isServiceError(error) && error.code === 'SERVICE_UNAVAILABLE') {
-    return '训练提交服务暂时不可用，请稍后重试。';
+    return '\u8bad\u7ec3\u63d0\u4ea4\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002';
   }
 
   if (isServiceError(error) && error.code === 'TRAINING_SESSION_COMPLETED') {
-    return '训练已完成，请查看训练报告或重新开始训练。';
+    return '\u8bad\u7ec3\u5df2\u5b8c\u6210\uff0c\u8bf7\u67e5\u770b\u8bad\u7ec3\u62a5\u544a\u6216\u91cd\u65b0\u5f00\u59cb\u8bad\u7ec3\u3002';
   }
 
   if (isServiceError(error) && error.code === 'TRAINING_SESSION_NOT_FOUND') {
-    return '训练会话不存在，请重新开始训练。';
+    return '\u8bad\u7ec3\u4f1a\u8bdd\u4e0d\u5b58\u5728\uff0c\u8bf7\u91cd\u65b0\u5f00\u59cb\u8bad\u7ec3\u3002';
   }
 
   if (isServiceError(error) && error.code === 'TRAINING_SESSION_RECOVERY_STATE_CORRUPTED') {
-    return '训练会话恢复状态损坏，请重新开始训练。';
+    return '\u8bad\u7ec3\u4f1a\u8bdd\u6062\u590d\u72b6\u6001\u635f\u574f\uff0c\u8bf7\u91cd\u65b0\u5f00\u59cb\u8bad\u7ec3\u3002';
   }
 
-  return getServiceErrorMessage(error, '提交训练回合失败。');
+  if (isServiceError(error) && error.code === 'TRAINING_SCENARIO_MISMATCH') {
+    return '\u5f53\u524d\u63d0\u4ea4\u573a\u666f\u5df2\u8fc7\u671f\uff0c\u9875\u9762\u5c06\u6309\u670d\u52a1\u7aef\u4f1a\u8bdd\u8fdb\u5ea6\u91cd\u65b0\u6062\u590d\u3002';
+  }
+
+  return getServiceErrorMessage(error, '\u63d0\u4ea4\u8bad\u7ec3\u56de\u5408\u5931\u8d25\u3002');
 };
 
 export const getTrainingRoundNextScenarioErrorMessage = (error: unknown): string => {
   if (isServiceError(error) && error.code === 'REQUEST_TIMEOUT') {
-    return '回合已提交，但下一训练场景加载超时，请重试恢复当前训练。';
+    return '\u56de\u5408\u5df2\u63d0\u4ea4\uff0c\u4f46\u4e0b\u4e00\u8bad\u7ec3\u573a\u666f\u52a0\u8f7d\u8d85\u65f6\uff0c\u8bf7\u91cd\u8bd5\u6062\u590d\u5f53\u524d\u8bad\u7ec3\u3002';
   }
 
   if (isServiceError(error) && error.code === 'SERVICE_UNAVAILABLE') {
-    return '回合已提交，但下一训练场景暂时不可用，请重试恢复当前训练。';
+    return '\u56de\u5408\u5df2\u63d0\u4ea4\uff0c\u4f46\u4e0b\u4e00\u8bad\u7ec3\u573a\u666f\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u91cd\u8bd5\u6062\u590d\u5f53\u524d\u8bad\u7ec3\u3002';
   }
 
-  return getServiceErrorMessage(error, '回合已提交，但无法继续加载下一训练场景。');
+  return getServiceErrorMessage(error, '\u56de\u5408\u5df2\u63d0\u4ea4\uff0c\u4f46\u65e0\u6cd5\u7ee7\u7eed\u52a0\u8f7d\u4e0b\u4e00\u8bad\u7ec3\u573a\u666f\u3002');
 };

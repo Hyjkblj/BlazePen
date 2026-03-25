@@ -178,7 +178,7 @@ def _pick_option_and_text(scenario: Dict[str, Any]) -> tuple[str | None, str]:
     print(f"地点: {scenario.get('location', '')}")
     print(f"任务: {scenario.get('mission', '')}")
     print(f"核心焦点: {scenario.get('decision_focus', '')}")
-    print(f"背景: {scenario.get('brief', scenario.get('briefing', ''))}")
+    print(f"背景: {scenario.get('brief', '')}")
 
     options = list(scenario.get("options") or [])
     if options:

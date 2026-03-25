@@ -376,6 +376,7 @@ class TrainingRuntimeStateResponse(BaseModel):
 class TrainingInitResponse(BaseModel):
     """初始化训练响应"""
     session_id: str
+    character_id: Optional[int] = None
     status: str
     round_no: int
     k_state: Dict[str, float]
@@ -439,6 +440,8 @@ class TrainingProgressResponse(BaseModel):
     s_state: Dict[str, float]
     player_profile: Optional[TrainingPlayerProfileResponse] = None
     runtime_state: Optional[TrainingRuntimeStateResponse] = None
+    decision_context: Optional[TrainingRoundDecisionContextResponse] = None
+    consequence_events: List[TrainingConsequenceEventResponse] = Field(default_factory=list)
 
 
 class TrainingSessionProgressAnchorResponse(BaseModel):

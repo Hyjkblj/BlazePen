@@ -1,0 +1,36 @@
+## 前端 Findings
+- [Blocker] frontend/src/components/training/TrainingIdentitySetup.tsx:29
+  问题：新训练入口把形象 preset 值如 `correspondent-female` 直接写进 `formDraft.characterId`，随后按训练初始化契约当成后端 `character_id` 提交。
+  原因：`characterId` 在训练域里是服务端角色事实源，但这里被页面层复用了成前端形象选择键；而 frontend/src/services/trainingApi.ts:145 只接受正整数，职责和语义已经混线。
+  影响：真实运行时会在发请求前直接抛 `VALIDATION_ERROR`，用户无法从新 landing 主路径启动训练；后续 `activeSession`/`resumeTarget` 里的 `characterId` 语义也会继续被污染。
+  建议：把 UI 形象选择独立成 `portraitPresetId`/`avatarPresetId`；只有拿到真实后端角色 ID 时才写 `characterId`，或者先显式走角色创建/映射服务再启动训练。
+
+- [Blocker] frontend/src/pages/Training.tsx:42
+  问题：当前实现禁用了 `resumeTarget` 的自动恢复，但又把无内存会话的 `/training` 直接重定向到 `TRAINING_MAINHOME`，导致手动恢复入口不可达。
+  原因：旧的恢复 UI 仍只存在于未再挂载的 frontend/src/components/training/TrainingBootstrapPanels.tsx:122，而新的 frontend/src/components/training/TrainingLanding.tsx:37 只渲染身份设置和错误重试，根本不消费 `hasResumeTarget/resumeTarget`。
+  影响：页面刷新或重新进入应用后，只要只剩 localStorage 里的 `sessionId` 提示而没有 activeSession，用户就无法恢复已有训练会话，恢复路径被路由改造切断。
+  建议：在 mainhome/landing 恢复显式的“恢复上次训练”入口，或保留专用恢复页；同时补一条从 cached `resumeTarget` 手动恢复到 `session summary` 的集成测试。
+
+## 后端 Findings
+- [Major] backend/training/training_outputs.py:592
+  问题：本次改动彻底忽略 legacy `briefing` 字段，但没有看到任何针对已持久化训练快照的迁移或 repair。
+  原因：在存在历史训练会话的前提下，恢复/query 读的是持久化 `scenario_payload_sequence/catalog`；backend/training/session_snapshot_policy.py:103 只读现有 snapshot，不在热路径修复，而 backend/training/scenario_repository.py:219 已开始主动删除 `briefing`。
+  影响：旧会话如果只保存了 `briefing`，训练 summary/report/history 恢复时场景正文会变空，直接削弱历史会话恢复质量和复盘可读性。
+  建议：在删除 fallback 前先提供显式数据迁移/repair，把历史 snapshot 中的 `briefing` 回填为 `brief`；或者在 service/query 层保留一版过渡兼容，直到旧数据全部修复完毕。
+
+## Open Questions
+- 新训练入口是否本来就打算放弃“基于 cached `resumeTarget` 的手动恢复”？如果不是，这一块现在已经是功能回归。
+- 共享环境里是否已经存在在这次 `briefing -> brief` 切换之前创建的训练会话快照？如果有，后端需要同步给出迁移或 repair 方案。
+
+## 测试缺口
+- 前端：frontend/src/pages/Training.integration.test.tsx 和 frontend/src/pages/TrainingMainPathSmoke.integration.test.tsx 都直接 mock 了 `trainingApi`，并且还把 `characterId: 'correspondent-female'` 当成 happy path 断言；它们没有经过真实的 frontend/src/services/trainingApi.ts 校验链路，所以当前 blocker 可以在测试全绿时漏过去。
+- 前端：frontend/src/pages/Training.integration.test.tsx 只验证了“不要自动从 resumeTarget 恢复”，没有覆盖“存在 cached `resumeTarget` 时，用户如何从 mainhome/landing 手动恢复当前会话”的真实路径。
+- 后端：backend/test_training_outputs.py 和 backend/test_training_route_smoke.py 只验证了新 DTO 不再输出 `briefing`，但 backend/test_training_query_service.py / backend/test_training_session_snapshot_policy.py 没有覆盖“历史 snapshot 只含 `briefing` 时的 summary/report/history 恢复”。
+- 后端：缺少一条显式的迁移/repair 回归测试，证明旧 `scenario_payload_sequence/catalog` 经过 backfill 后，`brief` 能稳定出现在训练恢复和报告读模型里。
+
+## Review Summary
+- 本次改动在训练主线 UI 重构和 story router 解耦上推进明显，但前端把“启动训练”和“恢复训练”两条主路径都打断了，当前不应合并。
+- 最严重的问题不是样式，而是把 UI 形象选择混进了训练域 `characterId`，以及在禁用 auto-restore 后没有保留 manual restore。
+- 后端 story router cutover 方向基本正确，相关目标测试也通过了，但 `briefing -> brief` 的兼容删除对历史持久化会话仍有明显恢复风险。
+- 我复跑了相关 frontend vitest 和 backend pytest 用例，它们都能通过，但并没有覆盖上述回归点。
+- 建议先修掉两个前端 blocker，再补上后端历史快照迁移或过渡兼容。

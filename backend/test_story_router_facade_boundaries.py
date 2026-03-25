@@ -4,84 +4,108 @@ import ast
 from pathlib import Path
 import unittest
 
-from api.services.game_service import GameService
-
-
 BACKEND_DIR = Path(__file__).resolve().parent
 
 STORY_ROUTER_FILES = (
     BACKEND_DIR / "api" / "routers" / "game.py",
+    BACKEND_DIR / "api" / "routers" / "characters.py",
     BACKEND_DIR / "api" / "story_route_handlers.py",
 )
 
-FORBIDDEN_GAME_SERVICE_COLLABORATOR_ATTRS = {
-    "story_asset_service",
-    "story_session_service",
-    "story_turn_service",
-    "story_ending_service",
-    "story_history_service",
-}
+def _parse_module(source_path: Path) -> ast.Module:
+    return ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
 
 
-def _iter_game_service_attribute_accesses(source_path: Path):
-    source_text = source_path.read_text(encoding="utf-8")
-    module = ast.parse(source_text, filename=str(source_path))
-
+def _iter_import_aliases(source_path: Path):
+    module = _parse_module(source_path)
     for node in ast.walk(module):
-        if not isinstance(node, ast.Attribute):
-            continue
-        if isinstance(node.value, ast.Name) and node.value.id == "game_service":
-            yield node.attr
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                yield node.module, alias.name
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                yield None, alias.name
 
 
-def _iter_game_service_method_calls(source_path: Path):
-    source_text = source_path.read_text(encoding="utf-8")
-    module = ast.parse(source_text, filename=str(source_path))
+def _contains_name(source_path: Path, name: str) -> bool:
+    module = _parse_module(source_path)
+    for node in ast.walk(module):
+        if isinstance(node, ast.Name) and node.id == name:
+            return True
+    return False
 
+
+def _contains_depends_on(source_path: Path, dependency_name: str) -> bool:
+    module = _parse_module(source_path)
     for node in ast.walk(module):
         if not isinstance(node, ast.Call):
             continue
-        if not isinstance(node.func, ast.Attribute):
+        if not isinstance(node.func, ast.Name) or node.func.id != "Depends":
             continue
-        if isinstance(node.func.value, ast.Name) and node.func.value.id == "game_service":
-            yield node.func.attr
+        if not node.args:
+            continue
+        first_arg = node.args[0]
+        if isinstance(first_arg, ast.Name) and first_arg.id == dependency_name:
+            return True
+    return False
 
 
-class StoryRouterFacadeBoundaryTestCase(unittest.TestCase):
-    def test_story_router_files_should_not_access_game_service_internal_collaborators(self):
+class StoryRouterDependencyBoundaryTestCase(unittest.TestCase):
+    def test_story_routers_should_not_import_game_service_or_getter(self):
         violations: list[str] = []
 
         for source_path in STORY_ROUTER_FILES:
-            for attr_name in _iter_game_service_attribute_accesses(source_path):
-                if attr_name in FORBIDDEN_GAME_SERVICE_COLLABORATOR_ATTRS:
-                    violations.append(f"{source_path.name}: forbidden game_service.{attr_name}")
+            for module, symbol in _iter_import_aliases(source_path):
+                if module == "api.services.game_service" and symbol == "GameService":
+                    violations.append(f"{source_path.name}: imports GameService")
+                if module == "api.dependencies" and symbol == "get_game_service":
+                    violations.append(f"{source_path.name}: imports get_game_service")
 
         self.assertEqual(
             violations,
             [],
             msg=(
-                "story routes should only call GameService facade methods and must not "
-                "reach into internal collaborators:\n" + "\n".join(violations)
+                "story routers must not depend on GameService/get_game_service after "
+                "router cutover:\n" + "\n".join(violations)
             ),
         )
 
-    def test_story_router_files_should_only_call_game_service_compatibility_methods(self):
-        allowed_methods = GameService.compatibility_facade_methods()
-        violations: list[str] = []
-
+    def test_story_routers_should_wire_via_story_service_bundle_dependency(self):
+        missing_story_bundle_getter: list[str] = []
+        missing_story_bundle_type: list[str] = []
+        depends_on_legacy_game_service: list[str] = []
         for source_path in STORY_ROUTER_FILES:
-            for method_name in _iter_game_service_method_calls(source_path):
-                if method_name not in allowed_methods:
-                    violations.append(
-                        f"{source_path.name}: forbidden game_service method call {method_name}"
-                    )
+            if source_path.name == "story_route_handlers.py":
+                if not _contains_name(source_path, "StoryServiceBundle"):
+                    missing_story_bundle_type.append(source_path.name)
+                continue
+            if _contains_depends_on(source_path, "get_game_service"):
+                depends_on_legacy_game_service.append(source_path.name)
+            if not _contains_name(source_path, "get_story_service_bundle"):
+                missing_story_bundle_getter.append(source_path.name)
 
         self.assertEqual(
-            violations,
+            missing_story_bundle_getter,
             [],
             msg=(
-                "story routes may only call GameService compatibility facade methods:\n"
-                + "\n".join(violations)
+                "story routers should resolve domain collaborators via "
+                "get_story_service_bundle:\n" + "\n".join(missing_story_bundle_getter)
+            ),
+        )
+        self.assertEqual(
+            missing_story_bundle_type,
+            [],
+            msg=(
+                "story route handlers should depend on StoryServiceBundle "
+                "instead of GameService:\n" + "\n".join(missing_story_bundle_type)
+            ),
+        )
+        self.assertEqual(
+            depends_on_legacy_game_service,
+            [],
+            msg=(
+                "story routers should not wire Depends(get_game_service) after "
+                "router cutover:\n" + "\n".join(depends_on_legacy_game_service)
             ),
         )
 

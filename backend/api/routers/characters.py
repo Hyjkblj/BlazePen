@@ -10,11 +10,11 @@ from api.schemas import (
 )
 from api.response import success_response, error_response, not_found_response
 from api.services.character_service import CharacterService
-from api.services.game_service import GameService
-from api.dependencies import get_character_service, get_game_service, get_image_service
+from api.dependencies import get_character_service, get_image_service, get_story_service_bundle
 from api.services.image_service import ImageService
 from api.story_route_handlers import handle_initialize_story_request
 from api.story_schemas import StoryTurnApiResponse
+from story.story_service_bundle import StoryServiceBundle
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -414,13 +414,13 @@ async def remove_character_background(
 @router.post("/initialize-story", response_model=StoryTurnApiResponse)
 async def initialize_story(
     request: InitializeStoryRequest,
-    game_service: GameService = Depends(get_game_service)
+    story_service_bundle: StoryServiceBundle = Depends(get_story_service_bundle),
 ):
     """初始化故事（触发初遇场景）"""
 
     return await handle_initialize_story_request(
         request=request,
-        game_service=game_service,
+        story_service_bundle=story_service_bundle,
         route_name="story.initialize.legacy",
     )
 

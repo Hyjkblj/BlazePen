@@ -12,7 +12,6 @@
       "phase_tags": ["opening"],
       "target_skills": ["K1", "K2", "K3", "K4"],
       "risk_tags": ["fast_publish", "rumor", "headline_pressure"],
-      "briefing": "你手上只有前线巡查员口述、地方电台片段和两份互相矛盾的纸条。编辑部要求三十分钟内给出首版快讯口径。",
       "next_rules": [
         {
           "go_to": "S2B",
@@ -51,7 +50,6 @@
       "phase_tags": ["opening", "middle"],
       "target_skills": ["K1", "K3", "K4", "K7"],
       "risk_tags": ["emotional_language", "casualty_conflict"],
-      "briefing": "你从三家通讯员手里拿到不同版本的战况摘要，其中两份伤亡数据明显不一致，街头民众情绪已经明显紧张。",
       "options": [
         {
           "id": "A",
@@ -83,7 +81,6 @@
       "branch_tags": ["failure_branch", "panic_control"],
       "target_skills": ["K4", "K7", "K8"],
       "risk_tags": ["public_panic", "stability_control", "recovery_window"],
-      "briefing": "街头已经出现“前线全面失守”的流言，部分群众开始抢购和拥堵。总编要求你立刻写一版简短但可信的澄清口径，并附上具体行动建议。",
       "next_rules": [
         {
           "go_to": "S3R",
@@ -128,7 +125,6 @@
       "phase_tags": ["middle"],
       "target_skills": ["K2", "K5", "K6"],
       "risk_tags": ["source_exposure", "privacy_leak", "ethical_boundary"],
-      "briefing": "幸存者愿意提供目击细节，但前提是不能暴露身份与藏身位置。编辑部同时要求你尽量给出具体细节证明报道真实。",
       "options": [
         {
           "id": "A",
@@ -160,7 +156,6 @@
       "branch_tags": ["recovery_branch", "editor_repair"],
       "target_skills": ["K5", "K6", "K8"],
       "risk_tags": ["correction", "editor_trust", "recovery"],
-      "briefing": "总编没有追究你前面的失误，而是要求你立刻整理一版“修正说明 + 后续口径表”，确保接下来的报道不再重复同类风险。",
       "next_rules": [
         {
           "go_to": "S4",
@@ -199,7 +194,6 @@
       "phase_tags": ["middle"],
       "target_skills": ["K4", "K7", "K8"],
       "risk_tags": ["public_panic", "action_guidance"],
-      "briefing": "城市即将进入更紧张的疏散阶段，群众既需要真实信息，也需要可执行的具体行动建议。",
       "options": [
         {
           "id": "A",
@@ -230,7 +224,6 @@
       "phase_tags": ["climax"],
       "target_skills": ["K1", "K2", "K6", "K8"],
       "risk_tags": ["multi_source_conflict", "verification_chain"],
-      "briefing": "你必须在一小时内给出发稿建议，但当前材料里既有一手战况，也有未经证实的民间传闻，混在一起风险极高。",
       "options": [
         {
           "id": "A",
@@ -261,7 +254,6 @@
       "phase_tags": ["closing"],
       "target_skills": ["K1", "K4", "K7", "K8"],
       "risk_tags": ["major_announcement", "update_loop", "public_expectation"],
-      "briefing": "你已经拿到多份相近消息，但最终正式文本尚未完全公开。编辑部希望立刻准备头版，同时要求你设计后续更正与更新方案。",
       "options": [
         {
           "id": "A",

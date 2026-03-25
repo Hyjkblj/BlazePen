@@ -6,7 +6,7 @@ import re
 
 from fastapi import APIRouter, Depends, Header, Query
 
-from api.dependencies import get_game_service
+from api.dependencies import get_story_service_bundle
 from api.error_codes import (
     INTERNAL_ERROR,
     STORY_SESSION_ACCESS_DENIED,
@@ -18,8 +18,8 @@ from api.error_codes import (
 )
 from api.response import build_success_payload, error_response, forbidden_response, not_found_response
 from api.schemas import GameInitRequest, GameInputRequest, InitializeStoryRequest, TriggerEndingRequest
-from api.services.game_service import GameService
 from api.story_contract_utils import (
+    normalize_story_turn_payload,
     normalize_story_ending_summary_payload,
     normalize_story_history_payload,
     normalize_story_session_init_payload,
@@ -41,6 +41,7 @@ from story.exceptions import (
     StorySessionNotFoundError,
     StorySessionRestoreFailedError,
 )
+from story.story_service_bundle import StoryServiceBundle
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -51,7 +52,7 @@ router = APIRouter(prefix="/v1/game", tags=["story"])
 @router.post("/init", response_model=StorySessionInitApiResponse)
 async def init_game(
     request: GameInitRequest,
-    game_service: GameService = Depends(get_game_service),
+    story_service_bundle: StoryServiceBundle = Depends(get_story_service_bundle),
 ):
     """Initialize a story session."""
 
@@ -71,7 +72,7 @@ async def init_game(
                 details={"route": "story.init"},
             )
 
-        result = game_service.init_game(
+        result = story_service_bundle.story_session_service.init_game(
             user_id=request.user_id,
             character_id=int(request.character_id),
             game_mode=request.game_mode,
@@ -105,7 +106,7 @@ async def init_game(
 @router.post("/input", response_model=StoryTurnApiResponse)
 async def process_input(
     request: GameInputRequest,
-    game_service: GameService = Depends(get_game_service),
+    story_service_bundle: StoryServiceBundle = Depends(get_story_service_bundle),
 ):
     """Process player input for the current story session."""
 
@@ -125,16 +126,17 @@ async def process_input(
         )
 
     try:
-        result = game_service.submit_story_turn(
+        result = story_service_bundle.story_turn_service.submit_turn(
             thread_id=request.thread_id,
             user_input=user_input,
             option_id=option_id,
             user_id=request.user_id,
             character_id=request.character_id,
         )
-        payload = game_service.normalize_story_turn_payload(
+        payload = normalize_story_turn_payload(
             result,
             thread_id=request.thread_id,
+            story_asset_service=story_service_bundle.story_asset_service,
         )
         if payload.get("need_reselect_option"):
             return build_success_payload(
@@ -188,13 +190,13 @@ async def process_input(
 @router.post("/initialize-story", response_model=StoryTurnApiResponse)
 async def initialize_story(
     request: InitializeStoryRequest,
-    game_service: GameService = Depends(get_game_service),
+    story_service_bundle: StoryServiceBundle = Depends(get_story_service_bundle),
 ):
     """Canonical story-domain route for story initialization."""
 
     return await handle_initialize_story_request(
         request=request,
-        game_service=game_service,
+        story_service_bundle=story_service_bundle,
         route_name="story.initialize",
     )
 
@@ -204,12 +206,12 @@ async def list_recent_sessions(
     user_id: str = Query(..., min_length=1),
     limit: int = Query(10, ge=1, le=20),
     actor_user_id: str | None = Header(default=None, alias="X-Story-Actor-Id"),
-    game_service: GameService = Depends(get_game_service),
+    story_service_bundle: StoryServiceBundle = Depends(get_story_service_bundle),
 ):
     """Return recent persisted story sessions for one user."""
 
     try:
-        result = game_service.list_story_sessions(
+        result = story_service_bundle.story_session_service.list_recent_sessions(
             user_id=user_id,
             limit=limit,
             actor_user_id=actor_user_id,
@@ -251,12 +253,12 @@ async def list_recent_sessions(
 @router.get("/sessions/{thread_id}/history", response_model=StorySessionHistoryApiResponse)
 async def get_story_history(
     thread_id: str,
-    game_service: GameService = Depends(get_game_service),
+    story_service_bundle: StoryServiceBundle = Depends(get_story_service_bundle),
 ):
     """Return persisted story round history without touching live runtime state."""
 
     try:
-        result = game_service.get_story_history(thread_id)
+        result = story_service_bundle.story_history_service.get_story_history(thread_id)
         payload = normalize_story_history_payload(result)
         return build_success_payload(data=payload)
     except StorySessionNotFoundError as exc:
@@ -278,12 +280,12 @@ async def get_story_history(
 @router.get("/sessions/{thread_id}/ending", response_model=StoryEndingSummaryApiResponse)
 async def get_story_ending_summary(
     thread_id: str,
-    game_service: GameService = Depends(get_game_service),
+    story_service_bundle: StoryServiceBundle = Depends(get_story_service_bundle),
 ):
     """Return a read-only story ending summary built from persisted facts."""
 
     try:
-        result = game_service.get_story_ending_summary(thread_id)
+        result = story_service_bundle.story_ending_service.get_ending_summary(thread_id)
         payload = normalize_story_ending_summary_payload(result)
         return build_success_payload(data=payload)
     except StorySessionNotFoundError as exc:
@@ -305,15 +307,16 @@ async def get_story_ending_summary(
 @router.get("/sessions/{thread_id}", response_model=StorySessionSnapshotApiResponse)
 async def get_session_snapshot(
     thread_id: str,
-    game_service: GameService = Depends(get_game_service),
+    story_service_bundle: StoryServiceBundle = Depends(get_story_service_bundle),
 ):
     """Return the latest restorable story snapshot."""
 
     try:
-        result = game_service.get_story_session_snapshot(thread_id)
-        payload = game_service.normalize_story_turn_payload(
+        result = story_service_bundle.story_session_service.get_session_snapshot(thread_id)
+        payload = normalize_story_turn_payload(
             result,
             thread_id=thread_id,
+            story_asset_service=story_service_bundle.story_asset_service,
         )
         payload["updated_at"] = result.get("updated_at")
         payload["expires_at"] = result.get("expires_at")
@@ -344,12 +347,12 @@ async def get_session_snapshot(
 @router.get("/check-ending/{thread_id}", response_model=StoryEndingCheckApiResponse)
 async def check_ending(
     thread_id: str,
-    game_service: GameService = Depends(get_game_service),
+    story_service_bundle: StoryServiceBundle = Depends(get_story_service_bundle),
 ):
     """Legacy ending check route kept for compatibility."""
 
     try:
-        result = game_service.check_ending(thread_id)
+        result = story_service_bundle.story_ending_service.check_ending(thread_id)
         return build_success_payload(data=result)
     except StorySessionExpiredError as exc:
         return error_response(
@@ -377,15 +380,16 @@ async def check_ending(
 @router.post("/trigger-ending", response_model=StoryTurnApiResponse)
 async def trigger_ending(
     request: TriggerEndingRequest,
-    game_service: GameService = Depends(get_game_service),
+    story_service_bundle: StoryServiceBundle = Depends(get_story_service_bundle),
 ):
     """Trigger the ending flow for a story session."""
 
     try:
-        result = game_service.trigger_ending(request.thread_id)
-        payload = game_service.normalize_story_turn_payload(
+        result = story_service_bundle.story_ending_service.trigger_ending(request.thread_id)
+        payload = normalize_story_turn_payload(
             result,
             thread_id=request.thread_id,
+            story_asset_service=story_service_bundle.story_asset_service,
         )
         payload["status"] = "completed"
         return build_success_payload(data=payload)

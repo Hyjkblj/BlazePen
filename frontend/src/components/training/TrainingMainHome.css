@@ -1,0 +1,125 @@
+.training-mainhome {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: clamp(56px, 8vh, 88px) 20px clamp(22px, 3.8vh, 44px);
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.08) 0%, rgba(0, 0, 0, 0.36) 100%),
+    url('../../assets/images/home-fenghuo-main-bg.png') center center / cover no-repeat;
+}
+
+.training-mainhome__title {
+  position: relative;
+  isolation: isolate;
+  display: inline-block;
+  margin: 0;
+  color: #2a1d1d;
+  font-family: 'STKaiti', 'KaiTi', 'STSong', 'Microsoft YaHei', serif;
+  font-size: clamp(56px, 8.2vw, 122px);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-shadow: 0 3px 8px rgba(0, 0, 0, 0.18);
+}
+
+.training-mainhome__title-fire {
+  position: absolute;
+  inset: -8% -3% -8%;
+  width: 106%;
+  height: 116%;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.72;
+  mix-blend-mode: screen;
+  filter:
+    saturate(1.04)
+    contrast(1.03)
+    drop-shadow(0 0 4px rgba(255, 76, 54, 0.34))
+    drop-shadow(0 0 10px rgba(170, 25, 20, 0.22));
+}
+
+.training-mainhome__action {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.training-mainhome__start.ant-btn {
+  width: min(560px, 88vw);
+  height: clamp(64px, 10vh, 100px);
+  border: 1px solid rgba(255, 165, 136, 0.34);
+  border-radius: 18px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(169, 38, 31, 0.94) 0%,
+      rgba(112, 20, 20, 0.95) 56%,
+      rgba(74, 11, 12, 0.96) 100%
+    );
+  color: #ffe9df;
+  font-size: clamp(36px, 4vw, 58px);
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(31, 8, 8, 0.52);
+  backdrop-filter: blur(2px);
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.34),
+    0 0 16px rgba(150, 35, 30, 0.28),
+    inset 0 1px 0 rgba(255, 221, 205, 0.2),
+    inset 0 -10px 18px rgba(34, 6, 7, 0.32);
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.training-mainhome__start.ant-btn:not(:disabled):hover,
+.training-mainhome__start.ant-btn:not(:disabled):focus-visible {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(186, 46, 38, 0.95) 0%,
+      rgba(123, 23, 23, 0.96) 54%,
+      rgba(82, 13, 13, 0.97) 100%
+    );
+  box-shadow:
+    0 15px 32px rgba(0, 0, 0, 0.36),
+    0 0 20px rgba(176, 44, 38, 0.34),
+    inset 0 1px 0 rgba(255, 232, 220, 0.22),
+    inset 0 -10px 18px rgba(36, 7, 8, 0.36);
+  transform: translateY(-1px);
+}
+
+.training-mainhome__start.ant-btn:not(:disabled):active {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(133, 28, 26, 0.95) 0%,
+      rgba(92, 17, 18, 0.96) 56%,
+      rgba(61, 10, 11, 0.97) 100%
+    );
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.3),
+    0 0 10px rgba(134, 32, 29, 0.24),
+    inset 0 1px 0 rgba(242, 201, 189, 0.14);
+  transform: translateY(0);
+}
+
+@media (max-width: 768px) {
+  .training-mainhome {
+    padding: 42px 14px 16px;
+  }
+
+  .training-mainhome__title {
+    font-size: clamp(40px, 12vw, 62px);
+  }
+
+  .training-mainhome__start.ant-btn {
+    height: 58px;
+    border-radius: 14px;
+    font-size: 40px;
+  }
+}

@@ -155,11 +155,6 @@ const cloneRecord = (value: unknown): Record<string, unknown> => {
   return record ? { ...record } : {};
 };
 
-const readLegacyScenarioBriefing = (value: unknown): string | null => {
-  const record = asRecord(value);
-  return normalizeOptionalString(record?.briefing);
-};
-
 const normalizeTrainingRequestModeInput = (value: unknown): string | null => {
   const normalized = normalizeOptionalString(value)?.toLowerCase();
   if (!normalized) {
@@ -342,10 +337,7 @@ const normalizeTrainingScenario = (
     title: normalizeOptionalString(payload?.title) ?? '',
     eraDate: normalizeOptionalString(payload?.era_date) ?? '',
     location: normalizeOptionalString(payload?.location) ?? '',
-    brief:
-      normalizeOptionalString(payload?.brief) ??
-      readLegacyScenarioBriefing(payload) ??
-      '',
+    brief: normalizeOptionalString(payload?.brief) ?? '',
     mission: normalizeOptionalString(payload?.mission) ?? '',
     decisionFocus: normalizeOptionalString(payload?.decision_focus) ?? '',
     targetSkills: normalizeStringArray(payload?.target_skills),
@@ -813,6 +805,7 @@ export const normalizeTrainingInitPayload = (
 
   return {
     sessionId: normalizeOptionalString(payload?.session_id) ?? '',
+    characterId: normalizeOptionalCharacterId(payload?.character_id),
     trainingMode: normalizeTrainingMode(trainingMode),
     status: normalizeOptionalString(payload?.status) ?? 'initialized',
     roundNo,
@@ -894,6 +887,7 @@ export const normalizeTrainingProgressPayload = (
 ): TrainingProgressResult => {
   const roundNo = normalizeNumber(payload?.round_no);
   const playerProfile = normalizeTrainingPlayerProfile(payload?.player_profile);
+  const decisionContext = normalizeTrainingRoundDecisionContext(payload?.decision_context);
 
   return {
     sessionId: normalizeOptionalString(payload?.session_id) ?? '',
@@ -907,6 +901,12 @@ export const normalizeTrainingProgressPayload = (
       sState: normalizeNumberMap(payload?.s_state),
       playerProfile,
     }),
+    decisionContext,
+    consequenceEvents: Array.isArray(payload?.consequence_events)
+      ? payload.consequence_events
+          .map((item) => normalizeTrainingConsequenceEvent(item))
+          .filter((item): item is TrainingConsequenceEvent => item !== null)
+      : [],
   };
 };
 

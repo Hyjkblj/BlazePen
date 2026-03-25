@@ -365,6 +365,7 @@ export interface TrainingInitRequest extends GenericApiRecord {
 
 export interface TrainingInitResponse extends GenericApiRecord {
   session_id?: string;
+  character_id?: number | string | null;
   status?: string | null;
   round_no?: number | string | null;
   k_state?: Record<string, unknown> | null;
@@ -423,6 +424,8 @@ export interface TrainingProgressResponse extends GenericApiRecord {
   s_state?: Record<string, unknown> | null;
   player_profile?: TrainingPlayerProfileApi | null;
   runtime_state?: TrainingRuntimeStateApiResponse | null;
+  decision_context?: TrainingRoundDecisionContextApiResponse | null;
+  consequence_events?: TrainingConsequenceEventApiResponse[] | null;
 }
 
 export interface TrainingSessionProgressAnchorResponse extends GenericApiRecord {

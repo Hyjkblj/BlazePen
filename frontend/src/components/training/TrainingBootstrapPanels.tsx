@@ -1,3 +1,4 @@
+import { Button, Card, Descriptions, Form, Input, Radio, Space, Typography } from 'antd';
 import type { TrainingMode } from '@/types/training';
 
 interface TrainingFormDraftValue {
@@ -43,123 +44,104 @@ function TrainingBootstrapPanels({
 }: TrainingBootstrapPanelsProps) {
   return (
     <div className="training-shell__workspace">
-      <article className="training-shell__panel training-shell__panel--primary">
-        <h2>开始训练</h2>
-        <p className="training-shell__empty">
-          本地缓存只记住可恢复的 `sessionId` 入口，不保存服务端会话事实。页面刷新后统一走
-          `session summary` 手动恢复。
-        </p>
+      <Card className="training-shell__panel training-shell__panel--primary training-shell__panel--antd">
+        <Typography.Title level={4}>开始训练</Typography.Title>
+        <Typography.Paragraph className="training-shell__empty">
+          本地缓存只记住可恢复的 <code>sessionId</code> 入口，不保存服务端会话事实。页面刷新后统一走
+          <code>session summary</code> 手动恢复。
+        </Typography.Paragraph>
 
-        <div className="training-shell__mode-list" role="radiogroup" aria-label="训练模式">
-          {TRAINING_MODE_OPTIONS.map(([modeValue, title, description]) => (
-            <label
-              key={modeValue}
-              className={`training-shell__mode-card${
-                trainingMode === modeValue ? ' training-shell__mode-card--active' : ''
-              }`}
-            >
-              <input
-                type="radio"
-                name="training-mode"
-                value={modeValue}
-                checked={trainingMode === modeValue}
-                onChange={() => setTrainingMode(modeValue)}
-              />
-              <span>{title}</span>
-              <small>{description}</small>
-            </label>
-          ))}
-        </div>
+        <Radio.Group
+          className="training-shell__mode-list training-shell__mode-list--antd"
+          value={trainingMode}
+          onChange={(event) => {
+            setTrainingMode(event.target.value as TrainingMode);
+          }}
+        >
+          <Space direction="vertical" size={10} style={{ width: '100%' }}>
+            {TRAINING_MODE_OPTIONS.map(([modeValue, title, description]) => (
+              <Radio key={modeValue} className="training-shell__mode-radio" value={modeValue}>
+                <span className="training-shell__mode-radio-title">{title}</span>
+                <small className="training-shell__mode-radio-desc">{description}</small>
+              </Radio>
+            ))}
+          </Space>
+        </Radio.Group>
 
-        <div className="training-shell__form-grid">
-          <label className="training-shell__field">
-            <span>characterId</span>
-            <input
+        <Form layout="vertical" className="training-shell__form-grid training-shell__form-grid--antd">
+          <Form.Item label="characterId">
+            <Input
               value={formDraft.characterId}
               onChange={(event) => updateFormDraft('characterId', event.target.value)}
               placeholder="可选，绑定训练角色"
               inputMode="numeric"
             />
-          </label>
-          <label className="training-shell__field">
-            <span>姓名</span>
-            <input
+          </Form.Item>
+          <Form.Item label="姓名">
+            <Input
               value={formDraft.playerName}
               onChange={(event) => updateFormDraft('playerName', event.target.value)}
               placeholder="可选"
             />
-          </label>
-          <label className="training-shell__field">
-            <span>身份</span>
-            <input
+          </Form.Item>
+          <Form.Item label="身份">
+            <Input
               value={formDraft.playerIdentity}
               onChange={(event) => updateFormDraft('playerIdentity', event.target.value)}
               placeholder="例如：战地记者"
             />
-          </label>
-          <label className="training-shell__field">
-            <span>性别</span>
-            <input
+          </Form.Item>
+          <Form.Item label="性别">
+            <Input
               value={formDraft.playerGender}
               onChange={(event) => updateFormDraft('playerGender', event.target.value)}
               placeholder="可选"
             />
-          </label>
-          <label className="training-shell__field">
-            <span>年龄</span>
-            <input
+          </Form.Item>
+          <Form.Item label="年龄">
+            <Input
               value={formDraft.playerAge}
               onChange={(event) => updateFormDraft('playerAge', event.target.value)}
               placeholder="可选"
               inputMode="numeric"
             />
-          </label>
-        </div>
+          </Form.Item>
+        </Form>
 
-        <button
+        <Button
           className="training-shell__primary-button"
-          type="button"
+          type="primary"
           disabled={!canStartTraining}
           onClick={startTraining}
         >
           启动训练
-        </button>
-      </article>
+        </Button>
+      </Card>
 
-      <article className="training-shell__panel">
-        <h2>恢复入口</h2>
+      <Card className="training-shell__panel training-shell__panel--antd">
+        <Typography.Title level={4}>恢复入口</Typography.Title>
         {hasResumeTarget ? (
-          <dl className="training-shell__summary">
-            <div>
-              <dt>sessionId</dt>
-              <dd>{resumeSessionId ?? '当前上下文会话'}</dd>
-            </div>
-            <div>
-              <dt>训练模式</dt>
-              <dd>{resumeTrainingMode ?? '等待服务端恢复确认'}</dd>
-            </div>
-            <div>
-              <dt>缓存状态</dt>
-              <dd>{resumeStatus ?? '未知'}</dd>
-            </div>
-          </dl>
+          <Descriptions className="training-shell__summary training-shell__summary--antd" column={1} size="small">
+            <Descriptions.Item label="sessionId">{resumeSessionId ?? '当前上下文会话'}</Descriptions.Item>
+            <Descriptions.Item label="训练模式">{resumeTrainingMode ?? '等待服务端恢复确认'}</Descriptions.Item>
+            <Descriptions.Item label="缓存状态">{resumeStatus ?? '未知'}</Descriptions.Item>
+          </Descriptions>
         ) : (
-          <p className="training-shell__empty">
+          <Typography.Paragraph className="training-shell__empty">
             当前没有可恢复的训练入口。首次进入会走初始化路径，刷新后才走服务端恢复路径。
-          </p>
+          </Typography.Paragraph>
         )}
 
-        <div className="training-shell__stack-actions">
-          <button
+        <Space className="training-shell__stack-actions">
+          <Button
             className="training-shell__secondary-button"
-            type="button"
             disabled={!hasResumeTarget}
             onClick={retryRestore}
           >
             恢复上次训练
-          </button>
-        </div>
-      </article>
+          </Button>
+        </Space>
+      </Card>
     </div>
   );
 }

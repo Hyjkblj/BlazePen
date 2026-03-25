@@ -31,6 +31,7 @@ describe('trainingApi', () => {
   it('normalizes init request payloads and returns a training-only read model', async () => {
     vi.mocked(httpClient.post).mockResolvedValueOnce({
       session_id: 'training-session-1',
+      character_id: 12,
       status: 'active',
       round_no: 0,
       k_state: {
@@ -56,6 +57,7 @@ describe('trainingApi', () => {
       })
     ).resolves.toMatchObject({
       sessionId: 'training-session-1',
+      characterId: '12',
       trainingMode: 'self-paced',
       status: 'active',
       roundNo: 0,
@@ -116,6 +118,15 @@ describe('trainingApi', () => {
   });
 
   it.each([
+    [
+      'TRAINING_MODE_UNSUPPORTED',
+      400,
+      () =>
+        initTraining({
+          userId: 'user-1',
+          trainingMode: 'guided',
+        }),
+    ],
     ['TRAINING_SESSION_NOT_FOUND', 404, () => getNextTrainingScenario({ sessionId: 'session-missing' })],
     ['TRAINING_SESSION_COMPLETED', 400, () => getTrainingProgress('session-completed')],
     ['TRAINING_SESSION_RECOVERY_STATE_CORRUPTED', 409, () => getTrainingSessionSummary('session-broken')],
@@ -126,6 +137,16 @@ describe('trainingApi', () => {
         submitTrainingRound({
           sessionId: 'session-1',
           scenarioId: 'scenario-1',
+          userInput: 'submit choice',
+        }),
+    ],
+    [
+      'TRAINING_SCENARIO_MISMATCH',
+      409,
+      () =>
+        submitTrainingRound({
+          sessionId: 'session-1',
+          scenarioId: 'scenario-unexpected',
           userInput: 'submit choice',
         }),
     ],
@@ -170,6 +191,26 @@ describe('trainingApi', () => {
         current_round_no: 3,
         current_scene_id: 'scenario-3',
       },
+      decision_context: {
+        mode: 'guided',
+        selection_source: 'candidate_pool',
+        selected_scenario_id: 'scenario-3',
+        recommended_scenario_id: 'scenario-4',
+        selected_branch_transition: {
+          source_scenario_id: 'scenario-2',
+          target_scenario_id: 'scenario-3',
+          transition_type: 'branch',
+          reason: 'source_warning',
+        },
+      },
+      consequence_events: [
+        {
+          event_type: 'source_exposed',
+          label: 'Source Exposed',
+          summary: 'source leaked',
+          severity: 'high',
+        },
+      ],
     });
 
     await expect(getTrainingProgress('training-session-progress')).resolves.toMatchObject({
@@ -182,6 +223,26 @@ describe('trainingApi', () => {
         currentRoundNo: 3,
         currentSceneId: 'scenario-3',
       },
+      decisionContext: {
+        mode: 'guided',
+        selectionSource: 'candidate_pool',
+        selectedScenarioId: 'scenario-3',
+        recommendedScenarioId: 'scenario-4',
+        selectedBranchTransition: {
+          sourceScenarioId: 'scenario-2',
+          targetScenarioId: 'scenario-3',
+          transitionType: 'branch',
+          reason: 'source_warning',
+        },
+      },
+      consequenceEvents: [
+        {
+          eventType: 'source_exposed',
+          label: 'Source Exposed',
+          summary: 'source leaked',
+          severity: 'high',
+        },
+      ],
     });
 
     expect(httpClient.get).toHaveBeenCalledWith('/v1/training/progress/training-session-progress', {
@@ -225,7 +286,7 @@ describe('trainingApi', () => {
       resumable_scenario: {
         id: 'scenario-2',
         title: 'Follow-up interview',
-        briefing: 'Legacy scenario briefing',
+        brief: 'Canonical scenario brief',
       },
       scenario_candidates: [
         {
@@ -253,7 +314,7 @@ describe('trainingApi', () => {
       },
       resumableScenario: {
         id: 'scenario-2',
-        brief: 'Legacy scenario briefing',
+        brief: 'Canonical scenario brief',
       },
       scenarioCandidates: [{ id: 'scenario-2' }],
       canResume: true,
@@ -265,7 +326,7 @@ describe('trainingApi', () => {
     });
   });
 
-  it('normalizes legacy briefing into canonical brief for next-scenario responses', async () => {
+  it('normalizes canonical brief for next-scenario responses', async () => {
     vi.mocked(httpClient.post).mockResolvedValueOnce({
       session_id: 'training-session-next',
       status: 'in_progress',
@@ -277,14 +338,13 @@ describe('trainingApi', () => {
       scenario: {
         id: 'scenario-next',
         title: 'Field Follow-up',
-        brief: '',
-        briefing: 'Legacy next scenario briefing',
+        brief: 'Canonical next scenario brief',
       },
       scenario_candidates: [
         {
           id: 'scenario-candidate',
           title: 'Candidate Scenario',
-          briefing: 'Legacy candidate briefing',
+          brief: 'Canonical candidate brief',
         },
       ],
     });
@@ -295,12 +355,12 @@ describe('trainingApi', () => {
       sessionId: 'training-session-next',
       scenario: {
         id: 'scenario-next',
-        brief: 'Legacy next scenario briefing',
+        brief: 'Canonical next scenario brief',
       },
       scenarioCandidates: [
         {
           id: 'scenario-candidate',
-          brief: 'Legacy candidate briefing',
+          brief: 'Canonical candidate brief',
         },
       ],
     });

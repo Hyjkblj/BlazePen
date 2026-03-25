@@ -6,6 +6,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ROUTES } from '@/config/routes';
 import { FeedbackProvider, TrainingFlowProvider } from '@/contexts';
 import Training from './Training';
+import TrainingMainHomePage from './TrainingMainHomePage';
+import TrainingLandingPage from './TrainingLandingPage';
 
 const trainingApiMocks = vi.hoisted(() => ({
   initTraining: vi.fn(),
@@ -61,6 +63,35 @@ const createScenario = (id: string, title: string, optionLabel = 'Hold publicati
   recommendation: null,
 });
 
+const createSessionSummary = (
+  sessionId: string,
+  sceneId: string,
+  sceneTitle: string
+) => ({
+  sessionId,
+  characterId: '42',
+  trainingMode: 'guided' as const,
+  status: 'in_progress',
+  roundNo: 0,
+  totalRounds: 6,
+  runtimeState: createRuntimeState(sceneId, 0),
+  progressAnchor: {
+    roundNo: 0,
+    totalRounds: 6,
+    completedRounds: 0,
+    remainingRounds: 6,
+    progressPercent: 0,
+    nextRoundNo: 1,
+  },
+  resumableScenario: createScenario(sceneId, sceneTitle),
+  scenarioCandidates: [],
+  canResume: true,
+  isCompleted: false,
+  createdAt: null,
+  updatedAt: null,
+  endTime: null,
+});
+
 const renderTrainingSmokePage = () =>
   render(
     <MemoryRouter initialEntries={[ROUTES.TRAINING]}>
@@ -68,6 +99,8 @@ const renderTrainingSmokePage = () =>
         <TrainingFlowProvider>
           <Routes>
             <Route path={ROUTES.TRAINING} element={<Training />} />
+            <Route path={ROUTES.TRAINING_MAINHOME} element={<TrainingMainHomePage />} />
+            <Route path={ROUTES.TRAINING_LANDING} element={<TrainingLandingPage />} />
           </Routes>
         </TrainingFlowProvider>
       </FeedbackProvider>
@@ -95,6 +128,9 @@ describe('training main path smoke baseline', () => {
       nextScenario: createScenario('scenario-1', 'Initial Briefing'),
       scenarioCandidates: [],
     });
+    trainingApiMocks.getTrainingSessionSummary.mockResolvedValue(
+      createSessionSummary('training-session-1', 'scenario-1', 'Initial Briefing')
+    );
     trainingApiMocks.submitTrainingRound.mockResolvedValueOnce({
       sessionId: 'training-session-1',
       roundNo: 1,
@@ -143,21 +179,55 @@ describe('training main path smoke baseline', () => {
       ending: null,
     });
 
-    const { container } = renderTrainingSmokePage();
+    renderTrainingSmokePage();
 
-    expect(await screen.findByText('Training Frontend MVP')).toBeTruthy();
+    await waitFor(() => {
+      expect(document.querySelector('.training-mainhome__start')).toBeTruthy();
+    });
 
-    const startButton = container.querySelector(
-      '.training-shell__panel--primary .training-shell__primary-button'
+    const mainHomeStart = document.querySelector<HTMLButtonElement>('.training-mainhome__start');
+    if (mainHomeStart) {
+      fireEvent.click(mainHomeStart);
+    }
+
+    await waitFor(() => {
+      const hasLandingStart = Boolean(document.querySelector('.training-landing__start'));
+      const identityInputs = document.querySelectorAll<HTMLInputElement>(
+        '.training-landing__identity-group .ant-radio-input'
+      );
+      expect(hasLandingStart || identityInputs.length > 0).toBe(true);
+    });
+    const landingStart = document.querySelector<HTMLButtonElement>('.training-landing__start');
+    if (landingStart) {
+      fireEvent.click(landingStart);
+    }
+
+    await waitFor(() => {
+      const identityInputs = document.querySelectorAll<HTMLInputElement>(
+        '.training-landing__identity-group .ant-radio-input'
+      );
+      expect(identityInputs.length).toBeGreaterThan(0);
+    });
+    const identityInputs = document.querySelectorAll<HTMLInputElement>(
+      '.training-landing__identity-group .ant-radio-input'
     );
-    expect(startButton).toBeTruthy();
-    fireEvent.click(startButton!);
+    fireEvent.click(identityInputs[0]);
+    const imageCards = document.querySelectorAll<HTMLButtonElement>('.training-landing__image-card');
+    expect(imageCards.length).toBeGreaterThan(0);
+    fireEvent.click(imageCards[0]);
+    const confirmButton = document.querySelector<HTMLButtonElement>('.training-landing__confirm');
+    expect(confirmButton).toBeTruthy();
+    fireEvent.click(confirmButton!);
 
     expect(await screen.findByText('Initial Briefing')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: /Hold publication/ }));
+    const optionInputs = document.querySelectorAll<HTMLInputElement>(
+      '.training-shell__option-list .ant-radio-input'
+    );
+    expect(optionInputs.length).toBeGreaterThan(0);
+    fireEvent.click(optionInputs[0]);
 
-    const submitButton = container.querySelector(
+    const submitButton = document.querySelector<HTMLButtonElement>(
       '.training-shell__panel--primary .training-shell__primary-button'
     );
     expect(submitButton).toBeTruthy();
@@ -176,3 +246,4 @@ describe('training main path smoke baseline', () => {
     expect(screen.getByText('confirmed timeline')).toBeTruthy();
   });
 });
+

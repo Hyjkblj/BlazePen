@@ -29,7 +29,8 @@ class ScenarioRepositoryTestCase(unittest.TestCase):
         self.assertEqual(len(frozen), 1)
         self.assertEqual(frozen[0]["id"], "S1")
         self.assertEqual(frozen[0]["title"], "自定义标题")
-        self.assertIn("briefing", frozen[0])
+        self.assertIn("brief", frozen[0])
+        self.assertNotIn("briefing", frozen[0])
         self.assertIn("options", frozen[0])
 
     def test_freeze_related_catalog_should_include_reachable_branch_scenarios(self):
@@ -47,6 +48,22 @@ class ScenarioRepositoryTestCase(unittest.TestCase):
         self.assertEqual(catalog_ids[:4], ["S1", "S2", "S3", "S4"])
         self.assertIn("S2B", catalog_ids)
         self.assertIn("S3R", catalog_ids)
+
+    def test_freeze_sequence_should_not_backfill_brief_from_legacy_briefing(self):
+        """legacy briefing 不应再回填成 canonical brief。"""
+        frozen = self.repository.freeze_sequence(
+            [
+                {
+                    "id": "S-legacy-only",
+                    "title": "legacy-only",
+                    "briefing": "legacy-briefing",
+                }
+            ]
+        )
+
+        self.assertEqual(len(frozen), 1)
+        self.assertEqual(frozen[0]["brief"], "")
+        self.assertNotIn("briefing", frozen[0])
 
 
 if __name__ == "__main__":

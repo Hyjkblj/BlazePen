@@ -7,6 +7,9 @@ const formatPercent = (value: number): string => `${Number(value.toFixed(1))}%`;
 
 const formatMetricValue = (value: number): string => Number(value.toFixed(2)).toString();
 
+const formatOptionalValue = (value: string | null | undefined): string =>
+  value && value.trim() ? value : '未提供';
+
 function TrainingProgress() {
   const [searchParams] = useSearchParams();
   const querySessionId = normalizeTrainingSessionId(searchParams.get('sessionId'));
@@ -57,6 +60,73 @@ function TrainingProgress() {
                 <dt>当前场景</dt>
                 <dd>{data.runtimeState.currentSceneId ?? '暂无'}</dd>
               </dl>
+            </div>
+          </section>
+
+          <section className="training-insight-section">
+            <h2>最近决策影响</h2>
+            <div className="training-insight-subgrid">
+              <div className="training-insight-detail-card">
+                <h3>决策上下文</h3>
+                {data.decisionContext ? (
+                  <>
+                    <dl className="training-insight-detail-list">
+                      <div>
+                        <dt>selectionSource</dt>
+                        <dd>{data.decisionContext.selectionSource}</dd>
+                      </div>
+                      <div>
+                        <dt>recommendedScenarioId</dt>
+                        <dd>{formatOptionalValue(data.decisionContext.recommendedScenarioId)}</dd>
+                      </div>
+                      <div>
+                        <dt>selectedScenarioId</dt>
+                        <dd>{data.decisionContext.selectedScenarioId}</dd>
+                      </div>
+                      <div>
+                        <dt>candidatePool</dt>
+                        <dd>{data.decisionContext.candidatePool.length}</dd>
+                      </div>
+                    </dl>
+                    {data.decisionContext.selectedBranchTransition ? (
+                      <ul className="training-insight-code-list">
+                        <li>
+                          {data.decisionContext.selectedBranchTransition.sourceScenarioId}
+                          {' -> '}
+                          {data.decisionContext.selectedBranchTransition.targetScenarioId}
+                          {' ('}
+                          {data.decisionContext.selectedBranchTransition.transitionType}
+                          {')'}
+                          {data.decisionContext.selectedBranchTransition.reason
+                            ? `，原因：${data.decisionContext.selectedBranchTransition.reason}`
+                            : ''}
+                        </li>
+                      </ul>
+                    ) : (
+                      <p className="training-insight-empty">当前回合没有触发分支跳转。</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="training-insight-empty">当前没有决策上下文。</p>
+                )}
+              </div>
+
+              <div className="training-insight-detail-card">
+                <h3>后果事件</h3>
+                {(data.consequenceEvents ?? []).length > 0 ? (
+                  <ul className="training-insight-code-list">
+                    {(data.consequenceEvents ?? []).map((event, index) => (
+                      <li key={`${event.eventType}-${event.roundNo ?? 'na'}-${index}`}>
+                        {event.label || event.eventType}
+                        {` (${event.severity})`}
+                        {event.summary ? `：${event.summary}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="training-insight-empty">当前回合没有后果事件。</p>
+                )}
+              </div>
             </div>
           </section>
 

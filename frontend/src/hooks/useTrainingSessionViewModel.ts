@@ -53,6 +53,7 @@ export interface TrainingSessionWorkspaceSeed {
 }
 
 export interface UseTrainingSessionViewModelOptions {
+  explicitSessionId?: string | null;
   sessionView: TrainingSessionViewState | null;
   activeSession: ActiveTrainingSessionState | null;
   resumeTarget: TrainingResumeTarget | null;
@@ -110,18 +111,18 @@ export const buildTrainingSessionViewFromSummary = (
 export const buildTrainingSessionViewFromInit = (
   sessionResult: {
     sessionId: string;
+    characterId: string | null;
     trainingMode: TrainingMode;
     status: string;
     roundNo: number;
     runtimeState: TrainingRuntimeState;
     nextScenario: TrainingScenario | null;
     scenarioCandidates: TrainingScenario[];
-  },
-  characterId: string | null
+  }
 ): TrainingSessionViewState => ({
   sessionId: sessionResult.sessionId,
   trainingMode: sessionResult.trainingMode,
-  characterId,
+  characterId: sessionResult.characterId,
   status: sessionResult.status,
   roundNo: sessionResult.roundNo,
   totalRounds: null,
@@ -232,6 +233,7 @@ export const resolveTrainingSessionRestoreIdentity = ({
 };
 
 export const resolveTrainingSessionWorkspaceSeed = ({
+  explicitSessionId,
   sessionView,
   activeSession,
   resumeTarget,
@@ -247,6 +249,7 @@ export const resolveTrainingSessionWorkspaceSeed = ({
   }
 
   const sessionTarget = resolveTrainingSessionReadTarget({
+    explicitSessionId,
     activeSession,
     resumeTarget,
     allowResumeTargetFallback: false,
@@ -262,6 +265,7 @@ export const resolveTrainingSessionWorkspaceSeed = ({
 };
 
 export function useTrainingSessionViewModel({
+  explicitSessionId,
   sessionView,
   activeSession,
   resumeTarget,
@@ -269,11 +273,12 @@ export function useTrainingSessionViewModel({
   const workspaceSeed = useMemo(
     () =>
       resolveTrainingSessionWorkspaceSeed({
+        explicitSessionId,
         sessionView,
         activeSession,
         resumeTarget,
       }),
-    [activeSession, resumeTarget, sessionView]
+    [activeSession, explicitSessionId, resumeTarget, sessionView]
   );
 
   const resolveRestoreIdentity = useCallback(

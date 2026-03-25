@@ -1,0 +1,364 @@
+.training-landing {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: clamp(32px, 4.8vh, 56px) 20px clamp(22px, 3.8vh, 44px);
+  background:
+    radial-gradient(circle at 18% 10%, rgba(164, 44, 39, 0.28), transparent 42%),
+    radial-gradient(circle at 82% 28%, rgba(132, 25, 21, 0.3), transparent 46%),
+    linear-gradient(180deg, #2d0f12 0%, #1e090b 42%, #140608 100%);
+}
+
+.training-landing__content {
+  width: min(1520px, 96vw);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: stretch;
+}
+
+.training-landing__restore-card {
+  width: min(1520px, 96vw);
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 154, 130, 0.36);
+  background:
+    linear-gradient(180deg, rgba(42, 16, 16, 0.92), rgba(24, 9, 10, 0.9)),
+    radial-gradient(circle at top right, rgba(174, 33, 27, 0.2), transparent 56%);
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.32),
+    inset 0 0 30px rgba(159, 30, 25, 0.16);
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.training-landing__restore-content h3 {
+  margin: 0;
+  color: #ffede5;
+  font-size: 17px;
+}
+
+.training-landing__restore-content p {
+  margin: 6px 0 0;
+  color: rgba(255, 215, 202, 0.86);
+  font-size: 14px;
+}
+
+.training-landing__restore-session {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 180, 156, 0.14);
+  color: #ffd9ca;
+}
+
+.training-landing__restore.ant-btn {
+  border-color: rgba(255, 176, 150, 0.38);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(180, 44, 36, 0.95) 0%,
+      rgba(118, 23, 22, 0.96) 56%,
+      rgba(78, 14, 14, 0.97) 100%
+    );
+  color: #fff2eb;
+}
+
+.training-landing__setup {
+  width: 100%;
+}
+
+.training-landing__setup-card.ant-card,
+.training-landing__preview-card.ant-card {
+  height: 100%;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 144, 118, 0.26);
+  background:
+    linear-gradient(180deg, rgba(32, 14, 15, 0.9), rgba(20, 9, 10, 0.88)),
+    radial-gradient(circle at top right, rgba(170, 31, 24, 0.2), transparent 54%);
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.36),
+    inset 0 0 48px rgba(148, 30, 24, 0.16);
+}
+
+.training-landing__setup-card.ant-card .ant-card-body,
+.training-landing__preview-card.ant-card .ant-card-body {
+  height: 100%;
+  padding: clamp(18px, 2.2vw, 28px);
+}
+
+.training-landing__setup-title.ant-typography,
+.training-landing__preview-title.ant-typography {
+  margin-bottom: 6px;
+  color: #ffe9df;
+}
+
+.training-landing__setup-tip.ant-typography,
+.training-landing__preview-tip.ant-typography {
+  color: rgba(255, 218, 206, 0.84);
+  margin-bottom: 16px;
+}
+
+.training-landing__setup-section {
+  margin-top: 14px;
+}
+
+.training-landing__setup-section h3 {
+  margin: 0 0 10px;
+  color: #ffe9df;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.training-landing__identity-group .ant-radio-wrapper {
+  color: rgba(255, 224, 214, 0.92);
+}
+
+.training-landing__image-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.training-landing__image-card {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(255, 142, 119, 0.24);
+  border-radius: 14px;
+  background: rgba(54, 20, 21, 0.56);
+  color: #ffe9df;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.training-landing__image-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 158, 132, 0.44);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.26);
+}
+
+.training-landing__image-card strong {
+  font-size: 15px;
+}
+
+.training-landing__image-card span {
+  color: rgba(255, 210, 197, 0.82);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.training-landing__image-card--active {
+  border-color: rgba(255, 176, 148, 0.66);
+  background: linear-gradient(180deg, rgba(130, 33, 28, 0.52), rgba(83, 20, 18, 0.54));
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.28),
+    inset 0 0 18px rgba(255, 129, 102, 0.12);
+}
+
+.training-landing__meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.training-landing__meta-grid .ant-input {
+  border-color: rgba(255, 144, 118, 0.3);
+  background: rgba(27, 11, 12, 0.86);
+  color: #ffece4;
+}
+
+.training-landing__meta-grid .ant-input::placeholder {
+  color: rgba(255, 199, 180, 0.56);
+}
+
+.training-landing__setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.training-landing__back.ant-btn {
+  border-color: rgba(255, 146, 121, 0.32);
+  color: #ffe8df;
+  background: linear-gradient(180deg, rgba(76, 20, 21, 0.88), rgba(50, 12, 13, 0.86));
+}
+
+.training-landing__confirm.ant-btn {
+  border-color: rgba(255, 176, 150, 0.38);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(180, 44, 36, 0.95) 0%,
+      rgba(118, 23, 22, 0.96) 56%,
+      rgba(78, 14, 14, 0.97) 100%
+    );
+  color: #fff2eb;
+}
+
+.training-landing__preview {
+  width: 100%;
+}
+
+.training-landing__preview-stage {
+  position: relative;
+  overflow: hidden;
+  width: min(560px, 100%);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid rgba(255, 150, 126, 0.24);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(33, 14, 15, 0.92), rgba(20, 8, 9, 0.9)),
+    radial-gradient(circle at center, rgba(170, 31, 24, 0.14), transparent 64%);
+}
+
+.training-landing__preview-slot {
+  aspect-ratio: 9 / 16;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 150, 126, 0.28);
+  border-radius: 12px;
+  background: rgba(23, 10, 11, 0.82);
+  overflow: hidden;
+}
+
+.training-landing__preview-skeleton.ant-skeleton.ant-skeleton-element {
+  width: 100%;
+  height: 100%;
+}
+
+.training-landing__preview-skeleton.ant-skeleton.ant-skeleton-element .ant-skeleton-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+.training-landing__preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.training-landing__preview-placeholder {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  text-align: center;
+  color: rgba(255, 218, 206, 0.88);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.training-landing__preview-placeholder p {
+  margin: 0;
+}
+
+.training-landing__preview-summary {
+  width: min(560px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: 12px;
+  display: grid;
+  gap: 4px;
+  color: rgba(255, 218, 206, 0.86);
+  font-size: 13px;
+}
+
+.training-landing__preview-summary p {
+  margin: 0;
+}
+
+.training-landing__preview-alert {
+  margin-top: 14px;
+}
+
+.training-landing__preview-actions {
+  width: min(560px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.training-landing__preview-generate.ant-btn {
+  border-color: rgba(255, 176, 150, 0.38);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(180, 44, 36, 0.95) 0%,
+      rgba(118, 23, 22, 0.96) 56%,
+      rgba(78, 14, 14, 0.97) 100%
+    );
+  color: #fff2eb;
+}
+
+.training-landing__alert {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  width: min(760px, calc(100% - 26px));
+}
+
+@media (max-width: 1280px) {
+  .training-landing__content {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .training-landing {
+    padding: 16px 12px 18px;
+  }
+
+  .training-landing__content {
+    width: 100%;
+    gap: 12px;
+  }
+
+  .training-landing__restore-card {
+    width: 100%;
+    padding: 12px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .training-landing__image-grid,
+  .training-landing__meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .training-landing__setup-actions {
+    justify-content: stretch;
+  }
+
+  .training-landing__back.ant-btn,
+  .training-landing__confirm.ant-btn {
+    flex: 1;
+  }
+
+  .training-landing__preview-stage {
+    gap: 10px;
+    padding: 8px;
+  }
+}

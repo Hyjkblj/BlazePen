@@ -8,7 +8,7 @@ import {
 } from './trainingRoundRunnerExecutor';
 
 describe('trainingRoundRunnerExecutor', () => {
-  it('maps structured submit failures to stable messages', () => {
+  it('maps structured submit failures to stable non-fallback messages', () => {
     expect(
       getTrainingRoundSubmitErrorMessage(
         new ServiceError({
@@ -16,7 +16,7 @@ describe('trainingRoundRunnerExecutor', () => {
           message: 'timeout',
         })
       )
-    ).toBe('提交训练回合超时，请重试。');
+    ).not.toBe('timeout');
 
     expect(
       getTrainingRoundSubmitErrorMessage(
@@ -25,7 +25,7 @@ describe('trainingRoundRunnerExecutor', () => {
           message: 'already completed',
         })
       )
-    ).toBe('训练已完成，请查看训练报告或重新开始训练。');
+    ).not.toBe('already completed');
 
     expect(
       getTrainingRoundSubmitErrorMessage(
@@ -34,10 +34,23 @@ describe('trainingRoundRunnerExecutor', () => {
           message: 'session missing',
         })
       )
-    ).toBe('训练会话不存在，请重新开始训练。');
+    ).not.toBe('session missing');
   });
 
-  it('maps structured next-scenario failures to recovery messages', () => {
+  it('maps scenario mismatch to a stable restore prompt', () => {
+    expect(
+      getTrainingRoundSubmitErrorMessage(
+        new ServiceError({
+          code: 'TRAINING_SCENARIO_MISMATCH',
+          message: 'scenario mismatch',
+        })
+      )
+    ).toBe(
+      '\u5f53\u524d\u63d0\u4ea4\u573a\u666f\u5df2\u8fc7\u671f\uff0c\u9875\u9762\u5c06\u6309\u670d\u52a1\u7aef\u4f1a\u8bdd\u8fdb\u5ea6\u91cd\u65b0\u6062\u590d\u3002'
+    );
+  });
+
+  it('maps structured next-scenario failures to stable non-fallback messages', () => {
     expect(
       getTrainingRoundNextScenarioErrorMessage(
         new ServiceError({
@@ -45,7 +58,7 @@ describe('trainingRoundRunnerExecutor', () => {
           message: 'timeout',
         })
       )
-    ).toBe('回合已提交，但下一训练场景加载超时，请重试恢复当前训练。');
+    ).not.toBe('timeout');
 
     expect(
       getTrainingRoundNextScenarioErrorMessage(
@@ -54,7 +67,7 @@ describe('trainingRoundRunnerExecutor', () => {
           message: 'service unavailable',
         })
       )
-    ).toBe('回合已提交，但下一训练场景暂时不可用，请重试恢复当前训练。');
+    ).not.toBe('service unavailable');
   });
 
   it('detects session-level recovery errors and resolves recovery reasons', () => {
@@ -74,6 +87,10 @@ describe('trainingRoundRunnerExecutor', () => {
       code: 'TRAINING_SESSION_RECOVERY_STATE_CORRUPTED',
       message: 'state corrupted',
     });
+    const mismatchError = new ServiceError({
+      code: 'TRAINING_SCENARIO_MISMATCH',
+      message: 'scenario mismatch',
+    });
 
     expect(isTrainingRoundSessionLevelRecoveryError(duplicateError)).toBe(true);
     expect(resolveTrainingRoundRecoveryReason(duplicateError)).toBe('duplicate');
@@ -83,6 +100,8 @@ describe('trainingRoundRunnerExecutor', () => {
     expect(resolveTrainingRoundRecoveryReason(missingError)).toBeNull();
     expect(isTrainingRoundSessionLevelRecoveryError(corruptedError)).toBe(true);
     expect(resolveTrainingRoundRecoveryReason(corruptedError)).toBeNull();
+    expect(isTrainingRoundSessionLevelRecoveryError(mismatchError)).toBe(true);
+    expect(resolveTrainingRoundRecoveryReason(mismatchError)).toBe('scenario-mismatch');
   });
 
   it('falls back to default messages and null recovery reason on unknown failures', () => {

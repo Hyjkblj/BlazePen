@@ -193,6 +193,7 @@ describe('useTrainingRoundRunner', () => {
     ['TRAINING_SESSION_COMPLETED', 'completed'],
     ['TRAINING_SESSION_NOT_FOUND', null],
     ['TRAINING_SESSION_RECOVERY_STATE_CORRUPTED', null],
+    ['TRAINING_SCENARIO_MISMATCH', 'scenario-mismatch'],
   ] as const)(
     'restores the current session when submit hits session-level error %s',
     async (errorCode, expectedRecoveryReason) => {
@@ -277,7 +278,7 @@ describe('useTrainingRoundRunner', () => {
     expect(transition).toBeNull();
     expect(result.current.runner.status).toBe('error');
     expect(result.current.runner.errorMessage).toBe(
-      '训练已完成，请查看训练报告或重新开始训练。'
+      '\u8bad\u7ec3\u5df2\u5b8c\u6210\uff0c\u8bf7\u67e5\u770b\u8bad\u7ec3\u62a5\u544a\u6216\u91cd\u65b0\u5f00\u59cb\u8bad\u7ec3\u3002'
     );
   });
 
@@ -326,7 +327,7 @@ describe('useTrainingRoundRunner', () => {
     });
     expect(result.current.runner.status).toBe('error');
     expect(result.current.runner.errorMessage).toBe(
-      '回合已提交，但下一训练场景加载超时，请重试恢复当前训练。'
+      '\u56de\u5408\u5df2\u63d0\u4ea4\uff0c\u4f46\u4e0b\u4e00\u8bad\u7ec3\u573a\u666f\u52a0\u8f7d\u8d85\u65f6\uff0c\u8bf7\u91cd\u8bd5\u6062\u590d\u5f53\u524d\u8bad\u7ec3\u3002'
     );
     expect(readTrainingResumeTarget()).toMatchObject({
       sessionId: 'training-session-active',

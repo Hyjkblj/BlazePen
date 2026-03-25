@@ -28,6 +28,21 @@ class GameService:
         {
             "from_story_service_bundle",
             "compatibility_facade_methods",
+            "compatibility_exit_conditions",
+            "init_game",
+            "initialize_story",
+            "submit_story_turn",
+            "check_ending",
+            "get_story_session_snapshot",
+            "list_story_sessions",
+            "get_story_history",
+            "get_story_ending_summary",
+            "trigger_ending",
+            "normalize_story_turn_payload",
+        }
+    )
+    _REMOVE_AFTER_STORY_ROUTER_CUTOVER = frozenset(
+        {
             "init_game",
             "initialize_story",
             "submit_story_turn",
@@ -88,6 +103,21 @@ class GameService:
         """Return the allowed compatibility facade surface during PR-BE-SPLIT-04."""
 
         return set(cls._COMPATIBILITY_FACADE_METHODS)
+
+    @classmethod
+    def compatibility_exit_conditions(cls) -> dict[str, object]:
+        """Return GameService removal contract for PR-BE-SPLIT-04 closeout.
+
+        Exit trigger:
+        - story routers no longer call GameService facade methods
+        - story routers call story domain services directly via dependency wiring
+        """
+
+        return {
+            "migration_trigger": "story_routers_direct_story_domain_services",
+            "retain_during_split": set(cls._COMPATIBILITY_FACADE_METHODS),
+            "remove_after_router_cutover": set(cls._REMOVE_AFTER_STORY_ROUTER_CUTOVER),
+        }
 
     def init_game(
         self,

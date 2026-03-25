@@ -18,10 +18,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import models.story  # noqa: F401 - register story models on Base.metadata
-from api.dependencies import get_game_service
+from api.dependencies import get_story_service_bundle
 from api.middleware.error_handler import install_common_exception_handlers
 from api.routers import game
-from api.services.game_service import GameService
 from api.services.game_session import GameSessionManager
 from models.character import Base, Character
 from story.story_asset_service import StoryAssetService
@@ -256,7 +255,7 @@ class StoryRouteSqliteSmokeTestCase(unittest.TestCase):
         self.story_history_service = StoryHistoryService(
             session_manager=self.session_manager,
         )
-        self.game_service = GameService(
+        self.story_service_bundle = SimpleNamespace(
             story_asset_service=self.asset_service,
             story_session_service=self.story_session_service,
             story_turn_service=self.story_turn_service,
@@ -267,7 +266,9 @@ class StoryRouteSqliteSmokeTestCase(unittest.TestCase):
         self.app = FastAPI()
         install_common_exception_handlers(self.app)
         self.app.include_router(game.router, prefix="/api")
-        self.app.dependency_overrides[get_game_service] = lambda: self.game_service
+        self.app.dependency_overrides[get_story_service_bundle] = (
+            lambda: self.story_service_bundle
+        )
         self.client = TestClient(self.app)
 
     def tearDown(self):

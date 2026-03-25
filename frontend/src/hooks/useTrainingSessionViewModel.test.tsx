@@ -5,6 +5,7 @@ import type { ActiveTrainingSessionState } from '@/contexts';
 import type { TrainingResumeTarget } from '@/storage/trainingSessionCache';
 import { describe, expect, it } from 'vitest';
 import {
+  buildTrainingSessionViewFromInit,
   buildTrainingSessionViewFromSummary,
   resolveTrainingSessionRestoreIdentity,
   resolveTrainingSessionWorkspaceSeed,
@@ -92,6 +93,26 @@ describe('useTrainingSessionViewModel', () => {
     expect(sessionView.progressAnchor?.progressPercent).toBe(33.3);
   });
 
+  it('uses canonical characterId from training init payload when building session view', () => {
+    const initView = buildTrainingSessionViewFromInit({
+      sessionId: 'training-session-init',
+      characterId: '66',
+      trainingMode: 'guided',
+      status: 'initialized',
+      roundNo: 0,
+      runtimeState: createRuntimeState('scenario-init', 0),
+      nextScenario: createScenario('scenario-init', 'Init Scenario'),
+      scenarioCandidates: [],
+    });
+
+    expect(initView).toMatchObject({
+      sessionId: 'training-session-init',
+      characterId: '66',
+      trainingMode: 'guided',
+      status: 'initialized',
+    });
+  });
+
   it('prefers the current session view when resolving a manual restore target', () => {
     const sessionView = buildTrainingSessionViewFromSummary(
       createSummary('training-session-1')
@@ -158,6 +179,40 @@ describe('useTrainingSessionViewModel', () => {
       autoRestoreSessionId: 'training-session-active',
       preferredTrainingMode: 'adaptive',
       preferredCharacterId: '42',
+    });
+  });
+
+  it('prefers explicit sessionId over activeSession when building workspace seed', () => {
+    const activeSession: ActiveTrainingSessionState = {
+      sessionId: 'training-session-active',
+      trainingMode: 'adaptive',
+      characterId: '42',
+      status: 'in_progress',
+      roundNo: 1,
+      totalRounds: 6,
+      runtimeState: createRuntimeState('scenario-active', 1),
+    };
+    const resumeTarget: TrainingResumeTarget = {
+      sessionId: 'training-session-stale',
+      trainingMode: 'guided',
+      characterId: '11',
+      status: 'in_progress',
+      timestamp: 1711092000000,
+    };
+
+    expect(
+      resolveTrainingSessionWorkspaceSeed({
+        explicitSessionId: 'training-session-explicit',
+        sessionView: null,
+        activeSession,
+        resumeTarget,
+      })
+    ).toEqual({
+      currentSessionId: 'training-session-explicit',
+      currentSessionSource: 'explicit',
+      autoRestoreSessionId: 'training-session-explicit',
+      preferredTrainingMode: 'guided',
+      preferredCharacterId: '11',
     });
   });
 

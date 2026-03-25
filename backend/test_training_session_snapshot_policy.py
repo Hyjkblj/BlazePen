@@ -165,6 +165,38 @@ class SessionScenarioSnapshotPolicyTestCase(unittest.TestCase):
 
         self.assertIsNone(payload)
 
+    def test_read_session_snapshots_should_backfill_legacy_briefing_field_without_mutating_session_meta(self):
+        session = SimpleNamespace(
+            session_id="s-legacy-briefing",
+            session_meta={
+                "scenario_payload_sequence": [
+                    {
+                        "id": "S1",
+                        "title": "卢沟桥",
+                        "briefing": "legacy sequence briefing",
+                    }
+                ],
+                "scenario_payload_catalog": [
+                    {
+                        "id": "S1",
+                        "title": "卢沟桥",
+                        "briefing": "legacy catalog briefing",
+                    }
+                ],
+            },
+        )
+
+        bundle = self.policy.read_session_snapshots(session=session)
+
+        self.assertEqual(bundle.scenario_payload_sequence[0]["brief"], "legacy sequence briefing")
+        self.assertNotIn("briefing", bundle.scenario_payload_sequence[0])
+        self.assertEqual(bundle.scenario_payload_catalog[0]["brief"], "legacy catalog briefing")
+        self.assertNotIn("briefing", bundle.scenario_payload_catalog[0])
+
+        # Read path must stay pure and avoid mutating persisted session facts in-memory.
+        self.assertIn("briefing", session.session_meta["scenario_payload_sequence"][0])
+        self.assertIn("briefing", session.session_meta["scenario_payload_catalog"][0])
+
 
 if __name__ == "__main__":
     unittest.main()

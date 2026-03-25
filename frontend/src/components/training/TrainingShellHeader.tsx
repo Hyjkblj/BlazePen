@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom';
+import { Button, Space, Typography } from 'antd';
+import { useNavigate } from 'react-router-dom';
 import {
   ROUTES,
   buildTrainingDiagnosticsRoute,
@@ -32,34 +33,48 @@ function TrainingShellHeader({
   insightSessionId,
   onClearWorkspace,
 }: TrainingShellHeaderProps) {
+  const navigate = useNavigate();
+
   return (
     <>
       <div className="training-shell__eyebrow">PR-07</div>
       <h1 className="training-shell__title">Training Frontend MVP</h1>
-      <p className="training-shell__description">
-        训练主线通过独立 `sessionId` 驱动。初始化、回合提交、刷新恢复都收口到训练专用
-        `services / hooks / flow`，页面层不直接兼容后端脏字段，也不复用 story 会话实现。
-      </p>
+      <Typography.Paragraph className="training-shell__description">
+        训练主线通过独立 <code>sessionId</code> 驱动。初始化、回合提交、刷新恢复都收口到训练专用
+        <code>services / hooks / flow</code>，页面层不直接兼容后端脏字段，也不复用 story 会话实现。
+      </Typography.Paragraph>
 
-      <div className="training-shell__actions">
-        <Link className="training-shell__link" to={ROUTES.HOME}>
+      <Space className="training-shell__actions" wrap>
+        <Button
+          className="training-shell__link"
+          type="primary"
+          onClick={() => {
+            navigate(ROUTES.HOME);
+          }}
+        >
           返回首页
-        </Link>
+        </Button>
         {hasInsightEntry ? (
-          <button className="training-shell__clear-button" type="button" onClick={onClearWorkspace}>
+          <Button className="training-shell__clear-button" onClick={onClearWorkspace}>
             清空训练入口
-          </button>
+          </Button>
         ) : null}
-      </div>
+      </Space>
 
       {hasInsightEntry ? (
-        <div className="training-shell__subnav" aria-label="训练结果导航">
+        <Space className="training-shell__subnav" wrap aria-label="训练结果导航">
           {insightLinks(insightSessionId).map((item) => (
-            <Link key={item.label} className="training-shell__subnav-link" to={item.to}>
+            <Button
+              key={item.label}
+              className="training-shell__subnav-link"
+              onClick={() => {
+                navigate(item.to);
+              }}
+            >
               {item.label}
-            </Link>
+            </Button>
           ))}
-        </div>
+        </Space>
       ) : null}
     </>
   );

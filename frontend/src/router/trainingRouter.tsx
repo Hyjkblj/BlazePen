@@ -5,6 +5,8 @@ import { ROUTES } from '@/config/routes';
 import { createRuntimeRouter, renderLazyPage } from './routerUtils';
 
 const Training = lazy(() => import('@/pages/Training'));
+const TrainingMainHomePage = lazy(() => import('@/pages/TrainingMainHomePage'));
+const TrainingLandingPage = lazy(() => import('@/pages/TrainingLandingPage'));
 const TrainingProgress = lazy(() => import('@/pages/TrainingProgress'));
 const TrainingReport = lazy(() => import('@/pages/TrainingReport'));
 const TrainingDiagnostics = lazy(() => import('@/pages/TrainingDiagnostics'));
@@ -17,6 +19,14 @@ const routes = [
     children: [
       { index: true, element: <Navigate to={ROUTES.TRAINING} replace /> },
       { path: 'training', element: renderLazyPage(Training, 'training-main') },
+      {
+        path: 'training/mainhome',
+        element: renderLazyPage(TrainingMainHomePage, 'training-mainhome'),
+      },
+      {
+        path: 'training/landing',
+        element: renderLazyPage(TrainingLandingPage, 'training-landing'),
+      },
       {
         path: 'training/progress',
         element: renderLazyPage(TrainingProgress, 'training-progress'),

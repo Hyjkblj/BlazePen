@@ -98,6 +98,27 @@ class TrainingAuditEventRecord:
 
 
 @dataclass(slots=True)
+class TrainingMediaTaskRecord:
+    """Stable read model for training media task persistence."""
+
+    task_id: str
+    session_id: str
+    round_no: int | None
+    task_type: str
+    status: str
+    idempotency_key: str
+    request_payload: Dict[str, Any] = field(default_factory=dict)
+    result_payload: Dict[str, Any] | None = None
+    error_payload: Dict[str, Any] | None = None
+    retry_count: int = 0
+    max_retries: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+@dataclass(slots=True)
 class KtObservationRecord:
     """KT 结构化观测的稳定读取模型。"""
 
@@ -154,6 +175,47 @@ class TrainingStoreProtocol(Protocol):
     def update_training_session(self, session_id: str, updates: dict) -> TrainingSessionRecord | None:
         ...
 
+    def create_media_task(
+        self,
+        *,
+        session_id: str,
+        round_no: int | None,
+        task_type: str,
+        idempotency_key: str,
+        request_payload: dict,
+        max_retries: int = 0,
+    ) -> TrainingMediaTaskRecord:
+        ...
+
+    def get_media_task(self, task_id: str) -> TrainingMediaTaskRecord | None:
+        ...
+
+    def get_media_task_by_idempotency_key(self, idempotency_key: str) -> TrainingMediaTaskRecord | None:
+        ...
+
+    def update_media_task(self, task_id: str, updates: dict) -> TrainingMediaTaskRecord | None:
+        ...
+
+    def list_media_tasks(self, session_id: str, round_no: int | None = None) -> List[TrainingMediaTaskRecord]:
+        ...
+
+    def list_media_tasks_by_status(self, statuses: List[str]) -> List[TrainingMediaTaskRecord]:
+        ...
+
+    def claim_media_task(self, task_id: str) -> TrainingMediaTaskRecord | None:
+        ...
+
+    def complete_media_task(
+        self,
+        task_id: str,
+        *,
+        status: str,
+        result_payload: dict | None = None,
+        error_payload: dict | None = None,
+        retry_count: int | None = None,
+    ) -> TrainingMediaTaskRecord | None:
+        ...
+
     def get_training_rounds(self, session_id: str) -> List[TrainingRoundRecord]:
         ...
 
@@ -193,6 +255,7 @@ class TrainingStoreProtocol(Protocol):
         recommendation_log_payload: dict | None = None,
         audit_event_payloads: List[dict] | None = None,
         kt_observation_payload: dict | None = None,
+        media_task_specs: List[dict] | None = None,
     ) -> TrainingRoundRecord:
         ...
 
@@ -312,6 +375,68 @@ class DatabaseTrainingStore:
         row = self.storage_backend.update_training_session(session_id, updates)
         return self._to_training_session_record(row)
 
+    def create_media_task(
+        self,
+        *,
+        session_id: str,
+        round_no: int | None,
+        task_type: str,
+        idempotency_key: str,
+        request_payload: dict,
+        max_retries: int = 0,
+    ) -> TrainingMediaTaskRecord:
+        row = self.storage_backend.create_media_task(
+            session_id=session_id,
+            round_no=round_no,
+            task_type=task_type,
+            idempotency_key=idempotency_key,
+            request_payload=request_payload,
+            max_retries=max_retries,
+        )
+        return self._to_training_media_task_record(row)
+
+    def get_media_task(self, task_id: str) -> TrainingMediaTaskRecord | None:
+        row = self.storage_backend.get_media_task(task_id)
+        return self._to_training_media_task_record(row)
+
+    def get_media_task_by_idempotency_key(self, idempotency_key: str) -> TrainingMediaTaskRecord | None:
+        row = self.storage_backend.get_media_task_by_idempotency_key(idempotency_key)
+        return self._to_training_media_task_record(row)
+
+    def update_media_task(self, task_id: str, updates: dict) -> TrainingMediaTaskRecord | None:
+        row = self.storage_backend.update_media_task(task_id, updates)
+        return self._to_training_media_task_record(row)
+
+    def list_media_tasks(self, session_id: str, round_no: int | None = None) -> List[TrainingMediaTaskRecord]:
+        rows = self.storage_backend.list_media_tasks(session_id=session_id, round_no=round_no)
+        return [self._to_training_media_task_record(row) for row in rows]
+
+    def list_media_tasks_by_status(self, statuses: List[str]) -> List[TrainingMediaTaskRecord]:
+        rows = self.storage_backend.list_media_tasks_by_status(statuses=statuses)
+        return [self._to_training_media_task_record(row) for row in rows]
+
+    def claim_media_task(self, task_id: str) -> TrainingMediaTaskRecord | None:
+        row = self.storage_backend.claim_media_task(task_id)
+        return self._to_training_media_task_record(row)
+
+    def complete_media_task(
+        self,
+        task_id: str,
+        *,
+        status: str,
+        result_payload: dict | None = None,
+        error_payload: dict | None = None,
+        retry_count: int | None = None,
+    ) -> TrainingMediaTaskRecord | None:
+        row = self.storage_backend.complete_media_task(
+            task_id,
+            status=status,
+            result_payload=result_payload,
+            error_payload=error_payload,
+            retry_count=retry_count,
+        )
+        return self._to_training_media_task_record(row)
+
     def get_training_rounds(self, session_id: str) -> List[TrainingRoundRecord]:
         return [self._to_training_round_record(row) for row in self.storage_backend.get_training_rounds(session_id)]
 
@@ -353,6 +478,7 @@ class DatabaseTrainingStore:
         recommendation_log_payload: dict | None = None,
         audit_event_payloads: List[dict] | None = None,
         kt_observation_payload: dict | None = None,
+        media_task_specs: List[dict] | None = None,
     ) -> TrainingRoundRecord:
         # 兼容旧版自定义存储后端：如果底层方法还没跟上新增可选参数，只传它能识别的字段。
         row = self._call_storage_backend_method(
@@ -376,6 +502,7 @@ class DatabaseTrainingStore:
             recommendation_log_payload=recommendation_log_payload,
             audit_event_payloads=audit_event_payloads,
             kt_observation_payload=kt_observation_payload,
+            media_task_specs=media_task_specs,
         )
         return self._to_training_round_record(row)
 
@@ -536,6 +663,36 @@ class DatabaseTrainingStore:
             round_no=getattr(row, "round_no", None),
             payload=dict(getattr(row, "payload", {}) or {}),
             created_at=getattr(row, "created_at", None),
+        )
+
+    def _to_training_media_task_record(self, row: Any) -> TrainingMediaTaskRecord | None:
+        """Convert storage rows into stable media task records."""
+        if row is None:
+            return None
+        return TrainingMediaTaskRecord(
+            task_id=str(getattr(row, "task_id", "")),
+            session_id=str(getattr(row, "session_id", "")),
+            round_no=getattr(row, "round_no", None),
+            task_type=str(getattr(row, "task_type", "")),
+            status=str(getattr(row, "status", "")),
+            idempotency_key=str(getattr(row, "idempotency_key", "")),
+            request_payload=dict(getattr(row, "request_payload", {}) or {}),
+            result_payload=(
+                dict(getattr(row, "result_payload", {}) or {})
+                if getattr(row, "result_payload", None) is not None
+                else None
+            ),
+            error_payload=(
+                dict(getattr(row, "error_payload", {}) or {})
+                if getattr(row, "error_payload", None) is not None
+                else None
+            ),
+            retry_count=int(getattr(row, "retry_count", 0) or 0),
+            max_retries=int(getattr(row, "max_retries", 0) or 0),
+            created_at=getattr(row, "created_at", None),
+            updated_at=getattr(row, "updated_at", None),
+            started_at=getattr(row, "started_at", None),
+            finished_at=getattr(row, "finished_at", None),
         )
 
     def _to_kt_observation_record(self, row: Any) -> KtObservationRecord | None:

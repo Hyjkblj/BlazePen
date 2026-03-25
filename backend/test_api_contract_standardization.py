@@ -381,7 +381,7 @@ class _FakeTrainingService:
             "ending": None,
         }
 
-    def submit_round(self, session_id, scenario_id, user_input, selected_option=None):
+    def submit_round(self, session_id, scenario_id, user_input, selected_option=None, media_tasks=None):
         if scenario_id == "S999":
             raise TrainingScenarioMismatchError(
                 submitted_scenario_id=scenario_id,

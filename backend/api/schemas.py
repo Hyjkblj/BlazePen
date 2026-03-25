@@ -1,5 +1,5 @@
-"""API数据模型（Pydantic Schemas）"""
-from typing import Optional, Dict, Any, List
+﻿"""API数据模型（Pydantic Schemas）"""
+from typing import Optional, Dict, Any, List, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -406,12 +406,66 @@ class TrainingScenarioNextResponse(BaseModel):
     ending: Optional[Dict[str, Any]] = None
 
 
+class TrainingRoundSubmitMediaTaskRequest(_StrictTrainingRequestModel):
+    """Inline media task payload for submit-round transactional writes."""
+
+    task_type: Literal["image", "tts", "text"] = Field(..., description="media task type")
+    payload: Dict[str, Any] = Field(default_factory=dict, description="task payload")
+    max_retries: int = Field(0, ge=0, description="max retry count")
+
+
 class TrainingRoundSubmitRequest(_StrictTrainingRequestModel):
     """提交训练回合请求"""
     session_id: str = Field(..., description="训练会话ID")
     scenario_id: str = Field(..., description="场景ID")
     user_input: str = Field(..., description="用户输入")
     selected_option: Optional[str] = Field(None, description="所选选项编码（可选）")
+    media_tasks: List[TrainingRoundSubmitMediaTaskRequest] = Field(
+        default_factory=list,
+        description="optional media tasks created with this round submit",
+    )
+
+
+class TrainingMediaTaskCreateRequest(_StrictTrainingRequestModel):
+    """Create training media task request."""
+
+    session_id: str = Field(..., description="training session id")
+    round_no: Optional[int] = Field(None, ge=0, description="optional round number")
+    task_type: Literal["image", "tts", "text"] = Field(..., description="media task type")
+    payload: Dict[str, Any] = Field(default_factory=dict, description="task payload")
+    idempotency_key: Optional[str] = Field(None, description="optional idempotency key")
+    max_retries: int = Field(0, ge=0, description="max retry count")
+
+
+class TrainingMediaTaskResponse(BaseModel):
+    """Training media task response DTO."""
+
+    task_id: str
+    session_id: str
+    round_no: Optional[int] = None
+    task_type: str
+    status: str
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[Dict[str, Any]] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+
+
+class TrainingMediaTaskListResponse(BaseModel):
+    """Training media task list response DTO."""
+
+    session_id: str
+    items: List[TrainingMediaTaskResponse] = Field(default_factory=list)
+
+
+class TrainingRoundSubmitMediaTaskSummaryResponse(BaseModel):
+    """Submit-round media task summary."""
+
+    task_id: str
+    task_type: str
+    status: str
 
 
 class TrainingRoundSubmitResponse(BaseModel):
@@ -424,6 +478,7 @@ class TrainingRoundSubmitResponse(BaseModel):
     player_profile: Optional[TrainingPlayerProfileResponse] = None
     runtime_state: Optional[TrainingRuntimeStateResponse] = None
     consequence_events: List[TrainingConsequenceEventResponse] = Field(default_factory=list)
+    media_tasks: List[TrainingRoundSubmitMediaTaskSummaryResponse] = Field(default_factory=list)
     is_completed: bool
     ending: Optional[Dict[str, Any]] = None
     decision_context: Optional[TrainingRoundDecisionContextResponse] = None
@@ -612,6 +667,18 @@ class TrainingRoundSubmitApiResponse(ApiResponse):
     data: Optional[TrainingRoundSubmitResponse] = None
 
 
+class TrainingMediaTaskApiResponse(ApiResponse):
+    """Training media task API response envelope."""
+
+    data: Optional[TrainingMediaTaskResponse] = None
+
+
+class TrainingMediaTaskListApiResponse(ApiResponse):
+    """Training media task list API response envelope."""
+
+    data: Optional[TrainingMediaTaskListResponse] = None
+
+
 class TrainingProgressApiResponse(ApiResponse):
     """训练进度接口响应包装"""
     data: Optional[TrainingProgressResponse] = None
@@ -637,3 +704,7 @@ class TrainingReportApiResponse(ApiResponse):
 class TrainingDiagnosticsApiResponse(ApiResponse):
     """训练诊断接口响应包装"""
     data: Optional[TrainingDiagnosticsResponse] = None
+
+
+
+

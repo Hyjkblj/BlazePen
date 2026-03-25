@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTrainingMediaTaskFeed } from '@/hooks/useTrainingMediaTaskFeed';
 import { useTrainingRoundRunner } from '@/hooks/useTrainingRoundRunner';
 import { useTrainingSessionBootstrap } from '@/hooks/useTrainingSessionBootstrap';
 import {
@@ -15,6 +16,8 @@ import type {
   TrainingEvaluation,
   TrainingMode,
   TrainingPlayerProfileInput,
+  TrainingRoundSubmitMediaTaskInput,
+  TrainingRoundSubmitMediaTaskSummary,
   TrainingRoundDecisionContext,
   TrainingScenario,
 } from '@/types/training';
@@ -35,8 +38,16 @@ export interface TrainingRoundOutcomeView {
   evaluation: TrainingEvaluation;
   consequenceEvents: TrainingConsequenceEvent[];
   decisionContext: TrainingRoundDecisionContext | null;
+  mediaTasks: TrainingRoundSubmitMediaTaskSummary[];
   ending: Record<string, unknown> | null;
   isCompleted: boolean;
+}
+
+export interface TrainingRoundMediaTaskDraft {
+  enableImage: boolean;
+  enableTts: boolean;
+  enableText: boolean;
+  prompt: string;
 }
 
 const TRAINING_MODE_LABELS: Record<TrainingMode, string> = {
@@ -97,6 +108,55 @@ const resolveSelectedOptionLabel = (
   return selectedOption?.label?.trim() || null;
 };
 
+const buildRoundSubmitMediaTasks = ({
+  draft,
+  scenarioId,
+  userInput,
+}: {
+  draft: TrainingRoundMediaTaskDraft;
+  scenarioId: string;
+  userInput: string;
+}): TrainingRoundSubmitMediaTaskInput[] => {
+  const sharedPrompt = trimToNull(draft.prompt) ?? userInput;
+  const mediaTasks: TrainingRoundSubmitMediaTaskInput[] = [];
+
+  if (draft.enableImage) {
+    mediaTasks.push({
+      taskType: 'image',
+      payload: {
+        prompt: sharedPrompt,
+        scenario_id: scenarioId,
+      },
+      maxRetries: 1,
+    });
+  }
+
+  if (draft.enableTts) {
+    mediaTasks.push({
+      taskType: 'tts',
+      payload: {
+        text: userInput,
+        prompt: sharedPrompt,
+        scenario_id: scenarioId,
+      },
+      maxRetries: 1,
+    });
+  }
+
+  if (draft.enableText) {
+    mediaTasks.push({
+      taskType: 'text',
+      payload: {
+        prompt: sharedPrompt,
+        scenario_id: scenarioId,
+      },
+      maxRetries: 1,
+    });
+  }
+
+  return mediaTasks;
+};
+
 export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
   const bootstrap = useTrainingSessionBootstrap();
   const roundRunner = useTrainingRoundRunner({
@@ -115,6 +175,12 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
   const [sessionView, setSessionView] = useState<TrainingSessionViewState | null>(null);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [responseInput, setResponseInput] = useState('');
+  const [mediaTaskDraft, setMediaTaskDraft] = useState<TrainingRoundMediaTaskDraft>({
+    enableImage: false,
+    enableTts: false,
+    enableText: false,
+    prompt: '',
+  });
   const [latestOutcome, setLatestOutcome] = useState<TrainingRoundOutcomeView | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const autoRestoreSessionIdRef = useRef<string | null>(null);
@@ -123,6 +189,11 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     sessionView,
     activeSession: bootstrap.activeSession,
     resumeTarget: bootstrap.resumeTarget,
+  });
+  const mediaTaskFeed = useTrainingMediaTaskFeed({
+    sessionId: sessionView?.sessionId ?? null,
+    roundNo: latestOutcome?.roundNo ?? null,
+    seedTasks: latestOutcome?.mediaTasks,
   });
 
   const restoreSessionView = useCallback(
@@ -200,6 +271,19 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     }));
   }, []);
 
+  const updateMediaTaskDraft = useCallback(
+    <K extends keyof TrainingRoundMediaTaskDraft>(
+      field: K,
+      value: TrainingRoundMediaTaskDraft[K]
+    ) => {
+      setMediaTaskDraft((current) => ({
+        ...current,
+        [field]: value,
+      }));
+    },
+    []
+  );
+
   const clearWorkspace = useCallback(() => {
     bootstrap.clearTrainingSession();
     roundRunner.dismissError();
@@ -207,6 +291,12 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     setLatestOutcome(null);
     setSelectedOptionId(null);
     setResponseInput('');
+    setMediaTaskDraft({
+      enableImage: false,
+      enableTts: false,
+      enableText: false,
+      prompt: '',
+    });
     setNoticeMessage(null);
     autoRestoreSessionIdRef.current = null;
   }, [bootstrap, roundRunner]);
@@ -257,10 +347,17 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     roundRunner.dismissError();
     setNoticeMessage(null);
 
+    const mediaTasks = buildRoundSubmitMediaTasks({
+      draft: mediaTaskDraft,
+      scenarioId: sessionView.currentScenario.id,
+      userInput,
+    });
+
     const transition = await roundRunner.submitRound({
       scenarioId: sessionView.currentScenario.id,
       userInput,
       selectedOption: selectedOptionId,
+      mediaTasks,
     });
 
     if (!transition) {
@@ -268,14 +365,21 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     }
 
     if (transition.submitResult) {
+      const submitMediaTasks = transition.submitResult.mediaTasks ?? [];
       setLatestOutcome({
         roundNo: transition.submitResult.roundNo,
         evaluation: transition.submitResult.evaluation,
         consequenceEvents: transition.submitResult.consequenceEvents,
         decisionContext: transition.submitResult.decisionContext,
+        mediaTasks: submitMediaTasks,
         ending: transition.submitResult.ending,
         isCompleted: transition.submitResult.isCompleted,
       });
+      if (submitMediaTasks.length > 0) {
+        setNoticeMessage(
+          `本轮已创建 ${submitMediaTasks.length} 个媒体任务，正在后台处理中。`
+        );
+      }
     } else {
       setLatestOutcome(null);
     }
@@ -311,7 +415,7 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
       setSessionView(buildBlockedTrainingSessionView(sessionView, transition.submitResult));
       setNoticeMessage('\u56de\u5408\u5df2\u63d0\u4ea4\uff0c\u8bf7\u91cd\u8bd5\u6062\u590d\u5f53\u524d\u8bad\u7ec3\u4f1a\u8bdd\u3002');
     }
-  }, [bootstrap, responseInput, roundRunner, selectedOptionId, sessionView]);
+  }, [bootstrap, mediaTaskDraft, responseInput, roundRunner, selectedOptionId, sessionView]);
 
   const submissionPreview = useMemo(
     () => resolveSelectedOptionLabel(sessionView?.currentScenario ?? null, selectedOptionId),
@@ -332,6 +436,8 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     setTrainingMode,
     formDraft,
     updateFormDraft,
+    mediaTaskDraft,
+    updateMediaTaskDraft,
     startTraining,
     retryRestore,
     clearWorkspace,
@@ -343,6 +449,13 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     responseInput,
     setResponseInput,
     submissionPreview,
+    mediaTasks: mediaTaskFeed.tasks,
+    mediaTaskFeedStatus: mediaTaskFeed.status,
+    mediaTaskFeedErrorMessage: mediaTaskFeed.errorMessage,
+    isPollingMediaTasks: mediaTaskFeed.isPolling,
+    refreshMediaTasks: () => {
+      void mediaTaskFeed.refresh();
+    },
     canStartTraining: bootstrap.status !== 'starting',
     canSubmitRound:
       Boolean(sessionView?.currentScenario) &&

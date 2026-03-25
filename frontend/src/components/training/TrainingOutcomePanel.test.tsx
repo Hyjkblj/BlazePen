@@ -69,7 +69,16 @@ const latestOutcome = {
 
 describe('TrainingOutcomePanel', () => {
   it('renders decision context and consequence details for latest outcome', () => {
-    render(<TrainingOutcomePanel latestOutcome={latestOutcome} />);
+    render(
+      <TrainingOutcomePanel
+        latestOutcome={latestOutcome}
+        mediaTasks={[]}
+        mediaTaskFeedStatus="idle"
+        mediaTaskFeedErrorMessage={null}
+        isPollingMediaTasks={false}
+        refreshMediaTasks={() => undefined}
+      />
+    );
 
     expect(screen.getByText('Latest Round Outcome')).toBeTruthy();
     expect(screen.getByText('confirmed timeline')).toBeTruthy();
@@ -80,8 +89,60 @@ describe('TrainingOutcomePanel', () => {
   });
 
   it('renders empty state when no latest outcome exists', () => {
-    render(<TrainingOutcomePanel latestOutcome={null} />);
+    render(
+      <TrainingOutcomePanel
+        latestOutcome={null}
+        mediaTasks={[]}
+        mediaTaskFeedStatus="idle"
+        mediaTaskFeedErrorMessage={null}
+        isPollingMediaTasks={false}
+        refreshMediaTasks={() => undefined}
+      />
+    );
 
     expect(screen.getByText('The latest submitted outcome will appear here.')).toBeTruthy();
+  });
+
+  it('renders normalized media task fields without relying on raw payload json', () => {
+    render(
+      <TrainingOutcomePanel
+        latestOutcome={latestOutcome}
+        mediaTasks={[
+          {
+            taskId: 'task-1',
+            sessionId: 'session-1',
+            roundNo: 2,
+            taskType: 'image',
+            status: 'succeeded',
+            createdAt: null,
+            updatedAt: null,
+            previewUrl: 'https://example.com/image.png',
+            audioUrl: null,
+            generatedText: null,
+            errorMessage: null,
+          },
+          {
+            taskId: 'task-2',
+            sessionId: 'session-1',
+            roundNo: 2,
+            taskType: 'text',
+            status: 'failed',
+            createdAt: null,
+            updatedAt: null,
+            previewUrl: null,
+            audioUrl: null,
+            generatedText: null,
+            errorMessage: 'provider timeout',
+          },
+        ]}
+        mediaTaskFeedStatus="ready"
+        mediaTaskFeedErrorMessage={null}
+        isPollingMediaTasks={false}
+        refreshMediaTasks={() => undefined}
+      />
+    );
+
+    expect(screen.getByText('https://example.com/image.png')).toBeTruthy();
+    expect(screen.getByText('provider timeout')).toBeTruthy();
   });
 });

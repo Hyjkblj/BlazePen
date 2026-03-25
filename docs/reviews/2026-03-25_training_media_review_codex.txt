@@ -1,0 +1,50 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+
+- [Major] frontend/src/flows/useTrainingMvpFlow.ts:193
+  问题：Latest Round Outcome 视图里的媒体任务 feed 只按 sessionId 拉取，没有把当前回合 roundNo 作为过滤条件传下去。
+  原因：这把“回合结果”状态和“会话级任务列表”状态混在了同一个 flow 里，破坏了 round-level 与 session-level 的职责边界。
+  影响：当前回合面板会混入历史回合任务，轮询状态也会被旧任务拖住；用户在恢复会话或进入下一轮后，看到的并不是真正“本轮结果”。
+  建议：要么把 latestOutcome.roundNo 传给 useTrainingMediaTaskFeed 做严格过滤，要么把媒体任务改成独立的会话级面板，不要挂在 Latest Round Outcome 下。
+
+- [Major] frontend/src/components/training/TrainingOutcomePanel.tsx:165
+  问题：页面直接 JSON.stringify 渲染后端返回的 result/error 原始 payload。
+  原因：这让页面层直接兼容 provider/后端脏字段，契约适配逻辑没有收敛在 services / hooks / view-model 层，违反了“页面不能直接兼容后端脏字段”的约束。
+  影响：后端或 provider 一旦调整返回结构，页面会直接退化；同时会把低层错误细节和不稳定字段暴露到 UI，后续难以维护和演进。
+  建议：在 trainingApi 或专门的 media-task view model 中把结果规范成稳定字段，例如 previewUrl / audioUrl / generatedText / errorMessage，页面只消费这些受控字段。
+
+## 后端 Findings
+- [Blocker] backend/api/services/training_media_task_service.py:57
+  问题：同一 session_id 下复用同一个 idempotency_key 时，服务会直接返回已有任务，即使新的 round_no / task_type / payload 已经变化。
+  原因：create_task() 只按 idempotency_key 查重，而 _assert_idempotent_task_scope() 仅校验 session_id，没有校验“是否为同一请求”的完整契约。
+  影响：客户端可能为一个新的媒体任务请求拿到旧任务的 task_id/status/result，导致任务与结果错绑，属于明确的契约破坏和一致性错误。
+  建议：把 round_no + task_type + canonical_payload 作为幂等一致性校验的一部分；只有完全同构的请求才能命中幂等返回，否则必须返回冲突错误而不是复用旧任务。
+
+- [Major] backend/training/media_task_executor.py:345
+  问题：所谓的任务超时是在 provider 调用返回后才检查，不能真正中断卡死的外部调用。
+  原因：_execute_task_once() 是同步调用 provider，再用耗时比较决定是否超时；如果 provider 本身挂住，线程会一直占着，超时逻辑根本不会触发。
+  影响：图片/TTS/文本任务一旦卡死，会长期停留在 running，并持续占满仅有的 worker，恢复依赖进程重启后的 recover_pending_tasks()，不具备实时可恢复性。
+  建议：把 provider 调用包进可超时的 future/worker 机制，或者迁移到外部任务队列并引入 lease/heartbeat 超时，而不是在同步返回后再补判。
+
+- [Major] backend/api/dependencies.py:143
+  问题：媒体任务执行器的初始化和 recover_pending_tasks() 恢复逻辑是在请求链路里惰性触发的。
+  原因：get_training_media_task_executor() 第一次被调用时会构造 provider 客户端，并同步扫描/恢复 pending、running 任务；而训练提交流程在成功返回前会走到这条路径。
+  影响：首次提交训练回合时会把 provider 初始化和积压任务恢复塞进同步热路径，直接放大接口延迟和失败面，违背“重任务不应无控制地塞进同步热路径”的要求。
+  建议：把执行器初始化与 backlog recovery 移到应用启动阶段或后台 warmup 任务中；请求路径只做 enqueue/dispatch，不承担恢复扫描。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：缺少 frontend/src/hooks/useTrainingMediaTaskFeed.ts 的用例，验证“只展示当前 roundNo 任务、不会混入历史轮次任务、静默轮询失败后状态如何收敛”。
+- 前端：缺少 frontend/src/components/training/TrainingOutcomePanel.test.tsx 的契约用例，验证页面不会直接依赖 provider 原始 result/error 结构。
+- 后端：缺少 backend/test_training_media_route_smoke.py 或对应 service test，覆盖“同一 session 复用相同 idempotency_key 但 round_no/task_type/payload 不同必须报冲突”。
+- 后端：缺少 backend/test_training_media_task_executor.py 的挂起场景测试，证明 provider 调用超过 task_timeout_seconds 时任务能真实超时并收敛，而不是等调用返回后才判定。
+
+## Review Summary
+- 这批改动把训练媒体任务从训练主链路中拆成了独立表和异步执行器，方向是对的，但还没有把契约和恢复模型收紧。
+- 前端没有阻塞合并的问题，但已经把“回合结果”与“会话任务”混成一层，并把 provider 原始 payload 直接泄漏到页面。
+- 后端存在一个明确的阻塞问题：媒体任务幂等只校验 session_id，会在同 session 错绑不同请求。
+- 除此之外，执行器的超时实现并不真实，且首次请求会承担执行器初始化和 backlog recovery。
+- 已运行测试：python -m pytest backend/test_training_media_route_smoke.py backend/test_training_media_task_executor.py backend/test_training_media_task_policy.py backend/test_training_media_task_repository_store.py -q
+- 测试结果：14 passed。以上契约与恢复风险目前没有被测试覆盖。

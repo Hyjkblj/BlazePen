@@ -22,6 +22,9 @@ class DependencyWiringTestCase(unittest.TestCase):
         dependencies._tts_service = None
         dependencies._session_manager = None
         dependencies._training_service = None
+        dependencies._training_media_task_service = None
+        dependencies._training_media_task_executor = None
+        dependencies._training_media_task_executor_warmed_up = False
         dependencies._training_query_service = None
         dependencies._story_image_executor = None
         dependencies._story_session_query_policy = None
@@ -187,6 +190,19 @@ class DependencyWiringTestCase(unittest.TestCase):
         self.assertIs(cached_result, training_query_service)
         training_service_cls.assert_called_once_with()
         query_service_factory.assert_called_once_with(training_service)
+
+    def test_training_media_executor_recovery_should_run_only_in_warmup(self):
+        fake_executor = SimpleNamespace(
+            recover_pending_tasks=lambda: {"recovered": 2, "timed_out": 1},
+        )
+
+        with patch.object(dependencies, "get_training_media_task_executor", return_value=fake_executor) as getter:
+            first = dependencies.warmup_training_media_task_executor()
+            second = dependencies.warmup_training_media_task_executor()
+
+        self.assertEqual(first, {"recovered": 2, "timed_out": 1})
+        self.assertEqual(second, {"recovered": 0, "timed_out": 0})
+        getter.assert_called_once()
 
 
 class GameServiceCompositionTestCase(unittest.TestCase):

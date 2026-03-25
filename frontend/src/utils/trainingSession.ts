@@ -10,6 +10,8 @@ import type {
   TrainingEvaluationApiResponse,
   TrainingInitResponse,
   TrainingKtObservationApiResponse,
+  TrainingMediaTaskApiResponse,
+  TrainingMediaTaskListResponse,
   TrainingMetricObservationApiResponse,
   TrainingPlayerProfileApi,
   TrainingProgressResponse,
@@ -20,6 +22,7 @@ import type {
   TrainingReportResponse,
   TrainingReportSummaryApiResponse,
   TrainingRoundDecisionContextApiResponse,
+  TrainingRoundSubmitMediaTaskSummaryApiResponse,
   TrainingRoundSubmitResponse,
   TrainingRuntimeFlagsApiResponse,
   TrainingRuntimeStateApiResponse,
@@ -43,6 +46,9 @@ import type {
   TrainingEvaluation,
   TrainingInitResult,
   TrainingKtObservation,
+  TrainingMediaTaskListResult,
+  TrainingMediaTaskResult,
+  TrainingMediaTaskView,
   TrainingMetricObservation,
   TrainingMode,
   TrainingPlayerProfile,
@@ -54,6 +60,7 @@ import type {
   TrainingReportResult,
   TrainingReportSummary,
   TrainingRoundDecisionContext,
+  TrainingRoundSubmitMediaTaskSummary,
   TrainingRoundSubmitResult,
   TrainingRuntimeFlags,
   TrainingRuntimeState,
@@ -458,6 +465,143 @@ const normalizeTrainingConsequenceEvent = (
     relatedFlag: normalizeOptionalString(payload?.related_flag),
     stateBar: payload?.state_bar ? normalizeTrainingRuntimeStateBar(payload.state_bar) : null,
     payload: cloneRecord(payload?.payload),
+  };
+};
+
+const normalizeTrainingMediaTaskStatus = (
+  value: unknown
+): TrainingMediaTaskResult['status'] => {
+  const status = normalizeOptionalString(value)?.toLowerCase();
+  switch (status) {
+    case 'pending':
+    case 'running':
+    case 'succeeded':
+    case 'failed':
+    case 'timeout':
+      return status;
+    default:
+      return 'unknown';
+  }
+};
+
+export const normalizeTrainingMediaTaskPayload = (
+  payload: TrainingMediaTaskApiResponse | null | undefined
+): TrainingMediaTaskResult | null => {
+  const taskId = normalizeOptionalString(payload?.task_id);
+  const sessionId = normalizeOptionalString(payload?.session_id);
+  if (!taskId || !sessionId) {
+    return null;
+  }
+
+  return {
+    taskId,
+    sessionId,
+    roundNo: normalizeOptionalNumber(payload?.round_no),
+    taskType: normalizeOptionalString(payload?.task_type) ?? 'unknown',
+    status: normalizeTrainingMediaTaskStatus(payload?.status),
+    result: asRecord(payload?.result) ? cloneRecord(payload?.result) : null,
+    error: asRecord(payload?.error) ? cloneRecord(payload?.error) : null,
+    createdAt: normalizeOptionalString(payload?.created_at),
+    updatedAt: normalizeOptionalString(payload?.updated_at),
+    startedAt: normalizeOptionalString(payload?.started_at),
+    finishedAt: normalizeOptionalString(payload?.finished_at),
+  };
+};
+
+export const normalizeTrainingMediaTaskListPayload = (
+  payload: TrainingMediaTaskListResponse | null | undefined
+): TrainingMediaTaskListResult => ({
+  sessionId: normalizeOptionalString(payload?.session_id) ?? '',
+  items: Array.isArray(payload?.items)
+    ? payload.items
+        .map((item) => normalizeTrainingMediaTaskPayload(item))
+        .filter((item): item is TrainingMediaTaskResult => item !== null)
+    : [],
+});
+
+const readTaskStringField = (
+  source: Record<string, unknown> | null,
+  candidateKeys: string[]
+): string | null => {
+  if (!source) {
+    return null;
+  }
+
+  for (const key of candidateKeys) {
+    const value = normalizeOptionalString(source[key]);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+};
+
+const readTaskFirstStringFromArrayField = (
+  source: Record<string, unknown> | null,
+  candidateKeys: string[]
+): string | null => {
+  if (!source) {
+    return null;
+  }
+
+  for (const key of candidateKeys) {
+    const value = source[key];
+    if (!Array.isArray(value)) {
+      continue;
+    }
+
+    for (const item of value) {
+      const normalized = normalizeOptionalString(item);
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+
+  return null;
+};
+
+export const normalizeTrainingMediaTaskView = (task: TrainingMediaTaskResult): TrainingMediaTaskView => {
+  const previewUrl =
+    readTaskStringField(task.result, ['preview_url', 'image_url', 'url']) ??
+    readTaskFirstStringFromArrayField(task.result, ['image_urls', 'urls']);
+  const audioUrl = readTaskStringField(task.result, ['audio_url', 'speech_url', 'voice_url', 'url']);
+  const generatedText = readTaskStringField(task.result, ['generated_text', 'text', 'content', 'summary']);
+  const errorMessage =
+    readTaskStringField(task.error, ['message', 'reason', 'detail', 'error']) ??
+    (task.status === 'failed' || task.status === 'timeout' ? 'Media task failed.' : null);
+
+  return {
+    taskId: task.taskId,
+    sessionId: task.sessionId,
+    roundNo: task.roundNo,
+    taskType: task.taskType,
+    status: task.status,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+    previewUrl,
+    audioUrl,
+    generatedText,
+    errorMessage,
+  };
+};
+
+const normalizeTrainingRoundSubmitMediaTaskSummary = (
+  payload: TrainingRoundSubmitMediaTaskSummaryApiResponse | null | undefined
+): TrainingRoundSubmitMediaTaskSummary | null => {
+  const taskId = normalizeOptionalString(payload?.task_id);
+  if (!taskId) {
+    return null;
+  }
+
+  const taskType = normalizeOptionalString(payload?.task_type) ?? 'unknown';
+  const status = normalizeOptionalString(payload?.status) ?? 'unknown';
+
+  return {
+    taskId,
+    taskType,
+    status,
   };
 };
 
@@ -875,6 +1019,11 @@ export const normalizeTrainingRoundSubmitPayload = (
       ? payload.consequence_events
           .map((item) => normalizeTrainingConsequenceEvent(item))
           .filter((item): item is TrainingConsequenceEvent => item !== null)
+      : [],
+    mediaTasks: Array.isArray(payload?.media_tasks)
+      ? payload.media_tasks
+          .map((item) => normalizeTrainingRoundSubmitMediaTaskSummary(item))
+          .filter((item): item is TrainingRoundSubmitMediaTaskSummary => item !== null)
       : [],
     isCompleted: payload?.is_completed === true,
     ending: asRecord(payload?.ending) ? cloneRecord(payload?.ending) : null,

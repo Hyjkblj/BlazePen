@@ -144,6 +144,9 @@ export function useTrainingRoundRunner({
           scenarioId: params.scenarioId,
           userInput: params.userInput,
           selectedOption: params.selectedOption,
+          ...(Array.isArray(params.mediaTasks) && params.mediaTasks.length > 0
+            ? { mediaTasks: params.mediaTasks }
+            : {}),
         });
 
         syncSession(

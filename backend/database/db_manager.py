@@ -225,6 +225,38 @@ class DatabaseManager:
         """兼容旧调用：转发到训练域专用仓储。"""
         return self._get_training_repository().save_training_round_artifacts(*args, **kwargs)
 
+    def create_media_task(self, *args, **kwargs):
+        """Compatibility forwarder to training domain media task persistence."""
+        return self._get_training_repository().create_media_task(*args, **kwargs)
+
+    def get_media_task(self, *args, **kwargs):
+        """Compatibility forwarder to training domain media task persistence."""
+        return self._get_training_repository().get_media_task(*args, **kwargs)
+
+    def get_media_task_by_idempotency_key(self, *args, **kwargs):
+        """Compatibility forwarder to training domain media task persistence."""
+        return self._get_training_repository().get_media_task_by_idempotency_key(*args, **kwargs)
+
+    def update_media_task(self, *args, **kwargs):
+        """Compatibility forwarder to training domain media task persistence."""
+        return self._get_training_repository().update_media_task(*args, **kwargs)
+
+    def list_media_tasks(self, *args, **kwargs):
+        """Compatibility forwarder to training domain media task persistence."""
+        return self._get_training_repository().list_media_tasks(*args, **kwargs)
+
+    def list_media_tasks_by_status(self, *args, **kwargs):
+        """Compatibility forwarder to training domain media task persistence."""
+        return self._get_training_repository().list_media_tasks_by_status(*args, **kwargs)
+
+    def claim_media_task(self, *args, **kwargs):
+        """Compatibility forwarder to training domain media task persistence."""
+        return self._get_training_repository().claim_media_task(*args, **kwargs)
+
+    def complete_media_task(self, *args, **kwargs):
+        """Compatibility forwarder to training domain media task persistence."""
+        return self._get_training_repository().complete_media_task(*args, **kwargs)
+
     @staticmethod
     def _is_duplicate_round_conflict(exc: IntegrityError) -> bool:
         """保留旧静态方法入口，内部改用统一完整性识别工具。"""

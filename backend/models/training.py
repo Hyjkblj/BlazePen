@@ -205,6 +205,32 @@ class TrainingAuditEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class TrainingMediaTask(Base):
+    """Training media generation task lifecycle table."""
+
+    __tablename__ = "training_media_tasks"
+
+    task_id = Column(String(36), primary_key=True, default=_uuid_str)
+    session_id = Column(String(36), ForeignKey("training_sessions.session_id"), nullable=False, index=True)
+    round_no = Column(Integer, nullable=True)
+
+    task_type = Column(String(16), nullable=False)
+    status = Column(String(32), nullable=False, default="pending")
+    idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
+
+    request_payload = Column(JSON, nullable=False, default=dict)
+    result_payload = Column(JSON, nullable=True)
+    error_payload = Column(JSON, nullable=True)
+
+    retry_count = Column(Integer, nullable=False, default=0)
+    max_retries = Column(Integer, nullable=False, default=0)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+
 class KtObservation(Base):
     """KT 结构化观测表：沉淀每轮的关键训练事实，便于分析和诊断。"""
 

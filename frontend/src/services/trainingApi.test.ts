@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import httpClient, { getErrorData, getErrorStatus } from '@/services/httpClient';
 import {
+  createTrainingMediaTask,
+  getTrainingMediaTask,
   getTrainingDiagnostics,
   getNextTrainingScenario,
+  listTrainingMediaTasks,
   getTrainingProgress,
   getTrainingReport,
   getTrainingSessionSummary,
@@ -150,6 +153,36 @@ describe('trainingApi', () => {
           userInput: 'submit choice',
         }),
     ],
+    [
+      'TRAINING_MEDIA_TASK_INVALID',
+      400,
+      () =>
+        submitTrainingRound({
+          sessionId: 'session-1',
+          scenarioId: 'scenario-1',
+          userInput: 'submit choice',
+        }),
+    ],
+    [
+      'TRAINING_MEDIA_TASK_CONFLICT',
+      409,
+      () =>
+        submitTrainingRound({
+          sessionId: 'session-1',
+          scenarioId: 'scenario-1',
+          userInput: 'submit choice',
+        }),
+    ],
+    [
+      'TRAINING_MEDIA_TASK_UNSUPPORTED',
+      400,
+      () =>
+        submitTrainingRound({
+          sessionId: 'session-1',
+          scenarioId: 'scenario-1',
+          userInput: 'submit choice',
+        }),
+    ],
   ] as const)(
     'preserves backend training error code %s',
     async (backendErrorCode, status, executeRequest) => {
@@ -179,6 +212,202 @@ describe('trainingApi', () => {
       });
     }
   );
+
+  it('serializes submit media tasks and normalizes media task summary from backend response', async () => {
+    vi.mocked(httpClient.post).mockResolvedValueOnce({
+      session_id: 'training-session-submit',
+      round_no: 3,
+      runtime_state: {
+        current_round_no: 3,
+        current_scene_id: 'scenario-3',
+      },
+      evaluation: {},
+      consequence_events: [],
+      media_tasks: [
+        {
+          task_id: 'task-image-1',
+          task_type: 'image',
+          status: 'pending',
+        },
+      ],
+      is_completed: false,
+    });
+
+    const result = await submitTrainingRound({
+      sessionId: 'training-session-submit',
+      scenarioId: 'scenario-3',
+      userInput: 'submit choice',
+      mediaTasks: [
+        {
+          taskType: 'image',
+          payload: {
+            prompt: 'newspaper front page',
+          },
+          maxRetries: 2,
+        },
+      ],
+    });
+
+    expect(httpClient.post).toHaveBeenCalledWith(
+      '/v1/training/round/submit',
+      {
+        session_id: 'training-session-submit',
+        scenario_id: 'scenario-3',
+        user_input: 'submit choice',
+        media_tasks: [
+          {
+            task_type: 'image',
+            payload: {
+              prompt: 'newspaper front page',
+            },
+            max_retries: 2,
+          },
+        ],
+      },
+      { timeout: 90000 }
+    );
+    expect(result.mediaTasks).toEqual([
+      {
+        taskId: 'task-image-1',
+        taskType: 'image',
+        status: 'pending',
+      },
+    ]);
+  });
+
+  it('rejects invalid media task types before calling submit round API', async () => {
+    await expect(
+      submitTrainingRound({
+        sessionId: 'training-session-submit',
+        scenarioId: 'scenario-3',
+        userInput: 'submit choice',
+        mediaTasks: [
+          {
+            taskType: 'video' as unknown as 'image',
+          },
+        ],
+      })
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'media task type must be one of image, tts, text.',
+    });
+
+    expect(httpClient.post).not.toHaveBeenCalled();
+  });
+
+  it('creates training media task with canonical payload and returns normalized record', async () => {
+    vi.mocked(httpClient.post).mockResolvedValueOnce({
+      task_id: 'task-image-1',
+      session_id: 'training-session-submit',
+      round_no: 3,
+      task_type: 'image',
+      status: 'pending',
+      result: null,
+      error: null,
+      created_at: '2026-03-25T18:30:00Z',
+      updated_at: '2026-03-25T18:30:00Z',
+      started_at: null,
+      finished_at: null,
+    });
+
+    const result = await createTrainingMediaTask({
+      sessionId: 'training-session-submit',
+      roundNo: 3,
+      taskType: 'image',
+      payload: {
+        prompt: 'newspaper front page',
+      },
+      maxRetries: 1,
+    });
+
+    expect(httpClient.post).toHaveBeenCalledWith(
+      '/v1/training/media/tasks',
+      {
+        session_id: 'training-session-submit',
+        round_no: 3,
+        task_type: 'image',
+        payload: {
+          prompt: 'newspaper front page',
+        },
+        max_retries: 1,
+      },
+      { timeout: 60000 }
+    );
+    expect(result).toMatchObject({
+      taskId: 'task-image-1',
+      sessionId: 'training-session-submit',
+      roundNo: 3,
+      taskType: 'image',
+      status: 'pending',
+    });
+  });
+
+  it('lists training media tasks by session and optional round filter', async () => {
+    vi.mocked(httpClient.get).mockResolvedValueOnce({
+      session_id: 'training-session-submit',
+      items: [
+        {
+          task_id: 'task-image-1',
+          session_id: 'training-session-submit',
+          round_no: 3,
+          task_type: 'image',
+          status: 'running',
+        },
+      ],
+    });
+
+    const result = await listTrainingMediaTasks({
+      sessionId: 'training-session-submit',
+      roundNo: 3,
+    });
+
+    expect(httpClient.get).toHaveBeenCalledWith(
+      '/v1/training/media/sessions/training-session-submit/tasks',
+      {
+        timeout: 30000,
+        params: {
+          round_no: 3,
+        },
+      }
+    );
+    expect(result).toMatchObject({
+      sessionId: 'training-session-submit',
+      items: [
+        {
+          taskId: 'task-image-1',
+          roundNo: 3,
+          status: 'running',
+        },
+      ],
+    });
+  });
+
+  it('gets one training media task detail by task id', async () => {
+    vi.mocked(httpClient.get).mockResolvedValueOnce({
+      task_id: 'task-image-1',
+      session_id: 'training-session-submit',
+      round_no: 3,
+      task_type: 'image',
+      status: 'succeeded',
+      result: {
+        image_url: 'https://example.com/image.png',
+      },
+      error: null,
+    });
+
+    const result = await getTrainingMediaTask('task-image-1');
+
+    expect(httpClient.get).toHaveBeenCalledWith('/v1/training/media/tasks/task-image-1', {
+      timeout: 30000,
+    });
+    expect(result).toMatchObject({
+      taskId: 'task-image-1',
+      status: 'succeeded',
+      result: {
+        image_url: 'https://example.com/image.png',
+      },
+    });
+  });
 
   it('normalizes the training progress read model with canonical characterId', async () => {
     vi.mocked(httpClient.get).mockResolvedValueOnce({

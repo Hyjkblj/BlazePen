@@ -97,3 +97,92 @@ class DuplicateRoundSubmissionError(TrainingDomainError):
         super().__init__(f"duplicate round submission: session_id={session_id}, round_no={round_no}")
         self.session_id = session_id
         self.round_no = round_no
+
+
+class TrainingMediaTaskNotFoundError(TrainingDomainError):
+    """Training media task not found by task_id."""
+
+    def __init__(self, task_id: str):
+        super().__init__(f"training media task not found: {task_id}")
+        self.task_id = str(task_id or "").strip()
+
+
+class TrainingMediaTaskInvalidError(TrainingDomainError):
+    """Training media task request violates contract validation rules."""
+
+    def __init__(self, message: str, *, details: dict | None = None):
+        normalized_message = str(message or "").strip() or "invalid training media task request"
+        super().__init__(normalized_message)
+        self.details = dict(details or {})
+
+
+class TrainingMediaTaskUnsupportedError(TrainingDomainError):
+    """Training media task type is unsupported by the policy contract."""
+
+    def __init__(
+        self,
+        *,
+        task_type: str,
+        supported_task_types: list[str] | tuple[str, ...] | None = None,
+    ):
+        normalized_task_type = str(task_type or "").strip().lower()
+        normalized_supported = [
+            str(item).strip().lower()
+            for item in (supported_task_types or [])
+            if str(item).strip()
+        ]
+        supported_text = ",".join(normalized_supported) if normalized_supported else "image,tts,text"
+        display_task_type = normalized_task_type or "<empty>"
+        super().__init__(
+            f"unsupported training media task type: {display_task_type}; expected one of {supported_text}"
+        )
+        self.task_type = normalized_task_type
+        self.supported_task_types = normalized_supported
+
+
+class TrainingMediaTaskConflictError(TrainingDomainError):
+    """Training media idempotency key conflicts with a different request scope."""
+
+    def __init__(self, message: str, *, details: dict | None = None):
+        normalized_message = str(message or "").strip() or "training media task conflict"
+        super().__init__(normalized_message)
+        self.details = dict(details or {})
+
+
+class TrainingMediaProviderUnavailableError(TrainingDomainError):
+    """Underlying media provider is unavailable for requested task type."""
+
+    def __init__(self, *, task_type: str, provider: str | None = None):
+        normalized_task_type = str(task_type or "").strip().lower()
+        normalized_provider = str(provider or "").strip() or "unknown"
+        super().__init__(
+            f"training media provider unavailable: task_type={normalized_task_type}, provider={normalized_provider}"
+        )
+        self.task_type = normalized_task_type
+        self.provider = normalized_provider
+
+
+class TrainingMediaTaskExecutionFailedError(TrainingDomainError):
+    """Media task provider call failed for a non-timeout reason."""
+
+    def __init__(self, *, task_type: str, reason: str):
+        normalized_task_type = str(task_type or "").strip().lower()
+        normalized_reason = str(reason or "").strip() or "unknown execution failure"
+        super().__init__(
+            f"training media task execution failed: task_type={normalized_task_type}, reason={normalized_reason}"
+        )
+        self.task_type = normalized_task_type
+        self.reason = normalized_reason
+
+
+class TrainingMediaTaskTimeoutError(TrainingDomainError):
+    """Media task execution exceeded configured timeout budget."""
+
+    def __init__(self, *, task_type: str, timeout_seconds: float):
+        normalized_task_type = str(task_type or "").strip().lower()
+        normalized_timeout = max(float(timeout_seconds or 0.0), 0.0)
+        super().__init__(
+            f"training media task timeout: task_type={normalized_task_type}, timeout_seconds={normalized_timeout}"
+        )
+        self.task_type = normalized_task_type
+        self.timeout_seconds = normalized_timeout

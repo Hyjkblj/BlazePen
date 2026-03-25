@@ -393,11 +393,24 @@ export interface TrainingScenarioNextResponse extends GenericApiRecord {
   ending?: Record<string, unknown> | null;
 }
 
+export interface TrainingRoundSubmitMediaTaskRequest extends GenericApiRecord {
+  task_type: 'image' | 'tts' | 'text';
+  payload?: Record<string, unknown> | null;
+  max_retries?: number | string | null;
+}
+
+export interface TrainingRoundSubmitMediaTaskSummaryApiResponse extends GenericApiRecord {
+  task_id?: string;
+  task_type?: string;
+  status?: string;
+}
+
 export interface TrainingRoundSubmitRequest extends GenericApiRecord {
   session_id: string;
   scenario_id: string;
   user_input: string;
   selected_option?: string | null;
+  media_tasks?: TrainingRoundSubmitMediaTaskRequest[] | null;
 }
 
 export interface TrainingRoundSubmitResponse extends GenericApiRecord {
@@ -409,9 +422,38 @@ export interface TrainingRoundSubmitResponse extends GenericApiRecord {
   player_profile?: TrainingPlayerProfileApi | null;
   runtime_state?: TrainingRuntimeStateApiResponse | null;
   consequence_events?: TrainingConsequenceEventApiResponse[] | null;
+  media_tasks?: TrainingRoundSubmitMediaTaskSummaryApiResponse[] | null;
   is_completed?: boolean;
   ending?: Record<string, unknown> | null;
   decision_context?: TrainingRoundDecisionContextApiResponse | null;
+}
+
+export interface TrainingMediaTaskCreateRequest extends GenericApiRecord {
+  session_id: string;
+  round_no?: number | string | null;
+  task_type: 'image' | 'tts' | 'text';
+  payload?: Record<string, unknown> | null;
+  idempotency_key?: string | null;
+  max_retries?: number | string | null;
+}
+
+export interface TrainingMediaTaskApiResponse extends GenericApiRecord {
+  task_id?: string;
+  session_id?: string;
+  round_no?: number | string | null;
+  task_type?: string;
+  status?: string;
+  result?: Record<string, unknown> | null;
+  error?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+}
+
+export interface TrainingMediaTaskListResponse extends GenericApiRecord {
+  session_id?: string;
+  items?: TrainingMediaTaskApiResponse[] | null;
 }
 
 export interface TrainingProgressResponse extends GenericApiRecord {

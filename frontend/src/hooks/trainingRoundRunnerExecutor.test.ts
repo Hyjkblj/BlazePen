@@ -35,6 +35,33 @@ describe('trainingRoundRunnerExecutor', () => {
         })
       )
     ).not.toBe('session missing');
+
+    expect(
+      getTrainingRoundSubmitErrorMessage(
+        new ServiceError({
+          code: 'TRAINING_MEDIA_TASK_INVALID',
+          message: 'invalid media task',
+        })
+      )
+    ).not.toBe('invalid media task');
+
+    expect(
+      getTrainingRoundSubmitErrorMessage(
+        new ServiceError({
+          code: 'TRAINING_MEDIA_TASK_CONFLICT',
+          message: 'media task conflict',
+        })
+      )
+    ).not.toBe('media task conflict');
+
+    expect(
+      getTrainingRoundSubmitErrorMessage(
+        new ServiceError({
+          code: 'TRAINING_MEDIA_TASK_UNSUPPORTED',
+          message: 'unsupported media task',
+        })
+      )
+    ).not.toBe('unsupported media task');
   });
 
   it('maps scenario mismatch to a stable restore prompt', () => {

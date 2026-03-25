@@ -64,6 +64,30 @@ export const getTrainingRoundSubmitErrorMessage = (error: unknown): string => {
     return '\u5f53\u524d\u63d0\u4ea4\u573a\u666f\u5df2\u8fc7\u671f\uff0c\u9875\u9762\u5c06\u6309\u670d\u52a1\u7aef\u4f1a\u8bdd\u8fdb\u5ea6\u91cd\u65b0\u6062\u590d\u3002';
   }
 
+  if (isServiceError(error) && error.code === 'TRAINING_MEDIA_TASK_INVALID') {
+    return '\u5f53\u524d\u56de\u5408\u5305\u542b\u65e0\u6548\u5a92\u4f53\u4efb\u52a1\u914d\u7f6e\uff0c\u8bf7\u8c03\u6574\u540e\u91cd\u8bd5\u3002';
+  }
+
+  if (isServiceError(error) && error.code === 'TRAINING_MEDIA_TASK_CONFLICT') {
+    return '\u5f53\u524d\u5a92\u4f53\u4efb\u52a1\u8bf7\u6c42\u4e0e\u5df2\u6709\u5e42\u7b49\u8bb0\u5f55\u51b2\u7a81\uff0c\u8bf7\u66f4\u6362\u53c2\u6570\u540e\u91cd\u8bd5\u3002';
+  }
+
+  if (isServiceError(error) && error.code === 'TRAINING_MEDIA_TASK_UNSUPPORTED') {
+    return '\u5f53\u524d\u56de\u5408\u5305\u542b\u6682\u4e0d\u652f\u6301\u7684\u5a92\u4f53\u4efb\u52a1\u7c7b\u578b\uff0c\u8bf7\u8c03\u6574\u540e\u91cd\u8bd5\u3002';
+  }
+
+  if (isServiceError(error) && error.code === 'TRAINING_MEDIA_PROVIDER_UNAVAILABLE') {
+    return '\u5a92\u4f53\u751f\u6210\u670d\u52a1\u6682\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002';
+  }
+
+  if (isServiceError(error) && error.code === 'TRAINING_MEDIA_TASK_EXECUTION_FAILED') {
+    return '\u5a92\u4f53\u4efb\u52a1\u6267\u884c\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002';
+  }
+
+  if (isServiceError(error) && error.code === 'TRAINING_MEDIA_TASK_TIMEOUT') {
+    return '\u5a92\u4f53\u4efb\u52a1\u5904\u7406\u8d85\u65f6\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002';
+  }
+
   return getServiceErrorMessage(error, '\u63d0\u4ea4\u8bad\u7ec3\u56de\u5408\u5931\u8d25\u3002');
 };
 

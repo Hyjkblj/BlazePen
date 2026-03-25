@@ -33,7 +33,14 @@ function Training() {
     selectOption,
     responseInput,
     setResponseInput,
+    mediaTaskDraft,
+    updateMediaTaskDraft,
     submissionPreview,
+    mediaTasks,
+    mediaTaskFeedStatus,
+    mediaTaskFeedErrorMessage,
+    isPollingMediaTasks,
+    refreshMediaTasks,
     canSubmitRound,
     submitCurrentRound,
   } = flow;
@@ -182,6 +189,8 @@ function Training() {
             selectOption={selectOption}
             responseInput={responseInput}
             setResponseInput={setResponseInput}
+            mediaTaskDraft={mediaTaskDraft}
+            updateMediaTaskDraft={updateMediaTaskDraft}
             submissionPreview={submissionPreview}
             canSubmitRound={canSubmitRound}
             submitCurrentRound={() => {
@@ -193,7 +202,14 @@ function Training() {
             clearWorkspace={clearWorkspace}
             completedEnding={latestOutcome?.ending ?? null}
           />
-          <TrainingOutcomePanel latestOutcome={latestOutcome} />
+          <TrainingOutcomePanel
+            latestOutcome={latestOutcome}
+            mediaTasks={mediaTasks}
+            mediaTaskFeedStatus={mediaTaskFeedStatus}
+            mediaTaskFeedErrorMessage={mediaTaskFeedErrorMessage}
+            isPollingMediaTasks={isPollingMediaTasks}
+            refreshMediaTasks={refreshMediaTasks}
+          />
         </div>
       </section>
     </div>

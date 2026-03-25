@@ -69,6 +69,7 @@ const createSubmitResult = (
     llmRawText: null,
   },
   consequenceEvents: [],
+  mediaTasks: [],
   isCompleted: false,
   ending: null,
   decisionContext: null,

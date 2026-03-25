@@ -1,4 +1,4 @@
-"""训练服务（P2）：负责流程编排、状态更新与持久化调用。"""
+﻿"""训练服务（P2）：负责流程编排、状态更新与持久化调用。"""
 
 from __future__ import annotations
 
@@ -29,6 +29,7 @@ from training.round_flow_policy import TrainingRoundFlowPolicy
 from training.runtime_artifact_policy import TrainingRuntimeArtifactPolicy
 from training.runtime_events import RuntimeConsequenceEvent
 from training.runtime_state import GameRuntimeFlags, GameRuntimeState
+from training.media_task_policy import TrainingMediaTaskPolicy
 from training.scenario_policy import ScenarioPolicy
 from training.session_snapshot_policy import SessionScenarioSnapshotPolicy
 from training.training_outputs import (
@@ -45,6 +46,7 @@ from training.training_outputs import (
     TrainingReportOutput,
     TrainingRuntimeStateOutput,
     TrainingRoundDecisionContextOutput,
+    TrainingRoundMediaTaskSummaryOutput,
     TrainingRoundSubmitOutput,
     TrainingScenarioOutput,
     TrainingSessionProgressAnchorOutput,
@@ -53,7 +55,7 @@ from training.training_outputs import (
 from training.scenario_repository import ScenarioRepository
 from training.telemetry_policy import TrainingTelemetryPolicy
 from training.training_mode import TrainingModeCatalog
-from training.training_store import DatabaseTrainingStore, TrainingStoreProtocol
+from training.training_store import DatabaseTrainingStore, TrainingMediaTaskRecord, TrainingStoreProtocol
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -154,6 +156,7 @@ class TrainingService:
         round_transition_policy: TrainingRoundTransitionPolicy | None = None,
         output_assembler_policy: TrainingOutputAssemblerPolicy | None = None,
         report_context_policy: TrainingReportContextPolicy | None = None,
+        media_task_policy: TrainingMediaTaskPolicy | None = None,
         runtime_config: Any = None,
         query_service: "TrainingQueryService | None" = None,
     ):
@@ -217,6 +220,7 @@ class TrainingService:
             runtime_artifact_policy=self.runtime_artifact_policy,
             output_assembler_policy=self.output_assembler_policy,
         )
+        self.media_task_policy = media_task_policy or TrainingMediaTaskPolicy()
         resolved_round_runtime_artifact_policy = (
             self._resolve_injected_policy_dependency(
                 owner_name="round_transition_policy",
@@ -415,6 +419,7 @@ class TrainingService:
         scenario_id: str,
         user_input: str,
         selected_option: str | None = None,
+        media_tasks: List[Dict[str, Any]] | None = None,
     ) -> Dict[str, Any]:
         """提交单回合，并原子化保存本回合所有工件。"""
         session = self._get_session_or_raise(session_id)
@@ -437,6 +442,11 @@ class TrainingService:
         s_before = self._normalize_s_state(session.s_state)
         recent_risk_rounds = self._get_recent_risk_rounds(session_id)
         round_no = session.current_round_no + 1
+        normalized_media_task_specs = self._normalize_submit_round_media_tasks(
+            session_id=session_id,
+            round_no=round_no,
+            media_tasks=media_tasks,
+        )
 
         # 先基于当前上下文生成推荐结果，确保“前端看到的候选集”和“提交时回放的决策上下文”来自同一份数据。
         runtime_flags = self._resolve_session_runtime_flags(session)
@@ -590,10 +600,15 @@ class TrainingService:
                 recommendation_log_payload=recommendation_log_payload,
                 audit_event_payloads=audit_event_payloads,
                 kt_observation_payload=kt_observation_payload,
+                media_task_specs=normalized_media_task_specs,
             )
         except DuplicateRoundSubmissionError:
             # 并发重试命中唯一约束时，优先返回已落库结果，实现幂等体验。
-            existing = self._build_duplicate_submit_response(session_id=session_id, round_no=round_no)
+            existing = self._build_duplicate_submit_response(
+                session_id=session_id,
+                round_no=round_no,
+                include_media_tasks=bool(normalized_media_task_specs),
+            )
             if existing is not None:
                 logger.info(
                     "duplicate round submission idempotent hit: session_id=%s round_no=%s",
@@ -603,6 +618,11 @@ class TrainingService:
                 return existing
             raise DuplicateRoundSubmissionError(session_id=session_id, round_no=round_no)
 
+        round_media_tasks = (
+            self._list_round_media_tasks(session_id=session_id, round_no=round_no)
+            if normalized_media_task_specs
+            else []
+        )
         return TrainingRoundSubmitOutput(
             session_id=session_id,
             round_no=round_no,
@@ -614,6 +634,7 @@ class TrainingService:
             consequence_events=self._build_training_consequence_event_outputs(
                 consequence_result.consequence_events
             ),
+            media_tasks=self._build_round_media_task_summary_outputs(round_media_tasks),
             is_completed=is_completed,
             ending=ending_payload,
             decision_context=decision_context,
@@ -1064,7 +1085,13 @@ class TrainingService:
         """委托输出装配策略批量转换候选场景 DTO。"""
         return self.output_assembler_policy.build_scenario_output_list(payloads)
 
-    def _build_duplicate_submit_response(self, session_id: str, round_no: int) -> Dict[str, Any] | None:
+    def _build_duplicate_submit_response(
+        self,
+        session_id: str,
+        round_no: int,
+        *,
+        include_media_tasks: bool = False,
+    ) -> Dict[str, Any] | None:
         """从已落库数据构建幂等响应。"""
         round_row = self.training_store.get_training_round_by_session_round(session_id, round_no)
         if round_row is None:
@@ -1077,6 +1104,11 @@ class TrainingService:
         )
         evaluation_row = self.training_store.get_round_evaluation_by_round_id(round_row.round_id)
         ending_row = self.training_store.get_ending_result(session_id)
+        round_media_tasks = (
+            self._list_round_media_tasks(session_id=session_id, round_no=round_no)
+            if include_media_tasks
+            else []
+        )
 
         evaluation_payload = (
             evaluation_row.raw_payload
@@ -1117,6 +1149,7 @@ class TrainingService:
             player_profile=self._resolve_session_player_profile(session),
             runtime_state=self._extract_round_runtime_state(round_row.user_action),
             consequence_events=self._extract_round_consequence_events(round_row.user_action),
+            media_tasks=self._build_round_media_task_summary_outputs(round_media_tasks),
             is_completed=is_completed,
             ending=ending_row.report_payload if ending_row else None,
             decision_context=self._extract_round_decision_context(round_row.user_action),
@@ -1183,6 +1216,67 @@ class TrainingService:
                 branch_hints=branch_hints,
             )
         ]
+
+    def _normalize_submit_round_media_tasks(
+        self,
+        *,
+        session_id: str,
+        round_no: int,
+        media_tasks: List[Dict[str, Any]] | None,
+    ) -> List[dict]:
+        if not media_tasks:
+            return []
+
+        normalized_specs: List[dict] = []
+        seen_idempotency_keys: set[str] = set()
+        for item in media_tasks:
+            normalized_item = dict(item or {})
+            normalized_task = self.media_task_policy.normalize_create_request(
+                session_id=session_id,
+                round_no=round_no,
+                task_type=normalized_item.get("task_type"),
+                payload=dict(normalized_item.get("payload", {}) or {}),
+                idempotency_key=None,
+                max_retries=normalized_item.get("max_retries", 0),
+            )
+            if normalized_task.idempotency_key in seen_idempotency_keys:
+                continue
+            seen_idempotency_keys.add(normalized_task.idempotency_key)
+            normalized_specs.append(
+                {
+                    "task_type": normalized_task.task_type,
+                    "idempotency_key": normalized_task.idempotency_key,
+                    "request_payload": normalized_task.payload,
+                    "max_retries": normalized_task.max_retries,
+                }
+            )
+        return normalized_specs
+
+    def _list_round_media_tasks(self, *, session_id: str, round_no: int) -> List[TrainingMediaTaskRecord]:
+        try:
+            return self.training_store.list_media_tasks(session_id=session_id, round_no=round_no)
+        except (AttributeError, NotImplementedError):
+            logger.warning(
+                "training store does not support round media task reads: session_id=%s round_no=%s",
+                session_id,
+                round_no,
+            )
+            return []
+
+    @staticmethod
+    def _build_round_media_task_summary_outputs(
+        rows: List[TrainingMediaTaskRecord],
+    ) -> List[TrainingRoundMediaTaskSummaryOutput]:
+        outputs: List[TrainingRoundMediaTaskSummaryOutput] = []
+        for row in rows or []:
+            outputs.append(
+                TrainingRoundMediaTaskSummaryOutput(
+                    task_id=row.task_id,
+                    task_type=row.task_type,
+                    status=row.status,
+                )
+            )
+        return outputs
 
     def _resolve_previous_phase_snapshot(
         self,
@@ -1279,3 +1373,4 @@ class TrainingService:
     def _resolve_ending(self, k: Dict[str, float], s: Dict[str, float], evaluation_rows: List[Any]) -> Dict[str, Any]:
         # 保留兼容包装方法，实际规则由 EndingPolicy 承担。
         return self.ending_policy.resolve(k_state=k, s_state=s, evaluation_rows=evaluation_rows)
+

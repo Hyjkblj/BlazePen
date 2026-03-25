@@ -401,6 +401,40 @@
   font-weight: 700;
 }
 
+.training-shell__media-task-config {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.training-shell__media-task-switches {
+  gap: 8px;
+}
+
+.training-shell__media-task-panel {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(95, 65, 23, 0.18);
+}
+
+.training-shell__media-task-header {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.training-shell__media-task-header .ant-typography {
+  margin: 0;
+}
+
+.training-shell__media-task-item {
+  width: 100%;
+}
+
+.training-shell__media-task-detail {
+  margin: 6px 0 0;
+  word-break: break-word;
+}
+
 .training-shell__metric-list {
   margin: 0;
   padding-left: 18px;

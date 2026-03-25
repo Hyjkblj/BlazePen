@@ -18,6 +18,7 @@ from models.training import (
     RoundEvaluation,
     ScenarioRecommendationLog,
     TrainingAuditEvent,
+    TrainingMediaTask,
     TrainingRound,
     TrainingSession,
 )
@@ -136,6 +137,145 @@ class SqlAlchemyTrainingRepository:
             for key, value in updates.items():
                 if hasattr(row, key):
                     setattr(row, key, value)
+            session.flush()
+            return row
+
+    def create_media_task(
+        self,
+        *,
+        session_id: str,
+        round_no: int | None,
+        task_type: str,
+        idempotency_key: str,
+        request_payload: dict,
+        max_retries: int = 0,
+    ) -> TrainingMediaTask:
+        """Create a training media task row with idempotency protection."""
+        with self.get_session() as session:
+            row = TrainingMediaTask(
+                session_id=session_id,
+                round_no=round_no,
+                task_type=task_type,
+                status="pending",
+                idempotency_key=idempotency_key,
+                request_payload=request_payload or {},
+                retry_count=0,
+                max_retries=int(max_retries or 0),
+            )
+            session.add(row)
+            try:
+                session.flush()
+            except IntegrityError as exc:
+                if self._is_duplicate_media_task_conflict(exc):
+                    session.rollback()
+                    existing = (
+                        session.query(TrainingMediaTask)
+                        .filter(TrainingMediaTask.idempotency_key == idempotency_key)
+                        .first()
+                    )
+                    if existing is not None:
+                        return existing
+                raise
+            return row
+
+    def get_media_task(self, task_id: str) -> TrainingMediaTask | None:
+        """Read a training media task by task_id."""
+        with self.get_session() as session:
+            return session.query(TrainingMediaTask).filter(TrainingMediaTask.task_id == task_id).first()
+
+    def get_media_task_by_idempotency_key(self, idempotency_key: str) -> TrainingMediaTask | None:
+        """Read a training media task by idempotency key."""
+        with self.get_session() as session:
+            return (
+                session.query(TrainingMediaTask)
+                .filter(TrainingMediaTask.idempotency_key == idempotency_key)
+                .first()
+            )
+
+    def update_media_task(self, task_id: str, updates: dict) -> TrainingMediaTask | None:
+        """Update mutable fields for a media task row."""
+        with self.get_session() as session:
+            row = session.query(TrainingMediaTask).filter(TrainingMediaTask.task_id == task_id).first()
+            if row is None:
+                return None
+
+            for key, value in (updates or {}).items():
+                if hasattr(row, key):
+                    setattr(row, key, value)
+            row.updated_at = datetime.utcnow()
+            session.flush()
+            return row
+
+    def list_media_tasks(self, session_id: str, round_no: int | None = None) -> list[TrainingMediaTask]:
+        """List media tasks in a training session, optionally filtered by round."""
+        with self.get_session() as session:
+            query = session.query(TrainingMediaTask).filter(TrainingMediaTask.session_id == session_id)
+            if round_no is not None:
+                query = query.filter(TrainingMediaTask.round_no == round_no)
+            return query.order_by(TrainingMediaTask.created_at.asc()).all()
+
+    def list_media_tasks_by_status(self, statuses: list[str]) -> list[TrainingMediaTask]:
+        """List media tasks by statuses across sessions."""
+        normalized_statuses = [
+            str(item).strip().lower()
+            for item in statuses or []
+            if str(item).strip()
+        ]
+        if not normalized_statuses:
+            return []
+
+        with self.get_session() as session:
+            return (
+                session.query(TrainingMediaTask)
+                .filter(TrainingMediaTask.status.in_(normalized_statuses))
+                .order_by(TrainingMediaTask.created_at.asc())
+                .all()
+            )
+
+    def claim_media_task(self, task_id: str) -> TrainingMediaTask | None:
+        """Claim a pending media task using a compare-and-set style transition."""
+        with self.get_session() as session:
+            row = (
+                session.query(TrainingMediaTask)
+                .filter(
+                    TrainingMediaTask.task_id == task_id,
+                    TrainingMediaTask.status == "pending",
+                )
+                .first()
+            )
+            if row is None:
+                return None
+
+            now = datetime.utcnow()
+            row.status = "running"
+            row.started_at = row.started_at or now
+            row.updated_at = now
+            session.flush()
+            return row
+
+    def complete_media_task(
+        self,
+        task_id: str,
+        *,
+        status: str,
+        result_payload: dict | None = None,
+        error_payload: dict | None = None,
+        retry_count: int | None = None,
+    ) -> TrainingMediaTask | None:
+        """Mark a media task as completed/failed/timeout with result payloads."""
+        with self.get_session() as session:
+            row = session.query(TrainingMediaTask).filter(TrainingMediaTask.task_id == task_id).first()
+            if row is None:
+                return None
+
+            now = datetime.utcnow()
+            row.status = status
+            row.result_payload = result_payload
+            row.error_payload = error_payload
+            if retry_count is not None:
+                row.retry_count = int(retry_count)
+            row.finished_at = now
+            row.updated_at = now
             session.flush()
             return row
 
@@ -275,6 +415,7 @@ class SqlAlchemyTrainingRepository:
         recommendation_log_payload: dict = None,
         audit_event_payloads: list[dict] = None,
         kt_observation_payload: dict = None,
+        media_task_specs: list[dict] | None = None,
     ) -> TrainingRound:
         """以原子方式持久化单回合全部工件。"""
         normalized = RoundEvaluationPayload.from_raw(evaluation_payload)
@@ -381,7 +522,47 @@ class SqlAlchemyTrainingRepository:
                     payload=normalized_kt_observation,
                 )
 
-            session.flush()
+            created_media_tasks: list[TrainingMediaTask] = []
+            for media_task_spec in media_task_specs or []:
+                task_type = str((media_task_spec or {}).get("task_type") or "").strip().lower()
+                idempotency_key = str((media_task_spec or {}).get("idempotency_key") or "").strip()
+                if not task_type or not idempotency_key:
+                    continue
+
+                created_media_tasks.append(
+                    self._create_media_task_row(
+                        session=session,
+                        session_id=session_id,
+                        round_no=round_no,
+                        task_type=task_type,
+                        idempotency_key=idempotency_key,
+                        request_payload=dict((media_task_spec or {}).get("request_payload", {}) or {}),
+                        max_retries=int((media_task_spec or {}).get("max_retries", 0) or 0),
+                    )
+                )
+
+            for media_task_row in created_media_tasks:
+                self._create_training_audit_event_row(
+                    session=session,
+                    session_id=session_id,
+                    event_type="training_media_task_enqueued",
+                    round_no=round_no,
+                    payload={
+                        "route": "training.submit_round",
+                        "session_id": session_id,
+                        "round_no": round_no,
+                        "task_id": media_task_row.task_id,
+                        "task_type": media_task_row.task_type,
+                        "status": media_task_row.status,
+                    },
+                )
+
+            try:
+                session.flush()
+            except IntegrityError as exc:
+                if self._is_duplicate_media_task_conflict(exc):
+                    raise DuplicateRoundSubmissionError(session_id=session_id, round_no=round_no) from exc
+                raise
             return round_row
 
     @staticmethod
@@ -393,6 +574,18 @@ class SqlAlchemyTrainingRepository:
             fallback_token_groups=(
                 ("training_rounds", "round_no", "session_id"),
                 ("duplicate key", "training_rounds"),
+            ),
+        )
+
+    @staticmethod
+    def _is_duplicate_media_task_conflict(exc: IntegrityError) -> bool:
+        """Detect duplicate idempotency_key conflicts for media tasks."""
+        return is_unique_constraint_conflict(
+            exc,
+            constraint_name="uq_training_media_tasks_idempotency_key",
+            fallback_token_groups=(
+                ("training_media_tasks", "idempotency_key"),
+                ("duplicate key", "training_media_tasks"),
             ),
         )
 
@@ -594,6 +787,45 @@ class SqlAlchemyTrainingRepository:
             event_type=event_type,
             round_no=round_no,
             payload=payload or {},
+        )
+        session.add(row)
+        return row
+
+    def _create_media_task_row(
+        self,
+        *,
+        session: Session,
+        session_id: str,
+        round_no: int,
+        task_type: str,
+        idempotency_key: str,
+        request_payload: dict,
+        max_retries: int = 0,
+    ) -> TrainingMediaTask:
+        """Create submit-round media task row inside the current transaction."""
+        existing = (
+            session.query(TrainingMediaTask)
+            .filter(TrainingMediaTask.idempotency_key == idempotency_key)
+            .first()
+        )
+        if existing is not None:
+            if (
+                str(existing.session_id) == str(session_id)
+                and int(existing.round_no or 0) == int(round_no)
+                and str(existing.task_type) == str(task_type)
+            ):
+                return existing
+            raise DuplicateRoundSubmissionError(session_id=session_id, round_no=round_no)
+
+        row = TrainingMediaTask(
+            session_id=session_id,
+            round_no=round_no,
+            task_type=task_type,
+            status="pending",
+            idempotency_key=idempotency_key,
+            request_payload=request_payload or {},
+            retry_count=0,
+            max_retries=int(max_retries or 0),
         )
         session.add(row)
         return row

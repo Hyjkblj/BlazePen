@@ -752,6 +752,7 @@ class _FakeDbManager:
         recommendation_log_payload=None,
         audit_event_payloads=None,
         kt_observation_payload=None,
+        media_task_specs=None,
     ):
         # 与生产路径保持一致：一次调用写入回合/评估/快照/会话更新。
         round_row = self.create_training_round(

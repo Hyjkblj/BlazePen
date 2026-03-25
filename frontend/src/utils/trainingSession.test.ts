@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   normalizeTrainingDiagnosticsPayload,
   normalizeTrainingInitPayload,
+  normalizeTrainingMediaTaskView,
   normalizeTrainingMode,
   normalizeTrainingProgressPayload,
   normalizeTrainingReportPayload,
@@ -198,6 +199,13 @@ describe('trainingSession normalizers', () => {
           },
         },
       ],
+      media_tasks: [
+        {
+          task_id: 'task-image-1',
+          task_type: 'image',
+          status: 'pending',
+        },
+      ],
       is_completed: false,
     });
 
@@ -216,6 +224,13 @@ describe('trainingSession normalizers', () => {
         payload: {
           channel: 'mailbox',
         },
+      },
+    ]);
+    expect(submitResult.mediaTasks).toEqual([
+      {
+        taskId: 'task-image-1',
+        taskType: 'image',
+        status: 'pending',
       },
     ]);
 
@@ -270,6 +285,32 @@ describe('trainingSession normalizers', () => {
       },
       decisionContext: null,
       consequenceEvents: [],
+    });
+  });
+
+  it('maps raw media task payloads into stable UI-facing fields', () => {
+    const taskView = normalizeTrainingMediaTaskView({
+      taskId: 'task-1',
+      sessionId: 'session-1',
+      roundNo: 2,
+      taskType: 'image',
+      status: 'succeeded',
+      result: {
+        image_urls: ['https://example.com/image-a.png'],
+      },
+      error: null,
+      createdAt: '2026-03-25T12:00:00Z',
+      updatedAt: '2026-03-25T12:00:00Z',
+      startedAt: null,
+      finishedAt: null,
+    });
+
+    expect(taskView).toMatchObject({
+      taskId: 'task-1',
+      previewUrl: 'https://example.com/image-a.png',
+      audioUrl: null,
+      generatedText: null,
+      errorMessage: null,
     });
   });
 

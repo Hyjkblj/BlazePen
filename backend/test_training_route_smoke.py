@@ -145,7 +145,87 @@ class TrainingRouteSqliteSmokeTestCase(unittest.TestCase):
         self.assertEqual(submit_payload["session_id"], session_id)
         self.assertEqual(submit_payload["round_no"], 1)
         self.assertEqual(submit_payload["decision_context"]["selected_scenario_id"], scenario_id)
+        self.assertEqual(submit_payload["media_tasks"], [])
         self.assertFalse(submit_payload["is_completed"])
+
+        progress_response = self.client.get(f"/api/v1/training/progress/{session_id}")
+        self.assertEqual(progress_response.status_code, 200)
+        progress_payload = progress_response.json()["data"]
+        self.assertEqual(progress_payload["session_id"], session_id)
+        self.assertEqual(progress_payload["round_no"], 1)
+        self.assertEqual(progress_payload["total_rounds"], 2)
+        self.assertEqual(progress_payload["decision_context"]["selected_scenario_id"], scenario_id)
+        self.assertIsInstance(progress_payload["consequence_events"], list)
+
+        summary_response = self.client.get(f"/api/v1/training/sessions/{session_id}")
+        self.assertEqual(summary_response.status_code, 200)
+        summary_payload = summary_response.json()["data"]
+        self.assertEqual(summary_payload["progress_anchor"]["progress_percent"], 50.0)
+        self.assertEqual(summary_payload["progress_anchor"]["next_round_no"], 2)
+        self.assertNotIn("briefing", summary_payload["resumable_scenario"])
+        self.assertNotIn("briefing", summary_payload["scenario_candidates"][0])
+
+        history_response = self.client.get(f"/api/v1/training/sessions/{session_id}/history")
+        self.assertEqual(history_response.status_code, 200)
+        history_payload = history_response.json()["data"]
+        self.assertEqual(history_payload["history"][0]["scenario_id"], scenario_id)
+        self.assertEqual(history_payload["progress_anchor"]["progress_percent"], 50.0)
+
+        report_response = self.client.get(f"/api/v1/training/report/{session_id}")
+        self.assertEqual(report_response.status_code, 200)
+        report_payload = report_response.json()["data"]
+        self.assertEqual(report_payload["history"][0]["scenario_id"], scenario_id)
+        self.assertEqual(report_payload["history"][0]["decision_context"]["selected_scenario_id"], scenario_id)
+
+        diagnostics_response = self.client.get(f"/api/v1/training/diagnostics/{session_id}")
+        self.assertEqual(diagnostics_response.status_code, 200)
+        diagnostics_payload = diagnostics_response.json()["data"]
+        self.assertEqual(diagnostics_payload["session_id"], session_id)
+        self.assertGreaterEqual(len(diagnostics_payload["audit_events"]), 1)
+        self.assertGreaterEqual(len(diagnostics_payload["recommendation_logs"]), 1)
+        self.assertGreaterEqual(len(diagnostics_payload["kt_observations"]), 1)
+
+    def test_submit_round_should_persist_media_tasks_within_round_transaction(self):
+        session_id, scenario_id = self._init_session(user_id="media-task-smoke-user")
+
+        submit_response = self.client.post(
+            "/api/v1/training/round/submit",
+            json={
+                "session_id": session_id,
+                "scenario_id": scenario_id,
+                "user_input": "Prepare text and image assets for this round.",
+                "media_tasks": [
+                    {
+                        "task_type": "image",
+                        "payload": {"prompt": "war newsroom night scene"},
+                        "max_retries": 1,
+                    },
+                    {
+                        "task_type": "tts",
+                        "payload": {"text": "urgent bulletin draft", "voice": "female"},
+                        "max_retries": 0,
+                    },
+                ],
+            },
+        )
+        self.assertEqual(submit_response.status_code, 200)
+        submit_payload = submit_response.json()["data"]
+        self.assertEqual(submit_payload["session_id"], session_id)
+        self.assertEqual(submit_payload["round_no"], 1)
+        self.assertEqual(len(submit_payload["media_tasks"]), 2)
+        self.assertEqual(
+            sorted(item["task_type"] for item in submit_payload["media_tasks"]),
+            ["image", "tts"],
+        )
+        self.assertTrue(all(item["status"] == "pending" for item in submit_payload["media_tasks"]))
+
+        persisted_media_tasks = self.store.list_media_tasks(session_id=session_id, round_no=1)
+        self.assertEqual(len(persisted_media_tasks), 2)
+        self.assertEqual(
+            sorted(item.task_type for item in persisted_media_tasks),
+            ["image", "tts"],
+        )
+        self.assertTrue(all(item.status == "pending" for item in persisted_media_tasks))
 
         progress_response = self.client.get(f"/api/v1/training/progress/{session_id}")
         self.assertEqual(progress_response.status_code, 200)

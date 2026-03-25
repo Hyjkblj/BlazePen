@@ -6,8 +6,12 @@ import type {
   TrainingDiagnosticsResponse,
   TrainingInitRequest,
   TrainingInitResponse,
+  TrainingMediaTaskApiResponse,
+  TrainingMediaTaskCreateRequest,
+  TrainingMediaTaskListResponse,
   TrainingProgressResponse,
   TrainingReportResponse,
+  TrainingRoundSubmitMediaTaskRequest,
   TrainingRoundSubmitRequest,
   TrainingRoundSubmitResponse,
   TrainingScenarioNextRequest,
@@ -17,6 +21,10 @@ import type {
 import type {
   TrainingDiagnosticsResult,
   TrainingInitResult,
+  TrainingMediaTaskCreateParams,
+  TrainingMediaTaskListParams,
+  TrainingMediaTaskListResult,
+  TrainingMediaTaskResult,
   TrainingProgressResult,
   TrainingReportResult,
   TrainingSessionSummaryResult,
@@ -29,6 +37,8 @@ import type {
 import {
   normalizeTrainingDiagnosticsPayload,
   normalizeTrainingInitPayload,
+  normalizeTrainingMediaTaskListPayload,
+  normalizeTrainingMediaTaskPayload,
   normalizeTrainingMode,
   normalizeTrainingProgressPayload,
   normalizeTrainingReportPayload,
@@ -45,6 +55,13 @@ const TRAINING_ERROR_CODES = new Set<ServiceErrorCode>([
   'TRAINING_ROUND_DUPLICATE',
   'TRAINING_MODE_UNSUPPORTED',
   'TRAINING_SCENARIO_MISMATCH',
+  'TRAINING_MEDIA_TASK_NOT_FOUND',
+  'TRAINING_MEDIA_TASK_INVALID',
+  'TRAINING_MEDIA_TASK_CONFLICT',
+  'TRAINING_MEDIA_TASK_UNSUPPORTED',
+  'TRAINING_MEDIA_PROVIDER_UNAVAILABLE',
+  'TRAINING_MEDIA_TASK_EXECUTION_FAILED',
+  'TRAINING_MEDIA_TASK_TIMEOUT',
 ]);
 
 const normalizeOptionalString = (value: unknown): string | null => {
@@ -164,6 +181,90 @@ const normalizeCharacterId = (value: unknown): number | undefined => {
   });
 };
 
+const TRAINING_MEDIA_TASK_TYPES = new Set(['image', 'tts', 'text']);
+
+const normalizeTrainingMediaTaskType = (value: unknown): 'image' | 'tts' | 'text' => {
+  const taskType = normalizeOptionalString(value)?.toLowerCase();
+  if (taskType && TRAINING_MEDIA_TASK_TYPES.has(taskType)) {
+    return taskType as 'image' | 'tts' | 'text';
+  }
+
+  throw new ServiceError({
+    code: 'VALIDATION_ERROR',
+    message: 'media task type must be one of image, tts, text.',
+  });
+};
+
+const normalizeTrainingMediaTaskMaxRetries = (value: unknown): number => {
+  if (value === null || value === undefined || value === '') {
+    return 0;
+  }
+
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number.parseInt(value.trim(), 10);
+    if (Number.isInteger(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+
+  throw new ServiceError({
+    code: 'VALIDATION_ERROR',
+    message: 'media task maxRetries must be a non-negative integer.',
+  });
+};
+
+const normalizeTrainingMediaTaskRoundNo = (value: unknown): number | undefined => {
+  if (value === null || value === undefined || value === '') {
+    return undefined;
+  }
+
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number.parseInt(value.trim(), 10);
+    if (Number.isInteger(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+
+  throw new ServiceError({
+    code: 'VALIDATION_ERROR',
+    message: 'media task roundNo must be a non-negative integer.',
+  });
+};
+
+const normalizeTrainingRoundSubmitMediaTasks = (
+  mediaTasks: TrainingRoundSubmitParams['mediaTasks']
+): TrainingRoundSubmitMediaTaskRequest[] | undefined => {
+  if (!Array.isArray(mediaTasks) || mediaTasks.length === 0) {
+    return undefined;
+  }
+
+  return mediaTasks.map((task) => ({
+    task_type: normalizeTrainingMediaTaskType(task?.taskType),
+    payload:
+      task?.payload !== null &&
+      typeof task?.payload === 'object' &&
+      !Array.isArray(task.payload)
+        ? { ...task.payload }
+        : {},
+    max_retries: normalizeTrainingMediaTaskMaxRetries(task?.maxRetries),
+  }));
+};
+
+const normalizeTrainingMediaTaskPayloadObject = (payload: unknown): Record<string, unknown> => {
+  if (payload !== null && typeof payload === 'object' && !Array.isArray(payload)) {
+    return { ...(payload as Record<string, unknown>) };
+  }
+  return {};
+};
+
 const assertSessionId = (sessionId: string | null, routeName: string): string => {
   if (!sessionId) {
     throw new ServiceError({
@@ -264,6 +365,11 @@ export const submitTrainingRound = async (
     requestPayload.selected_option = selectedOption;
   }
 
+  const mediaTasks = normalizeTrainingRoundSubmitMediaTasks(params.mediaTasks);
+  if (mediaTasks && mediaTasks.length > 0) {
+    requestPayload.media_tasks = mediaTasks;
+  }
+
   try {
     const response = await httpClient.post('/v1/training/round/submit', requestPayload, {
       timeout: 90000,
@@ -279,6 +385,108 @@ export const submitTrainingRound = async (
       error,
       'Failed to submit training round.',
       'Training round submission timed out.'
+    );
+  }
+};
+
+export const createTrainingMediaTask = async (
+  params: TrainingMediaTaskCreateParams
+): Promise<TrainingMediaTaskResult> => {
+  const requestPayload: TrainingMediaTaskCreateRequest = {
+    session_id: requireString(params.sessionId, 'sessionId'),
+    task_type: normalizeTrainingMediaTaskType(params.taskType),
+    payload: normalizeTrainingMediaTaskPayloadObject(params.payload),
+    max_retries: normalizeTrainingMediaTaskMaxRetries(params.maxRetries),
+  };
+
+  const roundNo = normalizeTrainingMediaTaskRoundNo(params.roundNo);
+  if (roundNo !== undefined) {
+    requestPayload.round_no = roundNo;
+  }
+
+  const idempotencyKey = normalizeOptionalString(params.idempotencyKey);
+  if (idempotencyKey) {
+    requestPayload.idempotency_key = idempotencyKey;
+  }
+
+  try {
+    const response = await httpClient.post('/v1/training/media/tasks', requestPayload, {
+      timeout: 60000,
+    });
+    const result = normalizeTrainingMediaTaskPayload(
+      unwrapApiData<TrainingMediaTaskApiResponse>(response)
+    );
+
+    if (!result) {
+      throw new ServiceError({
+        code: 'INVALID_RESPONSE',
+        message: 'Missing task payload in training media create response.',
+      });
+    }
+
+    return result;
+  } catch (error: unknown) {
+    throw toTrainingServiceError(
+      error,
+      'Failed to create training media task.',
+      'Training media task creation timed out.'
+    );
+  }
+};
+
+export const getTrainingMediaTask = async (taskId: string): Promise<TrainingMediaTaskResult> => {
+  const normalizedTaskId = requireString(taskId, 'taskId');
+
+  try {
+    const response = await httpClient.get(`/v1/training/media/tasks/${normalizedTaskId}`, {
+      timeout: 30000,
+    });
+    const result = normalizeTrainingMediaTaskPayload(
+      unwrapApiData<TrainingMediaTaskApiResponse>(response)
+    );
+
+    if (!result) {
+      throw new ServiceError({
+        code: 'INVALID_RESPONSE',
+        message: 'Missing task payload in training media get response.',
+      });
+    }
+
+    return result;
+  } catch (error: unknown) {
+    throw toTrainingServiceError(
+      error,
+      'Failed to load training media task.',
+      'Training media task query timed out.'
+    );
+  }
+};
+
+export const listTrainingMediaTasks = async (
+  params: TrainingMediaTaskListParams
+): Promise<TrainingMediaTaskListResult> => {
+  const normalizedSessionId = requireString(params.sessionId, 'sessionId');
+  const roundNo = normalizeTrainingMediaTaskRoundNo(params.roundNo);
+
+  try {
+    const response = await httpClient.get(
+      `/v1/training/media/sessions/${normalizedSessionId}/tasks`,
+      {
+        timeout: 30000,
+        params: roundNo !== undefined ? { round_no: roundNo } : undefined,
+      }
+    );
+    const result = normalizeTrainingMediaTaskListPayload(
+      unwrapApiData<TrainingMediaTaskListResponse>(response)
+    );
+
+    assertSessionId(result.sessionId, 'training media task list');
+    return result;
+  } catch (error: unknown) {
+    throw toTrainingServiceError(
+      error,
+      'Failed to list training media tasks.',
+      'Training media task list timed out.'
     );
   }
 };

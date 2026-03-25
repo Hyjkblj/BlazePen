@@ -1,9 +1,6 @@
-"""训练引擎专用 FastAPI 应用入口。
+"""Training-engine-only FastAPI entrypoint.
 
-说明：
-1. 这个入口只挂载训练路由，用于本地或独立部署时只运行训练引擎服务。
-2. 它不会注册角色、旧剧情流、TTS、向量库管理等其它业务路由。
-3. 启动时只做数据库连通性检查，不自动补表。
+This app intentionally mounts only training-domain routers.
 """
 
 from __future__ import annotations
@@ -13,34 +10,51 @@ import os
 import uvicorn
 
 from api.app_factory import create_api_app
-from api.routers import training
+from api.dependencies import warmup_training_media_task_executor
+from api.routers import training, training_media
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
 
 app = create_api_app(
-    title="烽火笔锋训练引擎 API",
-    description="仅包含训练引擎相关接口的独立后端服务",
+    title="BlazePen Training Engine API",
+    description="Standalone backend service exposing training-engine endpoints only.",
     version="1.0.0",
     service_scope="training",
     logger=logger,
-    database_label="训练引擎数据库",
-    health_message="训练引擎服务正常运行",
-    root_message="烽火笔锋训练引擎 API",
+    database_label="training engine database",
+    health_message="training engine service is running",
+    root_message="BlazePen Training Engine API",
     root_extra={"entrypoint_kind": "training_only"},
 )
 
-# 这里只注册训练路由，确保服务边界清晰。
 app.include_router(training.router, prefix="/api")
+app.include_router(training_media.router, prefix="/api")
+
+
+async def warmup_training_media_runtime() -> None:
+    """Warm up training media executor outside request hot paths."""
+
+    try:
+        result = warmup_training_media_task_executor()
+        logger.info(
+            "training media executor warmup completed: recovered=%s timed_out=%s",
+            result.get("recovered", 0),
+            result.get("timed_out", 0),
+        )
+    except Exception as exc:
+        logger.error("training media executor warmup failed: %s", str(exc), exc_info=True)
+
+
+app.add_event_handler("startup", warmup_training_media_runtime)
 
 
 if __name__ == "__main__":
-    # 直接运行文件时，把工作目录切到 backend 根目录，保证相对路径一致。
     api_dir = os.path.dirname(os.path.abspath(__file__))
     backend_dir = os.path.dirname(api_dir)
     os.chdir(backend_dir)
-    logger.info("训练引擎服务工作目录: %s", os.getcwd())
+    logger.info("training engine service working directory: %s", os.getcwd())
 
     uvicorn.run(
         "api.training_app:app",

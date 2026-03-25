@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from api.dependencies import get_training_query_service, get_training_service
+from api.dependencies import get_training_media_task_executor, get_training_query_service, get_training_service
 from api.error_codes import (
     INTERNAL_ERROR,
     TRAINING_MODE_UNSUPPORTED,
+    TRAINING_MEDIA_TASK_INVALID,
+    TRAINING_MEDIA_TASK_UNSUPPORTED,
     TRAINING_ROUND_DUPLICATE,
     TRAINING_SCENARIO_MISMATCH,
     TRAINING_SESSION_COMPLETED,
@@ -32,6 +34,8 @@ from api.services.training_service import TrainingService
 from training.training_query_service import TrainingQueryService
 from training.exceptions import (
     DuplicateRoundSubmissionError,
+    TrainingMediaTaskInvalidError,
+    TrainingMediaTaskUnsupportedError,
     TrainingModeUnsupportedError,
     TrainingScenarioMismatchError,
     TrainingSessionCompletedError,
@@ -53,6 +57,43 @@ def _serialize_player_profile_request(request: TrainingInitRequest) -> dict | No
     if hasattr(request.player_profile, "model_dump"):
         return request.player_profile.model_dump(exclude_none=True)
     return request.player_profile.dict(exclude_none=True)
+
+
+def _serialize_submit_round_media_tasks_request(request: TrainingRoundSubmitRequest) -> list[dict] | None:
+    media_tasks = request.media_tasks or []
+    if not media_tasks:
+        return None
+
+    serialized_items: list[dict] = []
+    for item in media_tasks:
+        if hasattr(item, "model_dump"):
+            serialized_items.append(item.model_dump(exclude_none=True))
+        else:
+            serialized_items.append(item.dict(exclude_none=True))
+    return serialized_items
+
+
+def _dispatch_submit_round_media_tasks(result: dict) -> None:
+    media_tasks = result.get("media_tasks")
+    if not isinstance(media_tasks, list) or not media_tasks:
+        return
+
+    try:
+        executor = get_training_media_task_executor()
+    except Exception as exc:
+        logger.warning("failed to resolve training media executor during submit dispatch: %s", str(exc))
+        return
+
+    for task in media_tasks:
+        task_payload = task if isinstance(task, dict) else {}
+        task_id = str(task_payload.get("task_id") or "").strip()
+        status = str(task_payload.get("status") or "").strip().lower()
+        if not task_id or status not in {"pending", "running"}:
+            continue
+        try:
+            executor.submit_task(task_id)
+        except Exception as exc:
+            logger.warning("failed to dispatch training media task from submit: task_id=%s error=%s", task_id, str(exc))
 
 
 def _build_training_domain_error_response(
@@ -113,6 +154,27 @@ def _build_training_domain_error_response(
             code=409,
             message=str(exc),
             error_code=TRAINING_SCENARIO_MISMATCH,
+            details=details,
+        )
+
+    if isinstance(exc, TrainingMediaTaskUnsupportedError):
+        details["task_type"] = exc.task_type
+        if exc.supported_task_types:
+            details["supported_task_types"] = list(exc.supported_task_types)
+        return error_response(
+            code=400,
+            message=str(exc),
+            error_code=TRAINING_MEDIA_TASK_UNSUPPORTED,
+            details=details,
+        )
+
+    if isinstance(exc, TrainingMediaTaskInvalidError):
+        if exc.details:
+            details.update(exc.details)
+        return error_response(
+            code=400,
+            message=str(exc),
+            error_code=TRAINING_MEDIA_TASK_INVALID,
             details=details,
         )
 
@@ -199,10 +261,14 @@ async def submit_round(
             scenario_id=request.scenario_id,
             user_input=request.user_input,
             selected_option=request.selected_option,
+            media_tasks=_serialize_submit_round_media_tasks_request(request),
         )
+        _dispatch_submit_round_media_tasks(result)
         return build_success_payload(data=result)
     except (
         DuplicateRoundSubmissionError,
+        TrainingMediaTaskInvalidError,
+        TrainingMediaTaskUnsupportedError,
         TrainingScenarioMismatchError,
         TrainingSessionCompletedError,
         TrainingSessionNotFoundError,

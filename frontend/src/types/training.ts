@@ -290,6 +290,75 @@ export interface TrainingSessionInitParams {
   playerProfile?: TrainingPlayerProfileInput | null;
 }
 
+export type TrainingMediaTaskType = 'image' | 'tts' | 'text';
+
+export interface TrainingRoundSubmitMediaTaskInput {
+  taskType: TrainingMediaTaskType;
+  payload?: Record<string, unknown> | null;
+  maxRetries?: number;
+}
+
+export interface TrainingRoundSubmitMediaTaskSummary {
+  taskId: string;
+  taskType: string;
+  status: string;
+}
+
+export type TrainingMediaTaskStatus =
+  | 'pending'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'timeout'
+  | 'unknown';
+
+export interface TrainingMediaTaskResult {
+  taskId: string;
+  sessionId: string;
+  roundNo: number | null;
+  taskType: string;
+  status: TrainingMediaTaskStatus;
+  result: Record<string, unknown> | null;
+  error: Record<string, unknown> | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface TrainingMediaTaskView {
+  taskId: string;
+  sessionId: string;
+  roundNo: number | null;
+  taskType: string;
+  status: TrainingMediaTaskStatus;
+  createdAt: string | null;
+  updatedAt: string | null;
+  previewUrl: string | null;
+  audioUrl: string | null;
+  generatedText: string | null;
+  errorMessage: string | null;
+}
+
+export interface TrainingMediaTaskListResult {
+  sessionId: string;
+  items: TrainingMediaTaskResult[];
+}
+
+export interface TrainingMediaTaskCreateParams {
+  sessionId: string;
+  roundNo?: number | null;
+  taskType: TrainingMediaTaskType;
+  payload?: Record<string, unknown> | null;
+  idempotencyKey?: string | null;
+  maxRetries?: number;
+}
+
+export interface TrainingMediaTaskListParams {
+  sessionId: string;
+  roundNo?: number | null;
+}
+
 export interface TrainingScenarioNextParams {
   sessionId: string;
 }
@@ -299,6 +368,7 @@ export interface TrainingRoundSubmitParams {
   scenarioId: string;
   userInput: string;
   selectedOption?: string | null;
+  mediaTasks?: TrainingRoundSubmitMediaTaskInput[] | null;
 }
 
 export interface TrainingInitResult {
@@ -328,6 +398,7 @@ export interface TrainingRoundSubmitResult {
   runtimeState: TrainingRuntimeState;
   evaluation: TrainingEvaluation;
   consequenceEvents: TrainingConsequenceEvent[];
+  mediaTasks: TrainingRoundSubmitMediaTaskSummary[];
   isCompleted: boolean;
   ending: Record<string, unknown> | null;
   decisionContext: TrainingRoundDecisionContext | null;

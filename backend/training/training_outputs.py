@@ -1,4 +1,4 @@
-"""训练服务输出 DTO。"""
+﻿"""训练服务输出 DTO。"""
 
 from __future__ import annotations
 
@@ -198,6 +198,31 @@ def _serialize_consequence_event_list(
     serialized_items: List[Dict[str, Any]] = []
     for item in events or []:
         serialized = _serialize_consequence_event(item)
+        if serialized is not None:
+            serialized_items.append(serialized)
+    return serialized_items
+
+
+def _serialize_round_media_task_summary(
+    media_task: "TrainingRoundMediaTaskSummaryOutput | Dict[str, Any] | None",
+) -> Dict[str, Any] | None:
+    """Serialize one submit-round media task summary item."""
+    if media_task is None:
+        return None
+    if isinstance(media_task, TrainingRoundMediaTaskSummaryOutput):
+        return media_task.to_dict()
+    if isinstance(media_task, dict):
+        return TrainingRoundMediaTaskSummaryOutput.from_payload(media_task).to_dict()
+    return None
+
+
+def _serialize_round_media_task_summary_list(
+    media_tasks: List["TrainingRoundMediaTaskSummaryOutput | Dict[str, Any]"] | None,
+) -> List[Dict[str, Any]]:
+    """Serialize submit-round media task summary list."""
+    serialized_items: List[Dict[str, Any]] = []
+    for item in media_tasks or []:
+        serialized = _serialize_round_media_task_summary(item)
         if serialized is not None:
             serialized_items.append(serialized)
     return serialized_items
@@ -1620,6 +1645,31 @@ class TrainingNextScenarioOutput:
 
 
 @dataclass(slots=True)
+class TrainingRoundMediaTaskSummaryOutput:
+    """Submit-round media task summary output."""
+
+    task_id: str
+    task_type: str
+    status: str
+
+    @classmethod
+    def from_payload(cls, payload: Dict[str, Any] | None) -> "TrainingRoundMediaTaskSummaryOutput":
+        normalized_payload = payload or {}
+        return cls(
+            task_id=str(normalized_payload.get("task_id") or ""),
+            task_type=str(normalized_payload.get("task_type") or ""),
+            status=str(normalized_payload.get("status") or ""),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "task_id": self.task_id,
+            "task_type": self.task_type,
+            "status": self.status,
+        }
+
+
+@dataclass(slots=True)
 class TrainingRoundSubmitOutput:
     """提交回合结果。"""
 
@@ -1633,6 +1683,7 @@ class TrainingRoundSubmitOutput:
     player_profile: Optional[TrainingPlayerProfileOutput | Dict[str, Any]] = None
     runtime_state: Optional["TrainingRuntimeStateOutput | Dict[str, Any]"] = None
     consequence_events: List["TrainingConsequenceEventOutput | Dict[str, Any]"] = field(default_factory=list)
+    media_tasks: List["TrainingRoundMediaTaskSummaryOutput | Dict[str, Any]"] = field(default_factory=list)
     ending: Optional[Dict[str, Any]] = None
     decision_context: Optional["TrainingRoundDecisionContextOutput | Dict[str, Any]"] = None
 
@@ -1652,6 +1703,7 @@ class TrainingRoundSubmitOutput:
         if self.runtime_state is not None:
             payload["runtime_state"] = _serialize_runtime_state(self.runtime_state)
         payload["consequence_events"] = _serialize_consequence_event_list(self.consequence_events)
+        payload["media_tasks"] = _serialize_round_media_task_summary_list(self.media_tasks)
         if self.decision_context is not None:
             payload["decision_context"] = _serialize_decision_context(self.decision_context)
         return payload
@@ -1672,6 +1724,7 @@ class TrainingProgressOutput:
     runtime_state: Optional["TrainingRuntimeStateOutput | Dict[str, Any]"] = None
     decision_context: Optional["TrainingRoundDecisionContextOutput | Dict[str, Any]"] = None
     consequence_events: List["TrainingConsequenceEventOutput | Dict[str, Any]"] = field(default_factory=list)
+    media_tasks: List["TrainingRoundMediaTaskSummaryOutput | Dict[str, Any]"] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """导出训练进度。"""
@@ -1691,6 +1744,7 @@ class TrainingProgressOutput:
         if self.decision_context is not None:
             payload["decision_context"] = _serialize_decision_context(self.decision_context)
         payload["consequence_events"] = _serialize_consequence_event_list(self.consequence_events)
+        payload["media_tasks"] = _serialize_round_media_task_summary_list(self.media_tasks)
         return payload
 
 
@@ -1862,6 +1916,7 @@ class TrainingReportHistoryItemOutput:
     kt_observation: Optional["TrainingKtObservationOutput | Dict[str, Any]"] = None
     runtime_state: Optional["TrainingRuntimeStateOutput | Dict[str, Any]"] = None
     consequence_events: List["TrainingConsequenceEventOutput | Dict[str, Any]"] = field(default_factory=list)
+    media_tasks: List["TrainingRoundMediaTaskSummaryOutput | Dict[str, Any]"] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """导出单回合历史记录。"""
@@ -1884,6 +1939,7 @@ class TrainingReportHistoryItemOutput:
         if self.runtime_state is not None:
             payload["runtime_state"] = _serialize_runtime_state(self.runtime_state)
         payload["consequence_events"] = _serialize_consequence_event_list(self.consequence_events)
+        payload["media_tasks"] = _serialize_round_media_task_summary_list(self.media_tasks)
         return payload
 
 
@@ -2152,3 +2208,6 @@ class TrainingDiagnosticsOutput:
         if self.runtime_state is not None:
             payload["runtime_state"] = _serialize_runtime_state(self.runtime_state)
         return payload
+
+
+

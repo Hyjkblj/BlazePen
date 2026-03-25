@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from api.services.game_session import GameSessionManager
     from api.services.image_service import ImageService
     from api.services.training_service import TrainingService
+    from api.services.training_media_task_service import TrainingMediaTaskService
+    from training.media_task_executor import TrainingMediaTaskExecutor
     from api.services.tts_service import TTSService
     from story.story_service_bundle import StoryServiceBundle
     from story.story_session_query_policy import StorySessionQueryPolicy
@@ -29,6 +31,9 @@ _image_service: Optional[ImageService] = None
 _tts_service: Optional[TTSService] = None
 _session_manager: Optional[GameSessionManager] = None
 _training_service: Optional[TrainingService] = None
+_training_media_task_service: Optional[TrainingMediaTaskService] = None
+_training_media_task_executor: Optional[TrainingMediaTaskExecutor] = None
+_training_media_task_executor_warmed_up: bool = False
 _training_query_service: Optional[TrainingQueryService] = None
 _story_image_executor: Optional[Executor] = None
 _story_session_query_policy: Optional[StorySessionQueryPolicy] = None
@@ -122,6 +127,49 @@ def get_training_service() -> TrainingService:
 
         _training_service = TrainingService()
     return _training_service
+
+
+def get_training_media_task_service() -> TrainingMediaTaskService:
+    global _training_media_task_service
+    if _training_media_task_service is None:
+        from api.services.training_media_task_service import TrainingMediaTaskService
+
+        _training_media_task_service = TrainingMediaTaskService(
+            training_store=get_training_service().training_store,
+            media_task_executor=get_training_media_task_executor(),
+        )
+    return _training_media_task_service
+
+
+def get_training_media_task_executor() -> TrainingMediaTaskExecutor:
+    global _training_media_task_executor
+    if _training_media_task_executor is None:
+        from models.text_model_service import TextModelService
+        from training.media_task_executor import TrainingMediaTaskExecutor, TrainingMediaTaskProviderDispatcher
+
+        _training_media_task_executor = TrainingMediaTaskExecutor(
+            training_store=get_training_service().training_store,
+            provider_dispatcher=TrainingMediaTaskProviderDispatcher(
+                image_service=get_image_service(),
+                tts_service=get_tts_service(),
+                text_model_service=TextModelService(provider="auto"),
+            ),
+        )
+    return _training_media_task_executor
+
+
+def warmup_training_media_task_executor() -> dict[str, int]:
+    """Initialize media executor and recover pending backlog once during startup."""
+
+    global _training_media_task_executor_warmed_up
+
+    if _training_media_task_executor_warmed_up:
+        return {"recovered": 0, "timed_out": 0}
+
+    executor = get_training_media_task_executor()
+    result = executor.recover_pending_tasks()
+    _training_media_task_executor_warmed_up = True
+    return result
 
 
 def get_training_query_service() -> TrainingQueryService:

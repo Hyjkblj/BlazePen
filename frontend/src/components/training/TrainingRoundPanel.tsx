@@ -1,4 +1,4 @@
-import { Button, Card, Input, Radio, Space, Typography } from 'antd';
+import { Button, Card, Checkbox, Input, Radio, Space, Typography } from 'antd';
 import type { TrainingScenario } from '@/types/training';
 
 const { TextArea } = Input;
@@ -10,6 +10,16 @@ interface TrainingRoundPanelProps {
   selectOption: (optionId: string) => void;
   responseInput: string;
   setResponseInput: (value: string) => void;
+  mediaTaskDraft: {
+    enableImage: boolean;
+    enableTts: boolean;
+    enableText: boolean;
+    prompt: string;
+  };
+  updateMediaTaskDraft: (
+    field: 'enableImage' | 'enableTts' | 'enableText' | 'prompt',
+    value: boolean | string
+  ) => void;
   submissionPreview: string | null;
   canSubmitRound: boolean;
   submitCurrentRound: () => void;
@@ -25,6 +35,8 @@ function TrainingRoundPanel({
   selectOption,
   responseInput,
   setResponseInput,
+  mediaTaskDraft,
+  updateMediaTaskDraft,
   submissionPreview,
   canSubmitRound,
   submitCurrentRound,
@@ -100,6 +112,40 @@ function TrainingRoundPanel({
               rows={6}
             />
           </label>
+
+          <div className="training-shell__media-task-config">
+            <Typography.Title level={5}>附加媒体任务（异步）</Typography.Title>
+            <Space className="training-shell__media-task-switches" wrap>
+              <Checkbox
+                checked={mediaTaskDraft.enableImage}
+                onChange={(event) => updateMediaTaskDraft('enableImage', event.target.checked)}
+              >
+                生图
+              </Checkbox>
+              <Checkbox
+                checked={mediaTaskDraft.enableTts}
+                onChange={(event) => updateMediaTaskDraft('enableTts', event.target.checked)}
+              >
+                语音
+              </Checkbox>
+              <Checkbox
+                checked={mediaTaskDraft.enableText}
+                onChange={(event) => updateMediaTaskDraft('enableText', event.target.checked)}
+              >
+                文本
+              </Checkbox>
+            </Space>
+            <Input
+              value={mediaTaskDraft.prompt}
+              disabled={
+                !mediaTaskDraft.enableImage &&
+                !mediaTaskDraft.enableTts &&
+                !mediaTaskDraft.enableText
+              }
+              placeholder="可选：媒体任务提示词。留空时默认使用本轮操作说明。"
+              onChange={(event) => updateMediaTaskDraft('prompt', event.target.value)}
+            />
+          </div>
 
           {submissionPreview ? (
             <Typography.Paragraph className="training-shell__submission-preview">

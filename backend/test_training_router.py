@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -80,7 +81,7 @@ class _FakeTrainingService:
             "ending": {"ending_type": "steady"},
         }
 
-    def submit_round(self, session_id, scenario_id, user_input, selected_option=None):
+    def submit_round(self, session_id, scenario_id, user_input, selected_option=None, media_tasks=None):
         return {
             "session_id": session_id,
             "round_no": 1,
@@ -773,6 +774,50 @@ class TrainingRouterTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["consequence_events"][0]["event_type"], "editor_trust_recovered")
         self.assertEqual(payload["data"]["runtime_state"]["state_bar"]["editor_trust"], 0.62)
 
+    def test_submit_route_should_dispatch_pending_and_running_media_tasks(self):
+        self.app.dependency_overrides[get_training_service] = lambda: _SubmitRoundWithMediaTasksTrainingService()
+        fake_executor = _FakeMediaTaskExecutor()
+
+        with patch("api.routers.training.get_training_media_task_executor", return_value=fake_executor):
+            response = self.client.post(
+                "/api/v1/training/round/submit",
+                json={
+                    "session_id": "s-test",
+                    "scenario_id": "S1",
+                    "user_input": "hello",
+                },
+            )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["code"], 200)
+        self.assertEqual(len(payload["data"]["media_tasks"]), 3)
+        self.assertEqual(
+            fake_executor.submitted_task_ids,
+            ["task-pending", "task-running"],
+        )
+
+    def test_submit_route_should_keep_success_when_media_dispatch_resolution_fails(self):
+        self.app.dependency_overrides[get_training_service] = lambda: _SubmitRoundWithMediaTasksTrainingService()
+
+        with patch(
+            "api.routers.training.get_training_media_task_executor",
+            side_effect=RuntimeError("executor unavailable"),
+        ):
+            response = self.client.post(
+                "/api/v1/training/round/submit",
+                json={
+                    "session_id": "s-test",
+                    "scenario_id": "S1",
+                    "user_input": "hello",
+                },
+            )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["code"], 200)
+        self.assertEqual(len(payload["data"]["media_tasks"]), 3)
+
     def test_submit_route_should_reject_story_thread_id_field(self):
         response = self.client.post(
             "/api/v1/training/round/submit",
@@ -872,12 +917,37 @@ class _InvalidModeTrainingService:
 
 
 class _ScenarioMismatchTrainingService:
-    def submit_round(self, session_id, scenario_id, user_input, selected_option=None):
+    def submit_round(self, session_id, scenario_id, user_input, selected_option=None, media_tasks=None):
         raise TrainingScenarioMismatchError(
             submitted_scenario_id=scenario_id,
             expected_scenario_id="S1",
             round_no=1,
         )
+
+
+class _SubmitRoundWithMediaTasksTrainingService(_FakeTrainingService):
+    def submit_round(self, session_id, scenario_id, user_input, selected_option=None, media_tasks=None):
+        payload = super().submit_round(
+            session_id=session_id,
+            scenario_id=scenario_id,
+            user_input=user_input,
+            selected_option=selected_option,
+            media_tasks=media_tasks,
+        )
+        payload["media_tasks"] = [
+            {"task_id": "task-pending", "task_type": "image", "status": "pending"},
+            {"task_id": "task-running", "task_type": "tts", "status": "running"},
+            {"task_id": "task-succeeded", "task_type": "text", "status": "succeeded"},
+        ]
+        return payload
+
+
+class _FakeMediaTaskExecutor:
+    def __init__(self):
+        self.submitted_task_ids: list[str] = []
+
+    def submit_task(self, task_id: str) -> None:
+        self.submitted_task_ids.append(task_id)
 
 
 if __name__ == "__main__":

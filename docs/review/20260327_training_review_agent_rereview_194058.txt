@@ -1,0 +1,39 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+
+- [Major] frontend/src/hooks/useTrainingCharacterPreviewFlow.ts:416
+  问题：preview retry 仍依赖 `previewStatus` 判断是否切换新 attempt，但 `handleGeneratePreview` 的依赖数组没有包含 `previewStatus`。
+  原因：同一个 callback 同时负责“首次生成”和“失败后重试”两条路径，却把 retry 判定建立在闭包态上；当前 `npm exec eslint src/hooks/useTrainingCharacterPreviewFlow.ts` 已明确报出 `react-hooks/exhaustive-deps`，说明这条恢复链路没有被正确建模。
+  影响：当同一角色的重试路径不伴随其他依赖变化时，前端可能继续复用旧 `attemptNo / idempotency_key`，把“重试”退化成“重复提交旧任务”；这正好会重新放大 preview 恢复路径的不确定性。
+  建议：把 `previewStatus` 纳入依赖，或改成显式的 retry attempt 状态机/`ref` 驱动，不要让幂等切换依赖闭包中的瞬时状态。
+
+- [Major] frontend/src/flows/useTrainingMvpFlow.ts:175
+  问题：`useTrainingMvpFlow` 已膨胀成同时承载 restore、form hydration、scene image orchestration、completion report 和 round submission 的巨型流程 hook，当前 lint 基线已经发红。
+  原因：恢复、场景图、报告聚合都通过同一文件中的多组 cascading effects 和 memoized callbacks 互相驱动；`npm exec eslint src/flows/useTrainingMvpFlow.ts src/pages/Training.tsx` 直接报出 `react-hooks/preserve-manual-memoization`、`react-hooks/set-state-in-effect` 和 `react-hooks/exhaustive-deps`，说明这条 flow 的依赖图已经难以稳定维护。
+  影响：虽然当前定向测试能过，但恢复、场景图重试和完成态报告都在依赖 effect 顺序与对象稳定性，后续再改 `bootstrap` 或 `sessionViewModel` 时很容易引入重复请求、静默丢状态或难以定位的渲染级故障；同时这也已经偏离项目的 React Compiler 约束。
+  建议：把 `restoreSessionView`、scene image flow、completion report flow 从 `useTrainingMvpFlow` 中拆出，优先消掉当前 lint 错误，再继续向这个 hook 叠加业务路径。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+
+- [Minor] backend/api/services/training_character_preview_job_service.py:396
+  问题：failed preview job 重试时直接复用并重置同一条 job 记录，清空了 `error_message / started_at / finished_at`，没有保留 attempt 级审计信息。
+  原因：服务层把“可恢复”实现成对权威记录的就地覆写，而不是保留失败快照或 attempt 元数据；这会削弱 repository-store 层应承担的可观测性和排障价值。
+  影响：当同一角色多次失败后再恢复时，持久化记录无法反映失败次数、最近失败时间和上一次错误原因，重复提交和慢任务排查成本会明显上升。
+  建议：至少补 `attempt_count / last_failed_at / last_error_message` 一类元数据；更稳妥的方式是增加独立 attempt 记录，避免每次重试都把上一轮失败痕迹完全擦掉。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：`frontend/src/hooks/useTrainingCharacterPreviewFlow.test.tsx` 只覆盖了“首次生成时会新建角色”的重试路径，没有覆盖“`characterId` 已存在、仅靠 `previewStatus` 从 failed 切到 retry”的场景；而当前缺失依赖风险恰好就在这条路径上。
+- 前端：`frontend/src/flows/useTrainingMvpFlow.test.tsx` 目前只覆盖了表单失效、启动拦截和 hydration telemetry，没有覆盖 restore、scene image retry、completion report 三条 effect 链在同一次会话中的交互，也没有防止 rerender 触发重复 `createTrainingMediaTask`。
+- 后端：`backend/test_training_character_preview_job_service.py` 虽然验证了 failed retry 能成功和 shutdown 会收口，但没有断言重试前的失败元数据是否被保留，也没有保护 attempt 级审计字段。
+- 后端：`backend/test_training_character_route_contract.py` 目前只锁住了 `generate_scene_groups` 被拒绝和 typed error code，没有覆盖 preview job 重试后对外返回的观测字段语义。
+
+## Review Summary
+- 当前这轮修复已经把上一版最明显的执行级问题收住了，前端编译通过，定向前后端测试也通过。
+- 本次没有再发现阻塞合并的前后端契约或恢复性错误。
+- 主要剩余风险在前端 flow 设计质量：preview retry 仍有一个明确的 hooks 依赖缺口，而 `useTrainingMvpFlow` 已经演化成高耦合的大型流程脚本。
+- 后端执行模型本轮基本稳定，但 failed retry 仍然缺少 attempt 级持久化审计，影响运维可观测性。
+- 如果这次要合并，建议至少先补齐前端两处 lint/依赖问题；否则后续围绕训练恢复和场景图链路继续迭代时，回归风险会偏高。

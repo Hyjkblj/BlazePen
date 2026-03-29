@@ -25,6 +25,24 @@ export interface UseTrainingReadQueryResult<TData> {
   reload: () => void;
 }
 
+interface TrainingReadQueryState<TData> {
+  requestKey: string | null;
+  sessionId: string | null;
+  data: TData | null;
+  status: TrainingReadQueryStatus;
+  errorMessage: string | null;
+  errorCode: string | null;
+}
+
+const createTrainingReadQueryState = <TData,>(): TrainingReadQueryState<TData> => ({
+  requestKey: null,
+  sessionId: null,
+  data: null,
+  status: 'idle',
+  errorMessage: null,
+  errorCode: null,
+});
+
 export function useTrainingReadQuery<TData>({
   explicitSessionId,
   fetcher,
@@ -34,54 +52,48 @@ export function useTrainingReadQuery<TData>({
   const sessionTarget = useTrainingSessionReadTarget(explicitSessionId, {
     allowResumeTargetFallback: false,
   });
-  const [data, setData] = useState<TData | null>(null);
-  const [status, setStatus] = useState<TrainingReadQueryStatus>('idle');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [queryState, setQueryState] = useState<TrainingReadQueryState<TData>>(
+    createTrainingReadQueryState
+  );
   const [reloadNonce, setReloadNonce] = useState(0);
   const requestIdRef = useRef(0);
-  const lastSessionIdRef = useRef<string | null>(null);
   const activeSessionRef = useRef(state.activeSession);
-  const dataRef = useRef<TData | null>(null);
+  const queryStateRef = useRef(queryState);
 
   useEffect(() => {
     activeSessionRef.current = state.activeSession;
   }, [state.activeSession]);
 
   useEffect(() => {
-    dataRef.current = data;
-  }, [data]);
+    queryStateRef.current = queryState;
+  }, [queryState]);
+  const requestKey = sessionTarget.sessionId ? `${sessionTarget.sessionId}:${reloadNonce}` : null;
 
   useEffect(() => {
     if (!sessionTarget.sessionId) {
-      lastSessionIdRef.current = null;
-      setData(null);
-      setErrorCode(null);
-      setStatus((currentStatus) => (currentStatus === 'error' ? currentStatus : 'idle'));
       return;
     }
 
-    if (lastSessionIdRef.current !== sessionTarget.sessionId) {
-      setData(null);
-    }
-    lastSessionIdRef.current = sessionTarget.sessionId;
-
+    const currentSessionId = sessionTarget.sessionId;
+    const currentRequestKey = `${currentSessionId}:${reloadNonce}`;
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     let isActive = true;
 
-    setStatus('loading');
-    setErrorMessage(null);
-    setErrorCode(null);
-
-    void fetcher(sessionTarget.sessionId)
+    void fetcher(currentSessionId)
       .then((nextData) => {
         if (!isActive || requestIdRef.current !== requestId) {
           return;
         }
 
-        setData(nextData);
-        setStatus('ready');
+        setQueryState({
+          requestKey: currentRequestKey,
+          sessionId: currentSessionId,
+          data: nextData,
+          status: 'ready',
+          errorMessage: null,
+          errorCode: null,
+        });
       })
       .catch((error: unknown) => {
         if (!isActive || requestIdRef.current !== requestId) {
@@ -89,7 +101,8 @@ export function useTrainingReadQuery<TData>({
         }
 
         const hasCurrentSessionData =
-          lastSessionIdRef.current === sessionTarget.sessionId && dataRef.current !== null;
+          queryStateRef.current.sessionId === currentSessionId &&
+          queryStateRef.current.data !== null;
         const failureState = resolveTrainingReadFailureState({
           error,
           fallbackMessage: fallbackErrorMessage,
@@ -98,18 +111,23 @@ export function useTrainingReadQuery<TData>({
 
         if (failureState.shouldClearRecoveryArtifacts) {
           clearTrainingSessionRecoveryArtifacts({
-            invalidSessionId: sessionTarget.sessionId,
+            invalidSessionId: currentSessionId,
             activeSession: activeSessionRef.current,
             clearActiveSession,
           });
         }
 
-        setErrorCode(failureState.errorCode);
-        if (failureState.shouldClearData) {
-          setData(null);
-        }
-        setErrorMessage(failureState.errorMessage);
-        setStatus('error');
+        setQueryState((current) => ({
+          requestKey: currentRequestKey,
+          sessionId: failureState.shouldClearRecoveryArtifacts ? null : currentSessionId,
+          data:
+            failureState.shouldClearData || current.sessionId !== currentSessionId
+              ? null
+              : current.data,
+          status: 'error',
+          errorMessage: failureState.errorMessage,
+          errorCode: failureState.shouldClearRecoveryArtifacts ? null : failureState.errorCode,
+        }));
       });
 
     return () => {
@@ -122,6 +140,39 @@ export function useTrainingReadQuery<TData>({
     reloadNonce,
     sessionTarget.sessionId,
   ]);
+
+  const hasTerminalErrorWithoutSession =
+    queryState.sessionId === null && queryState.status === 'error';
+  const hasCurrentSessionState =
+    sessionTarget.sessionId !== null && queryState.sessionId === sessionTarget.sessionId;
+  const hasSettledStateForCurrentRequest = requestKey !== null && queryState.requestKey === requestKey;
+  const hasTerminalErrorForCurrentRequest =
+    hasSettledStateForCurrentRequest && queryState.sessionId === null && queryState.status === 'error';
+  const data = hasCurrentSessionState ? queryState.data : null;
+  const status =
+    sessionTarget.sessionId === null
+      ? hasTerminalErrorWithoutSession
+        ? 'error'
+        : 'idle'
+      : !hasSettledStateForCurrentRequest
+        ? 'loading'
+        : hasCurrentSessionState || hasTerminalErrorForCurrentRequest
+        ? queryState.status
+        : 'loading';
+  const errorMessage =
+    sessionTarget.sessionId === null
+      ? hasTerminalErrorWithoutSession
+        ? queryState.errorMessage
+        : null
+      : !hasSettledStateForCurrentRequest
+        ? null
+      : hasCurrentSessionState || hasTerminalErrorForCurrentRequest
+        ? queryState.errorMessage
+        : null;
+  const errorCode =
+    sessionTarget.sessionId !== null && hasSettledStateForCurrentRequest && hasCurrentSessionState
+      ? queryState.errorCode
+      : null;
 
   const reload = useCallback(() => {
     setReloadNonce((current) => current + 1);

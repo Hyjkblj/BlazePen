@@ -1,0 +1,28 @@
+@startuml
+!theme plain
+left to right direction
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam rectangle {
+  RoundCorner 12
+}
+
+title BlazePen 项目总览图
+
+rectangle "抗战历史情境场景库" as Scene
+rectangle "训练回合交互" as Round
+rectangle "联合评估机制" as Eval
+rectangle "知识追踪" as KT
+rectangle "状态驱动推荐" as Rec
+rectangle "结局结果" as Ending
+rectangle "训练报告" as Report
+rectangle "诊断视图" as Diag
+
+Scene --> Round
+Round --> Eval
+Eval --> KT
+KT --> Rec
+Rec --> Ending
+Rec --> Report
+Rec --> Diag
+@enduml

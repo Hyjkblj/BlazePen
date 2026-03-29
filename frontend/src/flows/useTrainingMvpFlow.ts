@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTrainingMediaTaskFeed } from '@/hooks/useTrainingMediaTaskFeed';
+import { useTrainingCompletionReportFlow } from '@/hooks/useTrainingCompletionReportFlow';
 import { useTrainingRoundRunner } from '@/hooks/useTrainingRoundRunner';
+import { useTrainingSceneImageFlow } from '@/hooks/useTrainingSceneImageFlow';
 import { useTrainingSessionBootstrap } from '@/hooks/useTrainingSessionBootstrap';
+import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
 import {
   buildBlockedTrainingSessionView,
   buildCompletedTrainingSessionView,
@@ -16,13 +18,18 @@ import type {
   TrainingEvaluation,
   TrainingMode,
   TrainingPlayerProfileInput,
-  TrainingRoundSubmitMediaTaskInput,
   TrainingRoundSubmitMediaTaskSummary,
   TrainingRoundDecisionContext,
   TrainingScenario,
 } from '@/types/training';
 
 const DEFAULT_TRAINING_USER_ID = 'frontend-training-user';
+const LEGACY_TRAINING_PRESET_IDS = new Set([
+  'correspondent-female',
+  'correspondent-male',
+  'frontline-photographer',
+  'radio-operator',
+]);
 
 export interface TrainingFormDraft {
   portraitPresetId: string;
@@ -43,25 +50,11 @@ export interface TrainingRoundOutcomeView {
   isCompleted: boolean;
 }
 
-export interface TrainingRoundMediaTaskDraft {
-  enableImage: boolean;
-  enableTts: boolean;
-  enableText: boolean;
-  prompt: string;
-}
-
 const TRAINING_MODE_LABELS: Record<TrainingMode, string> = {
   guided: '\u5f15\u5bfc\u8bad\u7ec3',
   'self-paced': '\u81ea\u4e3b\u8bad\u7ec3',
   adaptive: '\u81ea\u9002\u5e94\u8bad\u7ec3',
 };
-
-const TRAINING_PORTRAIT_PRESET_IDS = new Set([
-  'correspondent-female',
-  'correspondent-male',
-  'frontline-photographer',
-  'radio-operator',
-]);
 
 const trimToNull = (value: string): string | null => {
   const normalized = value.trim();
@@ -108,55 +101,6 @@ const resolveSelectedOptionLabel = (
   return selectedOption?.label?.trim() || null;
 };
 
-const buildRoundSubmitMediaTasks = ({
-  draft,
-  scenarioId,
-  userInput,
-}: {
-  draft: TrainingRoundMediaTaskDraft;
-  scenarioId: string;
-  userInput: string;
-}): TrainingRoundSubmitMediaTaskInput[] => {
-  const sharedPrompt = trimToNull(draft.prompt) ?? userInput;
-  const mediaTasks: TrainingRoundSubmitMediaTaskInput[] = [];
-
-  if (draft.enableImage) {
-    mediaTasks.push({
-      taskType: 'image',
-      payload: {
-        prompt: sharedPrompt,
-        scenario_id: scenarioId,
-      },
-      maxRetries: 1,
-    });
-  }
-
-  if (draft.enableTts) {
-    mediaTasks.push({
-      taskType: 'tts',
-      payload: {
-        text: userInput,
-        prompt: sharedPrompt,
-        scenario_id: scenarioId,
-      },
-      maxRetries: 1,
-    });
-  }
-
-  if (draft.enableText) {
-    mediaTasks.push({
-      taskType: 'text',
-      payload: {
-        prompt: sharedPrompt,
-        scenario_id: scenarioId,
-      },
-      maxRetries: 1,
-    });
-  }
-
-  return mediaTasks;
-};
-
 export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
   const bootstrap = useTrainingSessionBootstrap();
   const roundRunner = useTrainingRoundRunner({
@@ -174,27 +118,29 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
   });
   const [sessionView, setSessionView] = useState<TrainingSessionViewState | null>(null);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
-  const [responseInput, setResponseInput] = useState('');
-  const [mediaTaskDraft, setMediaTaskDraft] = useState<TrainingRoundMediaTaskDraft>({
-    enableImage: false,
-    enableTts: false,
-    enableText: false,
-    prompt: '',
-  });
   const [latestOutcome, setLatestOutcome] = useState<TrainingRoundOutcomeView | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const autoRestoreSessionIdRef = useRef<string | null>(null);
+  const rejectedPreferredCharacterIdRef = useRef<string | null>(null);
   const sessionViewModel = useTrainingSessionViewModel({
     explicitSessionId,
     sessionView,
     activeSession: bootstrap.activeSession,
     resumeTarget: bootstrap.resumeTarget,
   });
-  const mediaTaskFeed = useTrainingMediaTaskFeed({
-    sessionId: sessionView?.sessionId ?? null,
-    roundNo: latestOutcome?.roundNo ?? null,
-    seedTasks: latestOutcome?.mediaTasks,
-  });
+  const {
+    sceneImageStatus,
+    sceneImageUrl,
+    sceneImageErrorMessage,
+    retrySceneImage,
+    resetSceneImageFlow,
+  } = useTrainingSceneImageFlow(sessionView);
+  const {
+    completionReportStatus,
+    completionReport,
+    completionReportErrorMessage,
+    resetCompletionReportFlow,
+  } = useTrainingCompletionReportFlow(sessionView);
 
   const restoreSessionView = useCallback(
     async (sessionId?: string | null) => {
@@ -208,7 +154,7 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
       setSessionView(buildTrainingSessionViewFromSummary(summaryResult));
       return summaryResult;
     },
-    [bootstrap.restoreSession, sessionViewModel]
+    [bootstrap, sessionViewModel]
   );
 
   useEffect(() => {
@@ -227,7 +173,13 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     }
 
     autoRestoreSessionIdRef.current = resumableSessionId;
-    void restoreSessionView(resumableSessionId);
+    const timerId = window.setTimeout(() => {
+      void restoreSessionView(resumableSessionId);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
   }, [restoreSessionView, sessionView, sessionViewModel.autoRestoreSessionId]);
 
   useEffect(() => {
@@ -235,54 +187,87 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
       return;
     }
 
-    if (sessionViewModel.preferredTrainingMode) {
-      setTrainingMode(sessionViewModel.preferredTrainingMode);
-    }
+    const timerId = window.setTimeout(() => {
+      if (sessionViewModel.preferredTrainingMode) {
+        setTrainingMode(sessionViewModel.preferredTrainingMode);
+      }
 
-    const preferredCharacterId = sessionViewModel.preferredCharacterId;
-    if (preferredCharacterId) {
+      const preferredCharacterId = sessionViewModel.preferredCharacterId;
+      if (!preferredCharacterId) {
+        return;
+      }
+
       const normalizedPreferredCharacterId = normalizeCharacterIdInput(preferredCharacterId);
       if (normalizedPreferredCharacterId) {
         setFormDraft((current) => ({
           ...current,
           characterId: normalizedPreferredCharacterId,
         }));
-      } else {
-        const legacyPresetId = preferredCharacterId.trim();
-        if (TRAINING_PORTRAIT_PRESET_IDS.has(legacyPresetId)) {
-          setFormDraft((current) => ({
-            ...current,
-            portraitPresetId: legacyPresetId,
-          }));
-        }
+        return;
       }
-    }
+
+      const normalizedLegacyPresetId = preferredCharacterId.trim();
+      if (LEGACY_TRAINING_PRESET_IDS.has(normalizedLegacyPresetId)) {
+        setFormDraft((current) => ({
+          ...current,
+          portraitPresetId: normalizedLegacyPresetId,
+        }));
+        return;
+      }
+
+      if (
+        normalizedLegacyPresetId !== '' &&
+        rejectedPreferredCharacterIdRef.current !== normalizedLegacyPresetId
+      ) {
+        rejectedPreferredCharacterIdRef.current = normalizedLegacyPresetId;
+        trackFrontendTelemetry({
+          domain: 'training',
+          event: 'training.form.hydration',
+          status: 'failed',
+          metadata: {
+            reason: 'invalid_preferred_character_id',
+            preferredCharacterId: normalizedLegacyPresetId,
+          },
+        });
+      }
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
   }, [sessionView, sessionViewModel.preferredCharacterId, sessionViewModel.preferredTrainingMode]);
 
   useEffect(() => {
-    setSelectedOptionId(null);
-    setResponseInput('');
+    const timerId = window.setTimeout(() => {
+      setSelectedOptionId(null);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
   }, [sessionView?.currentScenario?.id, sessionView?.sessionId]);
 
   const updateFormDraft = useCallback((field: keyof TrainingFormDraft, value: string) => {
-    setFormDraft((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  }, []);
-
-  const updateMediaTaskDraft = useCallback(
-    <K extends keyof TrainingRoundMediaTaskDraft>(
-      field: K,
-      value: TrainingRoundMediaTaskDraft[K]
-    ) => {
-      setMediaTaskDraft((current) => ({
+    setFormDraft((current) => {
+      const next: TrainingFormDraft = {
         ...current,
         [field]: value,
-      }));
-    },
-    []
-  );
+      };
+
+      const shouldInvalidateCharacterId =
+        field !== 'characterId' &&
+        ['portraitPresetId', 'playerName', 'playerGender', 'playerIdentity', 'playerAge'].includes(
+          field
+        ) &&
+        current[field] !== value;
+
+      if (shouldInvalidateCharacterId && current.characterId.trim() !== '') {
+        next.characterId = '';
+      }
+
+      return next;
+    });
+  }, []);
 
   const clearWorkspace = useCallback(() => {
     bootstrap.clearTrainingSession();
@@ -290,25 +275,26 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     setSessionView(null);
     setLatestOutcome(null);
     setSelectedOptionId(null);
-    setResponseInput('');
-    setMediaTaskDraft({
-      enableImage: false,
-      enableTts: false,
-      enableText: false,
-      prompt: '',
-    });
+    resetSceneImageFlow();
+    resetCompletionReportFlow();
     setNoticeMessage(null);
     autoRestoreSessionIdRef.current = null;
-  }, [bootstrap, roundRunner]);
+  }, [bootstrap, resetCompletionReportFlow, resetSceneImageFlow, roundRunner]);
 
   const startTraining = useCallback(async () => {
     roundRunner.dismissError();
     bootstrap.dismissError();
     setNoticeMessage(null);
 
+    const normalizedCharacterId = normalizeCharacterIdInput(formDraft.characterId);
+    if (!normalizedCharacterId) {
+      setNoticeMessage('\u8bf7\u5148\u751f\u6210\u5e76\u786e\u8ba4\u5f62\u8c61\u56fe\uff0c\u518d\u542f\u52a8\u8bad\u7ec3\u3002');
+      return false;
+    }
+
     const initResult = await bootstrap.startTrainingSession({
       userId: DEFAULT_TRAINING_USER_ID,
-      characterId: normalizeCharacterIdInput(formDraft.characterId),
+      characterId: normalizedCharacterId,
       trainingMode,
       playerProfile: buildPlayerProfile(formDraft),
     });
@@ -318,9 +304,11 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     }
 
     setLatestOutcome(null);
+    resetSceneImageFlow();
+    resetCompletionReportFlow();
     setSessionView(buildTrainingSessionViewFromInit(initResult));
     return true;
-  }, [bootstrap, formDraft, roundRunner, trainingMode]);
+  }, [bootstrap, formDraft, resetCompletionReportFlow, resetSceneImageFlow, roundRunner, trainingMode]);
 
   const retryRestore = useCallback(async () => {
     roundRunner.dismissError();
@@ -329,17 +317,23 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     return restoreSessionView(sessionViewModel.currentSessionId ?? bootstrap.resumeTarget?.sessionId);
   }, [bootstrap, restoreSessionView, roundRunner, sessionViewModel.currentSessionId]);
 
-  const submitCurrentRound = useCallback(async () => {
+  const submitRoundWithOption = useCallback(async (overrideOptionId?: string | null) => {
     if (!sessionView?.currentScenario) {
       return;
     }
 
-    const selectedOptionLabel = resolveSelectedOptionLabel(sessionView.currentScenario, selectedOptionId);
-    const normalizedResponse = responseInput.trim();
-    const userInput = normalizedResponse || selectedOptionLabel || '';
+    const selectedOptionForSubmit =
+      typeof overrideOptionId === 'string' && overrideOptionId.trim() !== ''
+        ? overrideOptionId.trim()
+        : selectedOptionId;
+    const selectedOptionLabel = resolveSelectedOptionLabel(
+      sessionView.currentScenario,
+      selectedOptionForSubmit
+    );
+    const userInput = selectedOptionLabel || '';
 
     if (!userInput) {
-      setNoticeMessage('\u8bf7\u9009\u62e9\u4e00\u4e2a\u8bad\u7ec3\u9009\u9879\u6216\u586b\u5199\u672c\u8f6e\u64cd\u4f5c\u8bf4\u660e\u3002');
+      setNoticeMessage('\u8bf7\u5148\u9009\u62e9\u4e00\u4e2a\u5267\u60c5\u9009\u9879\uff0c\u518d\u63d0\u4ea4\u672c\u8f6e\u8bad\u7ec3\u3002');
       return;
     }
 
@@ -347,17 +341,10 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     roundRunner.dismissError();
     setNoticeMessage(null);
 
-    const mediaTasks = buildRoundSubmitMediaTasks({
-      draft: mediaTaskDraft,
-      scenarioId: sessionView.currentScenario.id,
-      userInput,
-    });
-
     const transition = await roundRunner.submitRound({
       scenarioId: sessionView.currentScenario.id,
       userInput,
-      selectedOption: selectedOptionId,
-      mediaTasks,
+      selectedOption: selectedOptionForSubmit,
     });
 
     if (!transition) {
@@ -375,11 +362,6 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
         ending: transition.submitResult.ending,
         isCompleted: transition.submitResult.isCompleted,
       });
-      if (submitMediaTasks.length > 0) {
-        setNoticeMessage(
-          `本轮已创建 ${submitMediaTasks.length} 个媒体任务，正在后台处理中。`
-        );
-      }
     } else {
       setLatestOutcome(null);
     }
@@ -415,7 +397,23 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
       setSessionView(buildBlockedTrainingSessionView(sessionView, transition.submitResult));
       setNoticeMessage('\u56de\u5408\u5df2\u63d0\u4ea4\uff0c\u8bf7\u91cd\u8bd5\u6062\u590d\u5f53\u524d\u8bad\u7ec3\u4f1a\u8bdd\u3002');
     }
-  }, [bootstrap, mediaTaskDraft, responseInput, roundRunner, selectedOptionId, sessionView]);
+  }, [bootstrap, roundRunner, selectedOptionId, sessionView]);
+
+  const submitCurrentRound = useCallback(async () => {
+    await submitRoundWithOption();
+  }, [submitRoundWithOption]);
+
+  const submitOption = useCallback(
+    async (optionId: string) => {
+      const normalizedOptionId = optionId.trim();
+      if (!normalizedOptionId) {
+        return;
+      }
+      setSelectedOptionId(normalizedOptionId);
+      await submitRoundWithOption(normalizedOptionId);
+    },
+    [submitRoundWithOption]
+  );
 
   const submissionPreview = useMemo(
     () => resolveSelectedOptionLabel(sessionView?.currentScenario ?? null, selectedOptionId),
@@ -436,31 +434,28 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     setTrainingMode,
     formDraft,
     updateFormDraft,
-    mediaTaskDraft,
-    updateMediaTaskDraft,
     startTraining,
     retryRestore,
+    retrySceneImage,
     clearWorkspace,
     sessionView,
     insightSessionId: sessionViewModel.currentSessionId,
     latestOutcome,
+    sceneImageStatus,
+    sceneImageUrl,
+    sceneImageErrorMessage,
+    completionReportStatus,
+    completionReport,
+    completionReportErrorMessage,
     selectedOptionId,
     selectOption: setSelectedOptionId,
-    responseInput,
-    setResponseInput,
     submissionPreview,
-    mediaTasks: mediaTaskFeed.tasks,
-    mediaTaskFeedStatus: mediaTaskFeed.status,
-    mediaTaskFeedErrorMessage: mediaTaskFeed.errorMessage,
-    isPollingMediaTasks: mediaTaskFeed.isPolling,
-    refreshMediaTasks: () => {
-      void mediaTaskFeed.refresh();
-    },
     canStartTraining: bootstrap.status !== 'starting',
     canSubmitRound:
       Boolean(sessionView?.currentScenario) &&
       roundRunner.status !== 'submitting' &&
-      (responseInput.trim() !== '' || submissionPreview !== null),
+      selectedOptionId !== null,
     submitCurrentRound,
+    submitOption,
   };
 }

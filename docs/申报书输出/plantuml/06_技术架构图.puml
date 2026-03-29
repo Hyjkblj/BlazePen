@@ -1,0 +1,44 @@
+@startuml
+!theme plain
+left to right direction
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam packageStyle rectangle
+skinparam rectangle {
+  RoundCorner 12
+}
+
+title BlazePen 技术架构图
+
+package "前端层" {
+  rectangle "训练入口页\n训练过程页\n复盘报告页" as Frontend
+}
+
+package "接口层" {
+  rectangle "API 接口层\nOpenAPI 契约" as API
+}
+
+package "训练服务层" {
+  rectangle "场景与流程编排" as Flow
+  rectangle "联合评估引擎" as Eval
+  rectangle "知识追踪与推荐" as KT
+  rectangle "报告生成模块" as Report
+}
+
+package "支撑层" {
+  rectangle "规则引擎" as Rule
+  rectangle "LLM 分析" as LLM
+  rectangle "状态存储" as Store
+  rectangle "结果输出" as Output
+}
+
+Frontend --> API
+API --> Flow
+Flow --> Eval
+Flow --> KT
+Flow --> Report
+Eval --> Rule
+Eval --> LLM
+KT --> Store
+Report --> Output
+@enduml

@@ -1,4 +1,4 @@
-import { Button, Card, Descriptions, Empty, List, Space, Tag, Typography } from 'antd';
+import { Button, Card, Descriptions, Empty, Space, Tag, Typography } from 'antd';
 import type {
   TrainingConsequenceEvent,
   TrainingEvaluation,
@@ -66,8 +66,19 @@ function TrainingOutcomePanel({
   isPollingMediaTasks,
   refreshMediaTasks,
 }: TrainingOutcomePanelProps) {
+  const evidenceRows =
+    latestOutcome && latestOutcome.evaluation.evidence.length > 0
+      ? latestOutcome.evaluation.evidence
+      : ['No evidence returned.'];
+  const consequenceRows =
+    latestOutcome && latestOutcome.consequenceEvents.length > 0
+      ? latestOutcome.consequenceEvents.map(
+          (item) => `${item.label || item.eventType}: ${item.summary || 'no summary'}`
+        )
+      : ['No consequence events in this round.'];
+
   return (
-    <Card className="training-shell__panel training-shell__panel--antd" bordered={false}>
+    <Card className="training-shell__panel training-shell__panel--antd" variant="borderless">
       <Typography.Title level={4}>Latest Round Outcome</Typography.Title>
       {latestOutcome ? (
         <>
@@ -94,42 +105,29 @@ function TrainingOutcomePanel({
           <div className="training-shell__state-grid">
             <div>
               <Typography.Title level={5}>Evidence</Typography.Title>
-              <List
-                size="small"
-                className="training-shell__metric-list training-shell__metric-list--antd"
-                dataSource={
-                  latestOutcome.evaluation.evidence.length > 0
-                    ? latestOutcome.evaluation.evidence
-                    : ['No evidence returned.']
-                }
-                renderItem={(item) => <List.Item>{item}</List.Item>}
-              />
+              <ul className="training-shell__metric-list training-shell__metric-list--antd">
+                {evidenceRows.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
             </div>
 
             <div>
               <Typography.Title level={5}>Consequence Events</Typography.Title>
-              <List
-                size="small"
-                className="training-shell__metric-list training-shell__metric-list--antd"
-                dataSource={
-                  latestOutcome.consequenceEvents.length > 0
-                    ? latestOutcome.consequenceEvents.map(
-                        (item) => `${item.label || item.eventType}: ${item.summary || 'no summary'}`
-                      )
-                    : ['No consequence events in this round.']
-                }
-                renderItem={(item) => <List.Item>{item}</List.Item>}
-              />
+              <ul className="training-shell__metric-list training-shell__metric-list--antd">
+                {consequenceRows.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
             </div>
 
             <div>
               <Typography.Title level={5}>Decision Context</Typography.Title>
-              <List
-                size="small"
-                className="training-shell__metric-list training-shell__metric-list--antd"
-                dataSource={buildDecisionSummaryRows(latestOutcome.decisionContext)}
-                renderItem={(item) => <List.Item>{item}</List.Item>}
-              />
+              <ul className="training-shell__metric-list training-shell__metric-list--antd">
+                {buildDecisionSummaryRows(latestOutcome.decisionContext).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
             </div>
           </div>
 
@@ -149,14 +147,14 @@ function TrainingOutcomePanel({
               <Typography.Paragraph type="danger">{mediaTaskFeedErrorMessage}</Typography.Paragraph>
             ) : null}
 
-            <List
-              size="small"
-              className="training-shell__metric-list training-shell__metric-list--antd"
-              dataSource={mediaTasks}
-              locale={{ emptyText: 'No media tasks in current training session.' }}
-              renderItem={(item) => (
-                <List.Item>
-                  <div className="training-shell__media-task-item">
+            {mediaTasks.length === 0 ? (
+              <Typography.Paragraph type="secondary">
+                No media tasks in current training session.
+              </Typography.Paragraph>
+            ) : (
+              <div className="training-shell__metric-list training-shell__metric-list--antd">
+                {mediaTasks.map((item) => (
+                  <div key={item.taskId} className="training-shell__media-task-item">
                     <Space wrap>
                       <Tag>{item.taskType}</Tag>
                       <Tag color={resolveMediaTaskStatusColor(item.status)}>{item.status}</Tag>
@@ -184,9 +182,9 @@ function TrainingOutcomePanel({
                       </Typography.Paragraph>
                     ) : null}
                   </div>
-                </List.Item>
-              )}
-            />
+                ))}
+              </div>
+            )}
           </div>
         </>
       ) : (

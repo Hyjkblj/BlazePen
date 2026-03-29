@@ -1,4 +1,4 @@
-﻿"""训练服务输出 DTO。"""
+"""训练服务输出 DTO。"""
 
 from __future__ import annotations
 

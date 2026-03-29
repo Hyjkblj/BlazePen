@@ -66,12 +66,13 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
     feedback,
     initialSelectedVoiceId: state.characterDraft?.voiceConfig?.preset_voice_id ?? null,
   });
+  const { loadCharacters } = portraitSelection;
 
   useEffect(() => {
     let cancelled = false;
     setLoadingMessage('正在加载角色...');
 
-    void portraitSelection.loadCharacters().then((result) => {
+    void loadCharacters().then((result) => {
       if (cancelled) {
         return;
       }
@@ -100,8 +101,8 @@ export function useCharacterSelectionFlow(): UseCharacterSelectionFlowResult {
     };
   }, [
     feedback,
+    loadCharacters,
     navigate,
-    portraitSelection.loadCharacters,
     setCharacterDraft,
     setCreatedCharacterId,
   ]);

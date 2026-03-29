@@ -1,0 +1,31 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+
+- [Minor] frontend/src/services/trainingCharacterApi.ts:30
+  问题：前端 typed API 仍把 preview job 结果定义为不包含 `attempt_count / last_failed_at / last_error_message`，与后端当前真实返回契约已经脱节。
+  原因：`TrainingCharacterPreviewJobResult` 与 `normalizeTrainingCharacterPreviewJob` 只消费旧字段；与此同时，后端 `TrainingCharacterPreviewJobRecord.to_dict()` 和 `backend/test_training_character_route_contract.py` 已把这三项观测字段当作公开返回内容。服务层契约没有保持前后端单一事实源。
+  影响：前端后续如果需要展示或埋点 preview 重试历史，只能绕过 typed service 直接兼容原始响应；更现实的风险是，后端继续演进这些字段时，前端类型层不会给出任何漂移信号。
+  建议：在 [frontend/src/types/api.ts](D:/Develop/Project/BlazePen/frontend/src/types/api.ts) 与 [frontend/src/services/trainingCharacterApi.ts](D:/Develop/Project/BlazePen/frontend/src/services/trainingCharacterApi.ts) 中补齐 `attemptCount / lastFailedAt / lastErrorMessage` 的定义和 normalize 映射，让服务层成为唯一消费契约入口。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+
+- [Major] backend/api/schemas.py:490
+  问题：后端 DTO 仍停留在旧版 preview job 响应，缺少 `attempt_count / last_failed_at / last_error_message`，而路由实际返回已经包含这些字段。
+  原因：`TrainingCharacterPreviewJobResponse` 没有同步新增观测字段，且 [backend/api/routers/training_characters.py](D:/Develop/Project/BlazePen/backend/api/routers/training_characters.py) 的 preview job 路由仍使用 `response_model=dict`，直接透传 `record.to_dict()`；DTO 与真实输出已经分叉，违反了 dto 边界应作为对外契约事实源的要求。
+  影响：OpenAPI/文档层、静态客户端和后续维护者看到的“官方响应结构”与实际返回不一致，新增字段可能在后续重构中被误删或误改而没有 schema 级保护。
+  建议：把 `TrainingCharacterPreviewJobResponse` 补齐 attempt 观测字段，并让 preview job 创建/查询路由显式绑定该 DTO，而不是继续用 `response_model=dict` 透传动态字典。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：[frontend/src/services/trainingCharacterApi.test.ts](D:/Develop/Project/BlazePen/frontend/src/services/trainingCharacterApi.test.ts) 目前只覆盖 identity preset 与错误映射，没有覆盖 preview job 新增 `attempt_count / last_failed_at / last_error_message` 的 normalize 行为，无法防止 typed service 再次落后于后端响应。
+- 后端：[backend/test_training_character_route_contract.py](D:/Develop/Project/BlazePen/backend/test_training_character_route_contract.py) 已断言运行时返回 attempt 观测字段，但没有任何测试保护 [backend/api/schemas.py](D:/Develop/Project/BlazePen/backend/api/schemas.py) 或 OpenAPI 层是否同步暴露这些字段。
+
+## Review Summary
+- 当前这轮代码在执行层面是稳定的，`tsc`、定向 `vitest`、定向 `pytest` 和本轮 `eslint` 都通过。
+- 没有再发现阻塞合并的恢复性、幂等性或双事实源问题。
+- 剩余问题集中在 preview job 新增观测字段的契约收口：后端真实返回、后端 DTO、前端 typed API 三者还没有统一。
+- 这不是立即会炸的运行时 bug，但它已经构成明确的契约漂移，后续一旦有 UI、埋点或文档依赖这些字段，就会出现边界层重复兼容。
+- 建议在合并前把 preview job 的 DTO 和前端 typed service 一起补齐，避免这条链路再次退化成“真实响应靠测试记忆、类型层并不知情”。

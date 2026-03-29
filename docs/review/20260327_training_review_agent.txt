@@ -1,0 +1,60 @@
+## 前端 Findings
+- [Blocker] frontend/src/pages/Training.tsx:72
+  问题：训练主页面被简化为只有场景图和选项带，移除了原有可见的场景标题、进度与 insight 导航，当前训练路由契约已经被改破。
+  原因：页面层不再消费既有 `TrainingShellHeader / TrainingSessionSummaryPanel / TrainingRoundPanel` 提供的恢复与洞察信息，直接绕过了训练页既有壳层边界；`frontend/src/pages/Training.integration.test.tsx` 与 `frontend/src/pages/TrainingMainPathSmoke.integration.test.tsx` 仍明确依赖这些可见契约。
+  影响：`npm run test:training:route-integration` 当前 7 个用例里有 5 个失败；用户在训练页也看不到当前场景标题、进度与报告/诊断入口，训练主线与 insight 入口脱节。
+  建议：恢复稳定的会话壳层输出，至少保留可见标题、进度、subnav/insight 入口；如果产品上要彻底改契约，必须在同一 PR 同步重写页面测试和导航策略。
+
+- [Blocker] frontend/src/hooks/useTrainingCharacterPreviewFlow.ts:127
+  问题：预览生图幂等键只按 `characterId` 固定生成，失败后点击“重新渲染”仍会命中同一 job。
+  原因：hook 在 `frontend/src/hooks/useTrainingCharacterPreviewFlow.ts:397` 再次创建 preview job 时复用了相同 `characterId` 和 `idempotency_key`，把“重试”实现成了“重复查询旧任务”，没有新的 attempt 维度。
+  影响：只要首次形象图任务超时或失败，用户几乎无法对同一角色继续重试，只能修改表单制造新的 `characterId`，训练入口会被锁死。
+  建议：把幂等范围改成“单次提交尝试”而不是“角色永久”，或在失败后主动重建角色/新 job key，并补上 retry path 的 hook 级测试。
+
+- [Major] frontend/src/pages/Training.tsx:29
+  问题：页面没有接住 flow 层的 `bootstrapErrorMessage`、`roundErrorMessage`、`noticeMessage` 和 `retryRestore`，恢复/提交失败只剩空白占位或 `console.error`。
+  原因：恢复、超时、场景不匹配等 typed recovery state 已经在 flow 层实现，但 page 层没有把这些状态重新映射成用户可操作 UI，职责链在页面层中断。
+  影响：显式 `sessionId` 恢复失败、`next-fetch-failed`、`scenario-mismatch` 等路径会退化成“会话恢复中...”或静默停留，用户无法判断是等待还是失败，也没有重试入口。
+  建议：把错误、notice 和 retry action 重新接回页面壳层，至少为 `restore / submit / scene-image` 三类失败提供可见提示与恢复按钮。
+
+## 后端 Findings
+- [Blocker] backend/api/services/training_character_preview_job_service.py:382
+  问题：相同幂等键命中的失败 preview job 不会重新排队执行，预览链路没有真正的重试模型。
+  原因：服务只会对 `pending/running` 再次 `submit_preview_job`，对 `failed` 直接返回旧记录；幂等键被当成永久锁，违反了可恢复的幂等设计。
+  影响：前端“重新渲染”命中相同 `idempotency_key` 时会永久拿到失败记录，角色形象生成作为训练前置步骤会把用户挡在入口外。
+  建议：对相同 canonical payload 的 `failed/timeout` job 支持显式重排队，或生成新的 attempt row 并保留审计关系，而不是直接返回旧失败记录。
+
+- [Major] backend/api/services/training_character_preview_job_service.py:1032
+  问题：角色预览请求默认连带生成整套 `scene_groups / storyline`，但这些产物没有成为训练会话的事实源。
+  原因：preview service 在角色预览阶段就默认开启场景组图生成，而真正的训练会话又在 `backend/api/services/training_service.py:330` 通过 `SessionStorylinePolicy` 独立生成另一套 session sequence，已经形成两套 storyline 来源。
+  影响：入口阶段被无控制地塞入大批后台重任务，生成的 `storyline_id`、场景序列和真实训练 session 可能不一致，形成双事实源和孤儿资源。
+  建议：把 scene group 预生成改成显式能力并默认关闭；如果确实需要预计算，必须绑定真实 `sessionId` 与最终 session sequence，并让 runtime 明确消费这批资产。
+
+- [Major] backend/api/services/training_character_preview_job_service.py:588
+  问题：preview job service 关闭时不等待线程收口，后台任务会在服务销毁后继续访问 provider pool 和数据库。
+  原因：`shutdown(wait=False)` 直接关闭三个线程池，没有 stop flag、future 跟踪和统一回写；实际运行 `python -m pytest backend/test_training_character_preview_job_service.py backend/test_session_storyline_policy.py backend/test_training_character_route_contract.py -q` 后，测试结束仍出现 “cannot schedule new futures after shutdown” 和访问已删除表的日志。
+  影响：进程重载、容器停止或单测 teardown 时，任务可能丢失最终状态或留下脏 `pending/running` 记录，恢复模型不可靠。
+  建议：维护 active futures 与停止标记，shutdown 时先拒绝新任务、等待在途任务收敛并回写最终/可恢复状态，再关闭 executor 和数据库资源。
+
+- [Major] backend/api/training_app.py:117
+  问题：preview executor warmup 失败被吞掉，训练服务仍会以 healthy 状态启动。
+  原因：preview warmup 仅记录 error 日志，不像 media executor 一样 fail-fast；但前端现在已经把 preview 生图作为进入训练的前置条件。
+  影响：缺少 preview migration 或存储异常时，健康检查会误判通过，用户直到入口页点击“生成形象图”才暴露 503，恢复和运维定位都滞后。
+  建议：对 `TrainingStorageUnavailableError` 采用与 media warmup 相同的 fail-fast 或 readiness 降级策略，并在 startup 日志中暴露明确的 migration 指引。
+
+## Open Questions
+- `frontend/src/pages/Training.tsx` 移除可见标题、进度与 insight 导航，是否是经过确认的产品改动？如果是，需要同步重定义训练页的路由契约与测试基线。
+- `backend/api/services/training_character_preview_job_service.py` 生成的 `scene_storyline_script / scene_groups` 是否已有明确消费方？当前前端和 `TrainingService.init_training` 都没有接这批结果。
+
+## 测试缺口
+- 前端：`frontend/src/hooks/useTrainingCharacterPreviewFlow.ts` 没有对应的 hook 级测试文件，未覆盖 preview job `failed -> regenerate`、失效 `localStorage` 快照恢复、`onStartTraining` 失败后的状态清理。
+- 前端：`frontend/src/pages/Training.integration.test.tsx` 和 `frontend/src/pages/TrainingMainPathSmoke.integration.test.tsx` 仍按旧训练壳层契约断言；当前 PR 没有补上新页面对可见标题、错误提示、恢复 CTA 与 insight 入口的替代测试，而且 route integration 现状已经是 failing。
+- 后端：`backend/test_training_character_preview_job_service.py` 只覆盖成功复用、恢复与 scene generation happy path，缺少 failed/timeout job 同键重试、shutdown drain、executor 关闭后不再落库的测试。
+- 后端：`backend/test_training_standalone_app.py` 没有覆盖 preview storage 缺失时 startup/readiness 应 fail-fast 或降级的行为，无法保护部署健康检查语义。
+
+## Review Summary
+- 本次改动在视觉和预览能力上推进明显，但训练入口、训练运行页和后端预览执行链路的契约没有一起收口。
+- 前端把训练页壳层直接裁掉，既破坏了现有集成测试，也让恢复和洞察路径失去可见入口。
+- 后端 preview job 虽然已经落库，但失败重试、关闭收口和启动退化处理都不完整。
+- 更严重的是，portrait preview 默认顺带生成整套 scene groups，而真实 training session 又独立生成另一套 storyline，单一事实源已经开始分叉。
+- 当前状态不建议直接合并，至少要先修复 preview retry、training page 契约和 executor 生命周期。

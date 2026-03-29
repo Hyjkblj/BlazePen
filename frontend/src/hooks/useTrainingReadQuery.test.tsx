@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrainingFlowProvider, useTrainingFlow, type ActiveTrainingSessionState } from '@/contexts';
@@ -34,40 +34,9 @@ const createRuntimeState = (sceneId: string, roundNo: number) => ({
   playerProfile: null,
 });
 
-function TrainingFlowSeed({
-  activeSession,
-  children,
-}: {
-  activeSession: ActiveTrainingSessionState | null;
-  children: ReactNode;
-}) {
-  const { setActiveSession } = useTrainingFlow();
-  const [isReady, setReady] = useState(activeSession === null);
-  const initializedRef = useRef(activeSession === null);
-
-  useLayoutEffect(() => {
-    if (initializedRef.current) {
-      return;
-    }
-
-    initializedRef.current = true;
-    if (activeSession) {
-      setActiveSession(activeSession);
-    }
-
-    setReady(true);
-  }, [activeSession, setActiveSession]);
-
-  return isReady ? <>{children}</> : null;
-}
-
 function createWrapper(activeSession: ActiveTrainingSessionState | null) {
   return function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <TrainingFlowProvider>
-        <TrainingFlowSeed activeSession={activeSession}>{children}</TrainingFlowSeed>
-      </TrainingFlowProvider>
-    );
+    return <TrainingFlowProvider initialActiveSession={activeSession}>{children}</TrainingFlowProvider>;
   };
 }
 

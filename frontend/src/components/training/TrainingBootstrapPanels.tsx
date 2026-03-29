@@ -58,7 +58,7 @@ function TrainingBootstrapPanels({
             setTrainingMode(event.target.value as TrainingMode);
           }}
         >
-          <Space direction="vertical" size={10} style={{ width: '100%' }}>
+          <Space orientation="vertical" size={10} style={{ width: '100%' }}>
             {TRAINING_MODE_OPTIONS.map(([modeValue, title, description]) => (
               <Radio key={modeValue} className="training-shell__mode-radio" value={modeValue}>
                 <span className="training-shell__mode-radio-title">{title}</span>

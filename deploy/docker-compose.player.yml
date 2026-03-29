@@ -61,7 +61,7 @@ services:
       # Backward-compatible bridge: old code reads VOLCENGINE_TEXT_MODEL,
       # unified switch uses LLM_TEXT_MODEL (edit one place in player.env).
       VOLCENGINE_TEXT_MODEL: ${LLM_TEXT_MODEL:-deepseek-v3-250324}
-      VOLCENGINE_IMAGE_MODEL: ${VOLCENGINE_IMAGE_MODEL:-doubao-seedream-4-0-250828}
+      VOLCENGINE_IMAGE_MODEL: ${VOLCENGINE_IMAGE_MODEL:-doubao-seedream-3-0-t2i-250415}
       VOLCENGINE_IMAGE_SIZE: ${VOLCENGINE_IMAGE_SIZE:-2K}
       VOLCENGINE_TTS_APP_ID: ${VOLCENGINE_TTS_APP_ID:-}
       VOLCENGINE_TTS_ACCESS_TOKEN: ${VOLCENGINE_TTS_ACCESS_TOKEN:-}

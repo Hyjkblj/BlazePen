@@ -217,6 +217,10 @@ class ImageGenerationService:
         Returns:
             专业的中文场景图片生成prompt（格式：生成一个XXX场景图片 二次元写实画风 图中无人物）
         """
+        explicit_prompt = str(scene_data.get('prompt') or '').strip()
+        if explicit_prompt:
+            return explicit_prompt
+
         scene_id = scene_data.get('scene_id', '')
         scene_name = scene_data.get('scene_name', '')
         scene_description = scene_data.get('scene_description', '')
@@ -666,7 +670,7 @@ class ImageGenerationService:
                 
                 if image_url:
                     logger.info(f"场景图片生成成功: {image_url}")
-                    
+                    final_url = image_url
                     # 保存图片到本地（如果启用且提供了存储服务）
                     if config.IMAGE_SAVE_ENABLED and self.storage_service:
                         local_path = self.storage_service.save_image(
@@ -675,8 +679,12 @@ class ImageGenerationService:
                         )
                         if local_path:
                             logger.info(f"场景图片已保存到本地: {local_path}")
-                    
-                    return image_url
+                            final_url = get_static_url(
+                                local_path,
+                                self._resolve_scene_static_type(local_path),
+                            )
+
+                    return final_url
                 else:
                     logger.warning(f"响应中未找到图片URL: {resp_data}")
                     return None
@@ -721,7 +729,7 @@ class ImageGenerationService:
             if response.status_code == 200:
                 image_url = response.output.results[0].url
                 logger.info(f"场景图片生成成功: {image_url}")
-                
+                final_url = image_url
                 # 保存图片到本地（如果启用且提供了存储服务）
                 if config.IMAGE_SAVE_ENABLED and self.storage_service:
                     local_path = self.storage_service.save_image(
@@ -730,11 +738,22 @@ class ImageGenerationService:
                     )
                     if local_path:
                         logger.info(f"场景图片已保存到本地: {local_path}")
-                
-                return image_url
+                        final_url = get_static_url(
+                            local_path,
+                            self._resolve_scene_static_type(local_path),
+                        )
+
+                return final_url
             else:
                 logger.warning(f"场景图片生成失败: {response.message}")
                 return None
         except Exception as e:
             logger.error(f"通义万相场景图片生成异常: {e}", exc_info=True)
             return None
+
+    @staticmethod
+    def _resolve_scene_static_type(local_path: str) -> str:
+        normalized_path = str(local_path or "").replace("\\", "/").lower()
+        if "/smallscenes/" in normalized_path:
+            return "smallscenes"
+        return "scenes"

@@ -1,0 +1,35 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+- [Major] frontend/src/hooks/useTrainingCharacterPreviewFlow.ts:452
+  问题：预览任务创建发生 409 幂等冲突时，前端没有消费 `existing_job_id` 继续跟踪既有任务，而是统一落入通用失败分支。
+  原因：训练预览链路已经把幂等键和本地 snapshot 做成恢复模型，但“服务端已受理、客户端重复提交”的分支仍未被前端按契约处理，恢复逻辑停留在通用错误展示，而不是恢复到既有 job。
+  影响：首次创建请求超时或响应丢失后，用户再次点击生成会看到假失败；页面既不能继续轮询已存在任务，也不能稳定区分重复提交与真实创建失败，恢复链路会中断。
+  建议：在 `catch` 中识别 typed conflict error，并从 `error.details.existing_job_id` 恢复 `applyPreviewResult` 与本地 snapshot；同时补一条 `createTrainingCharacterPreviewJob -> 409 conflict -> resume existing job` 的 hook 测试。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+- [Major] backend/api/routers/training_characters.py:124
+  问题：预览任务幂等冲突返回 409 时没有稳定 `error_code`，前端当前只能拿到通用 `UNKNOWN_ERROR`。
+  原因：幂等冲突是明确的业务分支，不应只靠 HTTP 状态码和 message 文本承载语义；当前实现也和 `training_media` 路由已经存在的 typed error contract 不一致，破坏契约优先。
+  影响：前端无法安全地区分“重复提交/已存在任务”和“其他 409 类错误”，后续自动恢复、埋点归因和重试分流都会退化为脆弱的状态码/文本判断。
+  建议：为该分支补稳定错误码，例如新增 `TRAINING_CHARACTER_PREVIEW_JOB_CONFLICT`，或明确复用现有码并统一文档；同时在路由契约测试里断言 409 的 `error.code`。
+- [Major] backend/api/training_app.py:117
+  问题：training-only app 只对 `TrainingStorageUnavailableError` 做 fail-fast，其余 preview/media warmup 异常仍会被记录后继续启动。
+  原因：基于 startup warmup 的设计意图，假设 training-only app 的 ready 语义应覆盖 preview/media 可用性；但当前 executor 生命周期、线程池或其他运行时异常仍被吞掉，应用会以半可用状态启动。
+  影响：服务可能在健康检查通过后，才在首个预览/媒体请求上暴露故障，形成“启动看起来正常、热路径才失败”的一致性与运维风险。
+  建议：将 warmup 失败统一视为 startup-fatal，或至少把失败状态显式暴露到 readiness/health；并补“generic exception during warmup” 的启动测试，而不只覆盖 storage unavailable。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：`frontend/src/hooks/useTrainingCharacterPreviewFlow.test.tsx` 缺少“创建预览任务返回 409 conflict 且带 `existing_job_id` 时恢复既有 job”的用例；当前只覆盖 `failed -> retry` 更换幂等键，没有覆盖首次请求已受理但客户端重发的恢复路径。
+- 前端：`frontend/src/services/trainingCharacterApi.test.ts` 仍未把 preview conflict 错误码视为稳定契约进行断言，当前基线接受 `UNKNOWN_ERROR`，无法保护后续恢复分支。
+- 后端：`backend/test_training_character_route_contract.py` 缺少 preview conflict `error.code` 的契约断言，导致 409 typed error drift 目前不会被测试拦住。
+- 后端：`backend/test_training_standalone_app.py` 只覆盖了 `TrainingStorageUnavailableError` 的 fail-fast，缺少 preview/media warmup 抛出通用运行时异常时的启动失败或健康状态断言。
+
+## Review Summary
+- 本轮修复已经补上训练页可见错误/恢复入口、preview attempt observability、failed job 重排队以及 warmup 的部分 fail-fast，主路径测试也同步更新。
+- 上次 preview job 可观测字段的前后端 DTO 漂移已经修复，相关前端类型、后端 schema 和契约测试目前是对齐的。
+- 当前剩余风险主要集中在“幂等冲突如何被稳定建模并被前端恢复”和“training-only app 的 startup ready 语义仍然偏宽松”两处。
+- 这些问题还不到阻塞合并，但已经会直接影响恢复可靠性、契约稳定性和线上问题归因，建议下一轮把 typed conflict 与 warmup fail-fast 一次补齐。

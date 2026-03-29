@@ -1,0 +1,43 @@
+@startuml
+!theme plain
+left to right direction
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam packageStyle rectangle
+skinparam rectangle {
+  RoundCorner 12
+}
+
+title BlazePen 系统界面结构示意图
+
+package "训练入口页" {
+  rectangle "身份设定" as A1
+  rectangle "角色形象选择" as A2
+  rectangle "开始训练" as A3
+}
+
+package "训练过程页" {
+  rectangle "场景背景" as B1
+  rectangle "任务目标" as B2
+  rectangle "输入与决策" as B3
+  rectangle "阶段反馈" as B4
+}
+
+package "复盘报告页" {
+  rectangle "结局结果" as C1
+  rectangle "能力雷达图" as C2
+  rectangle "成长曲线" as C3
+  rectangle "改进建议" as C4
+}
+
+A1 --> A2
+A2 --> A3
+A3 --> B1
+B1 --> B2
+B2 --> B3
+B3 --> B4
+B4 --> C1
+C1 --> C2
+C2 --> C3
+C3 --> C4
+@enduml

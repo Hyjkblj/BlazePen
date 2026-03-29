@@ -1,0 +1,139 @@
+{
+  "session_id": "c2a0b2bb-a182-446d-8fa5-37c581dcd2c7",
+  "status": "in_progress",
+  "round_no": 3,
+  "scenario": {
+    "id": "S1_micro_1_2_9ee4aeff",
+    "title": "卢沟桥事变快讯发布·小场景2·现场回访节点",
+    "era_date": "1937-07-07",
+    "location": "北平宛平城外围",
+    "brief": "承接上一节点“卢沟桥事变快讯发布·小场景1·发布复盘节点”。老何与陈编辑在北平宛平城外围提出新的变量，本小场景结果将直接影响后续主线。",
+    "mission": "陈编辑反馈有目击者愿意补充证词，但对身份暴露极其敏感。你需要完成一版既可核查又不暴露线人的描述。",
+    "decision_focus": "来源保护与可追溯证据表达",
+    "target_skills": [
+      "K2",
+      "K5",
+      "K6",
+      "K1"
+    ],
+    "risk_tags": [
+      "fast_publish",
+      "rumor",
+      "headline_pressure",
+      "source_safety",
+      "privacy_leak",
+      "micro_scene"
+    ],
+    "options": [
+      {
+        "id": "A",
+        "label": "公开证词细节与可识别背景",
+        "impact_hint": "证据感强，但来源风险极高。"
+      },
+      {
+        "id": "B",
+        "label": "匿名化关键信息并保留核查链条",
+        "impact_hint": "更符合长期来源保护与持续采访。"
+      },
+      {
+        "id": "C",
+        "label": "删除全部细节，仅保留模糊结论",
+        "impact_hint": "安全性高，但信息价值明显下降。"
+      }
+    ],
+    "completion_hint": "说明你的选择如何与上一节点保持连续，并为下一节点留出可执行交接。",
+    "phase_tags": [
+      "opening"
+    ],
+    "branch_tags": [
+      "mainline",
+      "major_scene",
+      "micro_scene"
+    ],
+    "next_rules": [],
+    "scene_level": "micro",
+    "major_scene_id": "S1",
+    "major_scene_order": 1,
+    "micro_scene_order": 2,
+    "storyline_anchor_scene_id": "S1_micro_1_1_9ee4aeff",
+    "storyline_id": "storyline_5a839ee4aeff",
+    "active_cast": [
+      {
+        "name": "老何",
+        "role": "印刷与发布"
+      },
+      {
+        "name": "陈编辑",
+        "role": "总编把关"
+      }
+    ],
+    "is_assessment_round": true,
+    "storyline_order": 3,
+    "storyline_total": 20,
+    "storyline_prev_scene_id": "S1_micro_1_1_9ee4aeff",
+    "storyline_next_scene_id": "S1_micro_1_3_9ee4aeff"
+  },
+  "k_state": {
+    "K1": 0.57,
+    "K2": 0.53,
+    "K3": 0.47,
+    "K4": 0.47,
+    "K5": 0.47,
+    "K6": 0.47,
+    "K7": 0.47,
+    "K8": 0.47
+  },
+  "s_state": {
+    "credibility": 0.66,
+    "accuracy": 0.68,
+    "public_panic": 0.3,
+    "source_safety": 0.65,
+    "editor_trust": 0.55,
+    "actionability": 0.5
+  },
+  "player_profile": {
+    "name": "李敏",
+    "gender": "女",
+    "identity": "战地记者",
+    "age": 24
+  },
+  "runtime_state": {
+    "current_round_no": 2,
+    "k_state": {
+      "K1": 0.57,
+      "K2": 0.53,
+      "K3": 0.47,
+      "K4": 0.47,
+      "K5": 0.47,
+      "K6": 0.47,
+      "K7": 0.47,
+      "K8": 0.47
+    },
+    "s_state": {
+      "credibility": 0.66,
+      "accuracy": 0.68,
+      "public_panic": 0.3,
+      "source_safety": 0.65,
+      "editor_trust": 0.55,
+      "actionability": 0.5
+    },
+    "runtime_flags": {
+      "panic_triggered": false,
+      "source_exposed": false,
+      "editor_locked": false,
+      "high_risk_path": false
+    },
+    "state_bar": {
+      "editor_trust": 0.55,
+      "public_stability": 0.7,
+      "source_safety": 0.65
+    },
+    "current_scene_id": "S1_micro_1_2_9ee4aeff",
+    "player_profile": {
+      "name": "李敏",
+      "gender": "女",
+      "identity": "战地记者",
+      "age": 24
+    }
+  }
+}

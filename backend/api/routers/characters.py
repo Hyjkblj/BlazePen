@@ -32,7 +32,10 @@ async def create_character(
         import json
         logger.info("收到创建角色请求，开始处理...")
         # 转换请求数据
-        request_data = request.dict()
+        if hasattr(request, "model_dump"):
+            request_data = request.model_dump(exclude_none=True)
+        else:
+            request_data = request.dict(exclude_none=True)
         
         # 输出前端接收的人物设定数据到日志
         logger.debug("="*80)
@@ -121,7 +124,7 @@ async def create_character(
         
         # 添加图片URL列表到响应（即使为空也要添加，确保前端能获取到）
         character_info['image_urls'] = image_urls if image_urls else []
-        
+
         logger.info(f"创建角色响应: character_id={character_info.get('character_id')}, name={character_info.get('name')}, image_urls数量={len(character_info.get('image_urls', []))}")
         
         return success_response(data=character_info)

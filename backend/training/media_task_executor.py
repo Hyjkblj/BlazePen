@@ -5,14 +5,13 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from hashlib import sha256
 import os
+import re
 from threading import Lock
 from time import sleep
-from typing import Any
+from typing import Any, Protocol
 
-from api.services.image_service import ImageService
-from api.services.tts_service import TTSService
-from models.text_model_service import TextModelService
 from training.exceptions import (
     TrainingMediaProviderUnavailableError,
     TrainingMediaTaskExecutionFailedError,
@@ -23,6 +22,49 @@ from utils.logger import get_logger
 
 
 logger = get_logger(__name__)
+
+
+class ImageProviderProtocol(Protocol):
+    def generate_character_image(
+        self,
+        *,
+        prompt: str,
+        character_id: int | None = None,
+        user_id: str | None = None,
+        image_type: str = "portrait",
+        generate_group: bool = True,
+        group_count: int = 3,
+    ) -> list[str]:
+        ...
+
+    def generate_scene_image(self, *, scene_data: dict[str, Any], scene_id: str | None = None, user_id: str | None = None) -> str:
+        ...
+
+
+class TtsProviderProtocol(Protocol):
+    def generate_speech(
+        self,
+        *,
+        text: str,
+        character_id: int = 1,
+        emotion_params: dict[str, Any] | None = None,
+        use_cache: bool = True,
+        override_voice_id: str | None = None,
+    ) -> dict[str, Any]:
+        ...
+
+
+class TextProviderProtocol(Protocol):
+    def generate_text(
+        self,
+        *,
+        prompt: str,
+        max_tokens: int = 200,
+        temperature: float = 0.7,
+        system_message: str | None = None,
+        use_retry: bool = True,
+    ) -> str:
+        ...
 
 
 @dataclass(slots=True)
@@ -59,9 +101,9 @@ class TrainingMediaTaskProviderDispatcher:
     def __init__(
         self,
         *,
-        image_service: ImageService | None = None,
-        tts_service: TTSService | None = None,
-        text_model_service: TextModelService | None = None,
+        image_service: ImageProviderProtocol | None = None,
+        tts_service: TtsProviderProtocol | None = None,
+        text_model_service: TextProviderProtocol | None = None,
     ):
         self.image_service = image_service
         self.tts_service = tts_service
@@ -86,6 +128,9 @@ class TrainingMediaTaskProviderDispatcher:
     def _execute_image_task(self, payload: dict[str, Any]) -> dict[str, Any]:
         if self.image_service is None:
             raise TrainingMediaProviderUnavailableError(task_type="image", provider="ImageService")
+
+        if self._should_generate_scene_series(payload):
+            return self._execute_scene_series_task(payload)
 
         prompt = str(payload.get("prompt") or "").strip()
         if not prompt:
@@ -114,6 +159,231 @@ class TrainingMediaTaskProviderDispatcher:
                 reason="image provider returned empty result",
             )
         return {"image_urls": list(image_urls)}
+
+    def _should_generate_scene_series(self, payload: dict[str, Any]) -> bool:
+        image_type = str(payload.get("image_type") or "").strip().lower()
+        should_generate_series = bool(payload.get("generate_storyline_series"))
+        if not should_generate_series:
+            return False
+
+        return image_type in {"scene", "smallscene", "small_scene", "storyline_scene"}
+
+    def _execute_scene_series_task(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.image_service is None:
+            raise TrainingMediaProviderUnavailableError(task_type="image", provider="ImageService")
+
+        session_id = (
+            self._optional_str(payload.get("session_id"))
+            or self._optional_str(payload.get("training_session_id"))
+            or self._optional_str(payload.get("user_id"))
+            or "training_session"
+        )
+        round_no = max(self._optional_int(payload.get("round_no")) or 0, 0)
+        scenario_id = self._optional_str(payload.get("scenario_id")) or ""
+        major_scene_title = (
+            self._optional_str(payload.get("major_scene_title"))
+            or self._optional_str(payload.get("scenario_title"))
+            or "主场景"
+        )
+        base_prompt = (
+            self._optional_str(payload.get("major_scene_prompt"))
+            or self._optional_str(payload.get("prompt"))
+            or self._optional_str(payload.get("scenario_prompt"))
+            or self._build_default_scene_prompt(payload, major_scene_title=major_scene_title)
+        )
+        if not base_prompt:
+            raise TrainingMediaTaskExecutionFailedError(
+                task_type="image",
+                reason="scene-series prompt is required",
+            )
+
+        micro_scene_count = self._resolve_micro_scene_count(
+            payload=payload,
+            session_id=session_id,
+            round_no=round_no,
+            scenario_id=scenario_id,
+            major_scene_title=major_scene_title,
+        )
+        micro_prompts = self._resolve_micro_scene_prompts(
+            payload=payload,
+            base_prompt=base_prompt,
+            major_scene_title=major_scene_title,
+            micro_scene_count=micro_scene_count,
+        )
+        call_sequence_start = max(self._optional_int(payload.get("call_sequence_start")) or 1, 1)
+
+        generated_urls: list[str] = []
+        small_scene_urls: list[str] = []
+        prompt_bundle: list[dict[str, Any]] = []
+
+        major_call_sequence = call_sequence_start
+        major_scene_key = self._build_scene_call_key(
+            session_id=session_id,
+            round_no=round_no,
+            call_sequence=major_call_sequence,
+        )
+        major_scene_url = self._generate_single_scene_image(
+            session_id=session_id,
+            round_no=round_no,
+            scene_id=major_scene_key,
+            scene_name=f"{major_scene_title}_major",
+            scene_prompt=base_prompt,
+            scene_level="major",
+            payload=payload,
+        )
+        generated_urls.append(major_scene_url)
+        prompt_bundle.append(
+            {
+                "scene_level": "major",
+                "call_sequence": major_call_sequence,
+                "scene_id": major_scene_key,
+                "scene_prompt": base_prompt,
+            }
+        )
+
+        for index, micro_prompt in enumerate(micro_prompts, start=1):
+            call_sequence = call_sequence_start + index
+            micro_scene_key = self._build_scene_call_key(
+                session_id=session_id,
+                round_no=round_no,
+                call_sequence=call_sequence,
+            )
+            micro_scene_url = self._generate_single_scene_image(
+                session_id=session_id,
+                round_no=round_no,
+                scene_id=micro_scene_key,
+                scene_name=f"{major_scene_title}_micro_{index}",
+                scene_prompt=micro_prompt,
+                scene_level="micro",
+                payload=payload,
+            )
+            generated_urls.append(micro_scene_url)
+            small_scene_urls.append(micro_scene_url)
+            prompt_bundle.append(
+                {
+                    "scene_level": "micro",
+                    "call_sequence": call_sequence,
+                    "scene_id": micro_scene_key,
+                    "scene_prompt": micro_prompt,
+                }
+            )
+
+        return {
+            "preview_url": major_scene_url,
+            "major_scene_url": major_scene_url,
+            "small_scene_urls": small_scene_urls,
+            "image_urls": generated_urls,
+            "series_size": len(generated_urls),
+            "series_profile": {
+                "session_id": session_id,
+                "round_no": round_no,
+                "major_scene_count": 1,
+                "micro_scene_count": micro_scene_count,
+                "naming_rule": "sessionId_r{roundNo}_call_{sequence}",
+            },
+            "prompt_bundle": prompt_bundle,
+        }
+
+    def _generate_single_scene_image(
+        self,
+        *,
+        session_id: str,
+        round_no: int,
+        scene_id: str,
+        scene_name: str,
+        scene_prompt: str,
+        scene_level: str,
+        payload: dict[str, Any],
+    ) -> str:
+        scene_data = {
+            "scene_id": scene_id,
+            "scene_name": scene_name,
+            "scene_description": scene_prompt,
+            # Explicit prompt has the highest priority in image_generation_service.
+            "prompt": scene_prompt,
+            "atmosphere": self._optional_str(payload.get("atmosphere")),
+            "time_of_day": self._optional_str(payload.get("time_of_day")),
+            "weather": self._optional_str(payload.get("weather")),
+            "session_id": session_id,
+            "round_no": round_no,
+            "scene_level": scene_level,
+        }
+        scene_image_url = self.image_service.generate_scene_image(
+            scene_data=scene_data,
+            scene_id=scene_id,
+            user_id=session_id,
+        )
+        if not scene_image_url:
+            raise TrainingMediaTaskExecutionFailedError(
+                task_type="image",
+                reason=f"scene-series image generation failed: scene_id={scene_id}",
+            )
+        return str(scene_image_url)
+
+    def _resolve_micro_scene_count(
+        self,
+        *,
+        payload: dict[str, Any],
+        session_id: str,
+        round_no: int,
+        scenario_id: str,
+        major_scene_title: str,
+    ) -> int:
+        requested_count = self._optional_int(payload.get("micro_scene_count"))
+        if requested_count is not None:
+            return min(max(requested_count, 2), 3)
+
+        seed_source = f"{session_id}|{round_no}|{scenario_id}|{major_scene_title}"
+        digest = sha256(seed_source.encode("utf-8")).hexdigest()
+        return 2 + (int(digest[:2], 16) % 2)
+
+    def _resolve_micro_scene_prompts(
+        self,
+        *,
+        payload: dict[str, Any],
+        base_prompt: str,
+        major_scene_title: str,
+        micro_scene_count: int,
+    ) -> list[str]:
+        provided_prompts = payload.get("micro_scene_prompts")
+        normalized_provided_prompts: list[str] = []
+        if isinstance(provided_prompts, list):
+            for item in provided_prompts:
+                prompt = self._optional_str(item)
+                if prompt:
+                    normalized_provided_prompts.append(prompt)
+
+        if len(normalized_provided_prompts) >= micro_scene_count:
+            return normalized_provided_prompts[:micro_scene_count]
+
+        decision_focus = self._optional_str(payload.get("decision_focus")) or "信息核验与发布权衡"
+        mission = self._optional_str(payload.get("mission")) or "保持连续叙事与风险可控"
+        fallback_prompts = list(normalized_provided_prompts)
+        for index in range(len(fallback_prompts) + 1, micro_scene_count + 1):
+            fallback_prompts.append(
+                (
+                    f"{base_prompt}\n"
+                    f"镜头切换到“{major_scene_title}”对应的小场景{index}，"
+                    f"突出{decision_focus}，并保持“{mission}”的连续氛围。"
+                )
+            )
+        return fallback_prompts
+
+    def _build_default_scene_prompt(self, payload: dict[str, Any], *, major_scene_title: str) -> str:
+        scenario_brief = self._optional_str(payload.get("brief")) or "场景处于高压信息流中"
+        mission = self._optional_str(payload.get("mission")) or "在速度与准确之间达成平衡"
+        decision_focus = self._optional_str(payload.get("decision_focus")) or "完成关键决策"
+        return (
+            f"{major_scene_title}。{scenario_brief}。"
+            f"任务：{mission}。决策焦点：{decision_focus}。"
+            "视觉风格：纪实新闻叙事，环境细节真实，无人物特写。"
+        )
+
+    def _build_scene_call_key(self, *, session_id: str, round_no: int, call_sequence: int) -> str:
+        safe_session_id = re.sub(r"[^0-9A-Za-z_-]+", "_", str(session_id or "training_session")).strip("_")
+        if not safe_session_id:
+            safe_session_id = "training_session"
+        return f"{safe_session_id}_r{max(round_no, 0):02d}_call_{max(call_sequence, 1):02d}"
 
     def _execute_tts_task(self, payload: dict[str, Any]) -> dict[str, Any]:
         if self.tts_service is None:

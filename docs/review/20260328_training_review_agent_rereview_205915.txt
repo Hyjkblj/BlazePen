@@ -1,0 +1,35 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+- [Major] frontend/src/hooks/useTrainingCharacterPreviewFlow.ts:441
+  问题：预览重试策略把所有 `previewStatus === 'error'` 都当成可开启新 attempt 的信号，连前端轮询超时也会直接换新的 `idempotency_key`。
+  原因：`waitForTrainingCharacterPreviewJob` 的 `REQUEST_TIMEOUT` 只说明客户端在超时时间内没等到结果，不代表服务端 job 已经进入 `failed/timeout` 终态；但当前 hook 没有区分“终态失败”和“仅客户端等待超时”。
+  影响：当图片生成慢于前端超时阈值时，用户再次点击“重新生成”会并发创建第二个 preview job，重任务重复执行，幂等保护被前端自己绕开，恢复路径也会变得不稳定。
+  建议：仅在确认旧 job 已进入后端终态失败后才递增 `attemptNo`；如果是 `REQUEST_TIMEOUT` 或恢复轮询超时，优先保留原 `jobId/idempotency_key` 并继续恢复轮询，同时补一条“poll timeout 后重试不新建 attempt”的 hook 测试。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+- [Major] backend/api/routers/training.py:100
+  问题：训练入口 `identity-presets` 仍挂在 session 主路由里，并继续用 `response_model=dict` 暴露未类型化响应。
+  原因：身份预设属于训练角色/入口 bootstrap 领域，不属于训练会话主线；把它留在 `training.py` 且不声明 DTO，会同时扩大巨型 router 和弱化契约边界。
+  影响：训练入口 bootstrap API 和训练会话 API 继续混在一起，后续接口文档、客户端类型生成和路由契约测试都无法稳定覆盖这一条链路，容易再次引入字段漂移。
+  建议：把 `identity-presets` 下沉到 `training_characters` 或独立 bootstrap router，并为它补专用 response schema/envelope；同时增加 OpenAPI/路由契约测试。
+- [Minor] backend/api/routers/training_characters.py:304
+  问题：去背景接口把服务端本地文件路径 `local_path` 作为公开响应字段返回给前端。
+  原因：`local_path` 是服务端内部存储实现细节，不属于前端需要消费的稳定契约；现在还被写进了 [schemas.py](D:/Develop/Project/BlazePen/backend/api/schemas.py#L101) 的 DTO，会把内部路径布局固化进公开接口。
+  影响：客户端会无意义地感知服务端文件系统细节，增加环境耦合和信息泄漏面，后续如果迁移存储实现还需要额外兼容这个无业务价值字段。
+  建议：从响应 DTO 中移除 `local_path`，仅保留 `selected_image_url`、`transparent_url` 和必要的清理统计；如果调试确实需要，改为日志或受保护的诊断接口。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：`frontend/src/hooks/useTrainingCharacterPreviewFlow.test.tsx` 还缺少“`waitForTrainingCharacterPreviewJob` 超时后再次重试，应继续复用既有 `jobId/idempotency_key` 而不是新建 attempt” 的用例。
+- 后端：当前没有针对 `/api/v1/training/identity-presets` 的 OpenAPI 或路由契约测试；`backend/test_training_character_route_contract.py` 也没有覆盖这条训练入口 bootstrap 接口。
+- 后端：当前没有测试约束 `remove-background` 响应的公开字段边界，因此像 `local_path` 这类内部字段会继续悄悄留在对外契约里。
+
+## Review Summary
+- 本轮重新 review 后，上一轮关于 preview conflict typed error、前端冲突恢复、训练角色路由 DTO 和 warmup fail-fast 的主要问题已经补齐。
+- 当前没有发现阻塞合并的问题，前端类型检查、训练相关 vitest 和后端关键 pytest 都通过了。
+- 剩下最值得优先处理的是 preview 超时后的重试策略，它会在慢任务场景下重新创建新 attempt，直接削弱重任务幂等和恢复稳定性。
+- 后端侧则主要还剩训练入口 bootstrap API 的边界与契约收口，以及去背景响应里不必要的内部字段泄漏。
+- 这些问题规模已经比前一轮小很多，但都和“契约清晰、恢复稳定、低耦合”直接相关，适合在下一轮一起收尾。

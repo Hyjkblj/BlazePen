@@ -1,0 +1,52 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+- [Major] frontend/src/components/training/TrainingLanding.tsx:118
+  问题：`TrainingLanding` 组件同时承担了身份预设加载、角色创建、preview job 轮询、选图持久化四段业务流程。
+  原因：这把本应属于 `flows / hooks / services` 的流程编排和恢复状态塞回展示组件，违反了前端职责边界；同时 `previewStatus / previewImageUrls / selectedPreviewIndex / identityPreset*` 与 `useTrainingMvpFlow` 的 `formDraft / bootstrap` 被拆成了双状态源。
+  影响：页面卸载、刷新或路由切换后，preview job 的 `jobId` 和轮询状态会直接丢失，训练入口没有统一恢复模型；后续再加 retry/cancel/restore 只会继续放大组件复杂度和维护成本。
+  建议：把角色预创建、preview job 创建/轮询、选图确认下沉到 `frontend/src/flows/useTrainingMvpFlow.ts` 或独立 `frontend/src/hooks/useTrainingCharacterPreviewFlow.ts`，组件只消费 view state 和 action。
+- [Major] frontend/src/components/training/TrainingLanding.tsx:102
+  问题：preview job 的 `idempotency_key` 由 `Date.now() + Math.random()` 生成，实际上禁用了幂等保护。
+  原因：幂等键应该稳定绑定“同一角色 + 同一预览请求”；当前实现每次点击、超时重试或刷新后重试都会生成新 key，等于主动绕过了后端的重复提交保护。
+  影响：用户重复点击、网络抖动或超时重试都会重复创建重型生图任务，带来额外模型开销、孤儿任务和预览结果不一致风险。
+  建议：基于 `characterId + canonical request payload` 生成确定性幂等键，并把 `jobId / idempotencyKey` 纳入 flow state，保证 retry / resume 复用同一任务。
+- [Major] frontend/src/flows/useTrainingMvpFlow.ts:244
+  问题：`preferredCharacterId` 只要不是数字就被当成 `portraitPresetId` 回填，任何脏的 `characterId` 都会静默进入表单状态。
+  原因：这里把 `characterId` 契约字段兼容成“角色 ID / 旧预设 ID”双语义，而且从“只接受已知 legacy preset”退化成“接受任意非空字符串”，违反了契约优先和“不能直接兼容后端脏字段”的要求。
+  影响：一旦 `activeSession` 或 `trainingResumeTarget` 里的 `characterId` 被写成任意字符串，落地页会伪装成已选合法预设，进而生成错误角色和错误训练入口状态，排查成本很高。
+  建议：把 legacy preset 迁移逻辑限制在显式白名单或独立迁移函数里；对非数字且非已知 preset 的值直接丢弃并记录 telemetry，不要写回 `formDraft`。
+
+## 后端 Findings
+- [Blocker] backend/api/services/training_character_preview_job_service.py:95
+  问题：preview job 状态和幂等索引完全存放在进程内 `_jobs / _idempotency_job_ids` 字典里，并由本地 `ThreadPoolExecutor` 执行。
+  原因：这让 `/v1/training/characters/preview-jobs` 的权威事实源依赖单个 Python 进程；服务重启、热更新、滚动发布或多实例部署后，`jobId -> status` 与 `idempotency_key -> jobId` 都会失真，违反可恢复和一致性要求。
+  影响：前端轮询中的 preview job 会在进程切换后直接 404；相同请求在不同实例上会重复生图；幂等和恢复在真实部署环境里都不成立，这个实现不应直接合入主链路。
+  建议：把 preview job 下沉到 `repository-store / async-task` 层，建立持久化 job 表和后台执行器；`create/get` 都只读写持久层状态，不能再以进程字典为权威。
+- [Major] backend/training/training_store.py:404
+  问题：`TrainingStorageUnavailableError` 只包住了 `list_media_tasks*`，`create_media_task` 和 `get_media_task_by_idempotency_key` 等热路径仍会把底层 DB 异常直接漏成 500。
+  原因：这次改动已经引入了 `TRAINING_STORAGE_UNAVAILABLE` 契约，但存储层只在 list/warmup 路径做了缺表归一化，create/get/idempotency lookup 仍没有统一错误模型。
+  影响：当 `training_media_tasks` 表缺失或存储不可用时，列表接口会返回 503 typed error，而创建接口仍是不可区分的 500，客户端无法按统一恢复策略处理基础设施故障。
+  建议：把缺表/存储不可用包装补到 `create_media_task`、`get_media_task_by_idempotency_key`、`get_media_task`、`claim_media_task`、`complete_media_task`，让 `training_media` 全链路都走稳定的 `TRAINING_STORAGE_UNAVAILABLE`。
+- [Major] backend/api/routers/training_characters.py:114
+  问题：路由通过 `"not found" in str(exc)` 和 `"不存在" in str(exc)` 这类 message 文本匹配来决定 400/404 语义。
+  原因：这把业务语义绑在可变文案上，而不是 typed exception 或稳定 error code，违反了“错误处理不能依赖 message 文本承载业务语义”的规则。
+  影响：只要 `CharacterService` 或下层异常文案发生改动、国际化或封装，接口就可能把同一问题从 404 漂移成 400/500，前端恢复与提示逻辑也无法稳定依赖。
+  建议：为角色查询、角色创建和 preview job 场景引入明确的 typed exception / domain error code，由 router 基于类型做固定的 HTTP status 与 `error_code` 映射，禁止 substring branching。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：仓库里没有 `frontend/src/services/trainingCharacterApi.test.ts`，因此 `listTrainingIdentityPresets`、`createTrainingCharacter`、`createTrainingCharacterPreviewJob`、`waitForTrainingCharacterPreviewJob` 的 timeout / 404 / 409 / 503 错误映射没有单测保护。
+- 前端：`frontend/src/components/training/TrainingLanding.test.tsx` 目前只覆盖“未选预设禁止生成”，没有覆盖“重复点击生成必须复用同一 idempotency key / 同一 job”、“生成中卸载或刷新后的恢复”、“preview job 超时或 404 时的 retry 路径”。
+- 前端：`frontend/src/flows/useTrainingMvpFlow.test.tsx` 没有覆盖 `preferredCharacterId` 为脏字符串时应拒绝回填 `portraitPresetId` 的路径；`frontend/src/pages/Training.integration.test.tsx` 和 `frontend/src/pages/TrainingMainPathSmoke.integration.test.tsx` 也没有覆盖带脏 `resumeTarget.characterId` 的入口恢复场景。
+- 后端：仓库里没有 `backend/test_training_character_preview_job_service.py`，当前 `backend/test_training_standalone_app.py` 只验证 preview job happy path，没有覆盖服务重启、重新实例化或多实例下 `jobId` 查询和 `idempotency_key` 复用的一致性。
+- 后端：`backend/test_training_media_route_smoke.py` 和 `backend/test_training_media_task_repository_store.py` 没有覆盖 `create/get/idempotency lookup` 路径在 `training_media_tasks` 表缺失时返回 `TRAINING_STORAGE_UNAVAILABLE` 的场景，所以这次 storage 异常归一化仍有热路径缺口。
+- 后端：`backend/test_character_route_contract.py` 没有断言 `training_characters.py` 的 typed error mapping，因此当前依赖 message 文本决定 400/404 的分支没有测试保护。
+
+## Review Summary
+本次改动把训练入口做得更完整，但前端状态编排和后端 preview job 持久化模型都没有跟上，架构边界已经开始退化。
+前端没有新的 blocker，但 `TrainingLanding` 已经把 flow/hook 逻辑吸回组件，并且随机幂等键直接削弱了重任务的重复提交保护。
+后端最严重的问题是 preview job 仍以进程内字典为权威状态，这与训练域当前强调的恢复能力和一致性要求直接冲突，不应带着这个模型合并。
+另外，`TRAINING_STORAGE_UNAVAILABLE` 只补到了 list/warmup 路径，create/get 热路径还不一致；training character 路由也仍在用 message 文本决定业务语义。
+抽样执行的前端 4 个 Vitest 文件和后端 3 个 pytest 文件都通过了，但这些测试基本仍停留在 happy path，无法保护刷新、重试、重启和脏数据恢复这些真正容易出事故的路径。

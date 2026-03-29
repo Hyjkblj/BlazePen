@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,7 +9,6 @@ import {
 import {
   FeedbackProvider,
   TrainingFlowProvider,
-  useTrainingFlow,
   type ActiveTrainingSessionState,
 } from '@/contexts';
 import { ServiceError } from '@/services/serviceError';
@@ -30,12 +28,24 @@ const trainingApiMocks = vi.hoisted(() => ({
   getTrainingSessionSummary: vi.fn(),
   submitTrainingRound: vi.fn(),
   getNextTrainingScenario: vi.fn(),
+  createTrainingMediaTask: vi.fn(),
+  getTrainingMediaTask: vi.fn(),
   getTrainingProgress: vi.fn(),
   getTrainingReport: vi.fn(),
   getTrainingDiagnostics: vi.fn(),
 }));
 
+const trainingCharacterApiMocks = vi.hoisted(() => ({
+  listTrainingIdentityPresets: vi.fn(),
+  createTrainingCharacter: vi.fn(),
+  createTrainingCharacterPreviewJob: vi.fn(),
+  waitForTrainingCharacterPreviewJob: vi.fn(),
+  getTrainingCharacterImages: vi.fn(),
+  removeTrainingCharacterBackground: vi.fn(),
+}));
+
 vi.mock('@/services/trainingApi', () => trainingApiMocks);
+vi.mock('@/services/trainingCharacterApi', () => trainingCharacterApiMocks);
 
 const createRuntimeState = (sceneId: string, roundNo: number) => ({
   currentRoundNo: roundNo,
@@ -76,6 +86,16 @@ const createScenario = (id: string, title: string, optionLabel = 'Hold publicati
       label: optionLabel,
       impactHint: 'Protect source safety',
     },
+    {
+      id: `${id}-opt-2`,
+      label: 'Clarify source chain',
+      impactHint: 'Expand evidence scope',
+    },
+    {
+      id: `${id}-opt-3`,
+      label: 'Escalate to editor desk',
+      impactHint: 'Reduce field risk first',
+    },
   ],
   completionHint: '',
   recommendation: null,
@@ -110,59 +130,32 @@ const createSessionSummary = (
   endTime: null,
 });
 
-function TrainingFlowSeed({
-  activeSession,
-  children,
-}: {
-  activeSession: ActiveTrainingSessionState | null;
-  children: ReactNode;
-}) {
-  const { setActiveSession } = useTrainingFlow();
-  const [isReady, setReady] = useState(activeSession === null);
-  const initializedRef = useRef(activeSession === null);
-
-  useLayoutEffect(() => {
-    if (initializedRef.current) {
-      return;
-    }
-
-    initializedRef.current = true;
-    if (activeSession) {
-      setActiveSession(activeSession);
-    }
-
-    setReady(true);
-  }, [activeSession, setActiveSession]);
-
-  return isReady ? <>{children}</> : null;
-}
-
 const renderRouterApp = (
   pathname: string,
   { activeSession = null }: { activeSession?: ActiveTrainingSessionState | null } = {}
 ) =>
   render(
     <FeedbackProvider>
-      <TrainingFlowProvider>
-        <TrainingFlowSeed activeSession={activeSession}>
-          <MemoryRouter initialEntries={[pathname]}>
-            <Routes>
-              <Route path={ROUTES.TRAINING} element={<Training />} />
-              <Route path={ROUTES.TRAINING_MAINHOME} element={<TrainingMainHomePage />} />
-              <Route path={ROUTES.TRAINING_LANDING} element={<TrainingLandingPage />} />
-              <Route path={ROUTES.TRAINING_PROGRESS} element={<TrainingProgress />} />
-              <Route path={ROUTES.TRAINING_REPORT} element={<TrainingReport />} />
-              <Route path={ROUTES.TRAINING_DIAGNOSTICS} element={<TrainingDiagnostics />} />
-            </Routes>
-          </MemoryRouter>
-        </TrainingFlowSeed>
+      <TrainingFlowProvider initialActiveSession={activeSession}>
+        <MemoryRouter initialEntries={[pathname]}>
+          <Routes>
+            <Route path={ROUTES.TRAINING} element={<Training />} />
+            <Route path={ROUTES.TRAINING_MAINHOME} element={<TrainingMainHomePage />} />
+            <Route path={ROUTES.TRAINING_LANDING} element={<TrainingLandingPage />} />
+            <Route path={ROUTES.TRAINING_PROGRESS} element={<TrainingProgress />} />
+            <Route path={ROUTES.TRAINING_REPORT} element={<TrainingReport />} />
+            <Route path={ROUTES.TRAINING_DIAGNOSTICS} element={<TrainingDiagnostics />} />
+          </Routes>
+        </MemoryRouter>
       </TrainingFlowProvider>
     </FeedbackProvider>
   );
 
-const expectTrainingInsightLinks = () => {
-  const subnavButtons = document.querySelectorAll('.training-shell__subnav .training-shell__subnav-link');
-  expect(subnavButtons.length).toBe(3);
+const expectSceneImageByTitle = async (title: string) => {
+  const sceneImage = await screen.findByRole('img', {
+    name: new RegExp(title),
+  });
+  expect(sceneImage).toBeTruthy();
 };
 
 const clickLandingStartButton = async () => {
@@ -170,49 +163,42 @@ const clickLandingStartButton = async () => {
   if (mainHomeStart) {
     fireEvent.click(mainHomeStart);
     await waitFor(() => {
-      const hasLandingStart = Boolean(document.querySelector('.training-landing__start'));
       const identityInputs = document.querySelectorAll<HTMLInputElement>(
         '.training-landing__identity-group .ant-radio-input'
       );
-      expect(hasLandingStart || identityInputs.length > 0).toBe(true);
+      expect(identityInputs.length).toBeGreaterThan(0);
     });
   }
 
-  const landingStart = document.querySelector<HTMLButtonElement>('.training-landing__start');
-  if (landingStart) {
-    fireEvent.click(landingStart);
-  }
-
-  await waitFor(() => {
-    const identityInputs = document.querySelectorAll<HTMLInputElement>(
-      '.training-landing__identity-group .ant-radio-input'
-    );
-    expect(identityInputs.length).toBeGreaterThan(0);
-  });
   const identityInputs = document.querySelectorAll<HTMLInputElement>(
     '.training-landing__identity-group .ant-radio-input'
   );
   fireEvent.click(identityInputs[0]);
-  const imageCards = document.querySelectorAll<HTMLButtonElement>('.training-landing__image-card');
-  expect(imageCards.length).toBeGreaterThan(0);
-  fireEvent.click(imageCards[0]);
+
+  const generateButton = document.querySelector<HTMLButtonElement>(
+    '.training-landing__preview-generate'
+  );
+  expect(generateButton).toBeTruthy();
+  fireEvent.click(generateButton!);
+
+  await waitFor(() => {
+    const previewSlots = document.querySelectorAll<HTMLButtonElement>(
+      '.training-landing__preview-slot:not(:disabled)'
+    );
+    expect(previewSlots.length).toBeGreaterThan(0);
+  });
+
   const confirmButton = document.querySelector<HTMLButtonElement>('.training-landing__confirm');
   expect(confirmButton).toBeTruthy();
   fireEvent.click(confirmButton!);
 };
 
 const submitFirstScenarioOption = () => {
-  const optionInputs = document.querySelectorAll<HTMLInputElement>(
-    '.training-shell__option-list .ant-radio-input'
+  const optionButton = document.querySelector<HTMLButtonElement>(
+    '.training-cinematic-choice-band__option'
   );
-  expect(optionInputs.length).toBeGreaterThan(0);
-  fireEvent.click(optionInputs[0]);
-
-  const submitButton = document.querySelector<HTMLButtonElement>(
-    '.training-shell__panel--primary .training-shell__primary-button'
-  );
-  expect(submitButton).toBeTruthy();
-  fireEvent.click(submitButton!);
+  expect(optionButton).toBeTruthy();
+  fireEvent.click(optionButton!);
 };
 
 const expectTrainingEntryVisible = () => {
@@ -230,6 +216,82 @@ describe('Training route integration', () => {
     vi.clearAllMocks();
     Object.values(trainingApiMocks).forEach((mockFn) => {
       mockFn.mockReset();
+    });
+    Object.values(trainingCharacterApiMocks).forEach((mockFn) => {
+      mockFn.mockReset();
+    });
+    trainingCharacterApiMocks.listTrainingIdentityPresets.mockResolvedValue([
+      {
+        code: 'correspondent-female',
+        title: 'War Correspondent',
+        description: 'Integration preset',
+        identity: 'field-reporter',
+        defaultName: 'Frontline Reporter',
+        defaultGender: 'female',
+      },
+    ]);
+    trainingCharacterApiMocks.createTrainingCharacter.mockResolvedValue({
+      characterId: '42',
+      name: 'Frontline Reporter',
+      imageUrl: null,
+      imageUrls: [],
+    });
+    trainingCharacterApiMocks.createTrainingCharacterPreviewJob.mockResolvedValue({
+      jobId: 'preview-job-1',
+      characterId: '42',
+      idempotencyKey: 'preview-key-1',
+      status: 'pending',
+      imageUrls: [],
+      errorMessage: null,
+      createdAt: '2026-03-26T10:00:00',
+      updatedAt: '2026-03-26T10:00:00',
+    });
+    trainingCharacterApiMocks.waitForTrainingCharacterPreviewJob.mockResolvedValue({
+      jobId: 'preview-job-1',
+      characterId: '42',
+      idempotencyKey: 'preview-key-1',
+      status: 'succeeded',
+      imageUrls: ['/static/images/characters/training_integration_1.png'],
+      errorMessage: null,
+      createdAt: '2026-03-26T10:00:00',
+      updatedAt: '2026-03-26T10:00:00',
+    });
+    trainingCharacterApiMocks.getTrainingCharacterImages.mockResolvedValue({
+      images: ['/static/images/characters/training_integration_1.png'],
+    });
+    trainingCharacterApiMocks.removeTrainingCharacterBackground.mockResolvedValue({
+      selected_image_url: '/static/images/characters/training_integration_1.png',
+      transparent_url: '/static/images/characters/training_integration_1_transparent.png',
+    });
+    trainingApiMocks.createTrainingMediaTask.mockImplementation(
+      async ({ sessionId, roundNo }: { sessionId: string; roundNo?: number | null }) => ({
+        taskId: `scene-task-${sessionId}-${roundNo ?? 0}`,
+        sessionId,
+        roundNo: roundNo ?? null,
+        taskType: 'image',
+        status: 'pending',
+        result: null,
+        error: null,
+        createdAt: '2026-03-27T00:00:00Z',
+        updatedAt: '2026-03-27T00:00:00Z',
+        startedAt: null,
+        finishedAt: null,
+      })
+    );
+    trainingApiMocks.getTrainingMediaTask.mockResolvedValue({
+      taskId: 'scene-task-default',
+      sessionId: 'training-session-1',
+      roundNo: 1,
+      taskType: 'image',
+      status: 'succeeded',
+      result: {
+        preview_url: '/static/images/training/scene_default.png',
+      },
+      error: null,
+      createdAt: '2026-03-27T00:00:00Z',
+      updatedAt: '2026-03-27T00:00:01Z',
+      startedAt: '2026-03-27T00:00:00Z',
+      finishedAt: '2026-03-27T00:00:01Z',
     });
   });
 
@@ -320,7 +382,7 @@ describe('Training route integration', () => {
       expect(trainingApiMocks.initTraining).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'frontend-training-user',
-          characterId: null,
+          characterId: '42',
           trainingMode: 'guided',
           playerProfile: expect.objectContaining({
             age: null,
@@ -329,7 +391,7 @@ describe('Training route integration', () => {
       );
     });
 
-    expect(await screen.findByText('Initial Briefing')).toBeTruthy();
+    await expectSceneImageByTitle('Initial Briefing');
 
     submitFirstScenarioOption();
 
@@ -342,14 +404,169 @@ describe('Training route integration', () => {
       });
     });
 
-    expect(await screen.findByText('Follow Up Interview')).toBeTruthy();
-    expect(screen.getByText('confirmed timeline')).toBeTruthy();
+    await expectSceneImageByTitle('Follow Up Interview');
     expect(readTrainingResumeTarget()).toMatchObject({
       sessionId: 'training-session-1',
       trainingMode: 'guided',
       status: 'in_progress',
     });
-    expectTrainingInsightLinks();
+  });
+
+  it('allows retrying scene image generation after create task failure on simplified page', async () => {
+    trainingApiMocks.initTraining.mockResolvedValueOnce({
+      sessionId: 'training-session-retry-scene',
+      trainingMode: 'guided',
+      status: 'initialized',
+      roundNo: 0,
+      runtimeState: createRuntimeState('scenario-1', 0),
+      nextScenario: createScenario('scenario-1', 'Initial Briefing'),
+      scenarioCandidates: [],
+    });
+    trainingApiMocks.getTrainingSessionSummary.mockResolvedValue(
+      createSessionSummary('training-session-retry-scene', 'scenario-1', 'Initial Briefing')
+    );
+
+    let createAttempts = 0;
+    let allowCreateSuccess = false;
+    trainingApiMocks.createTrainingMediaTask.mockImplementation(
+      async ({ sessionId, roundNo }: { sessionId: string; roundNo?: number | null }) => {
+        createAttempts += 1;
+        if (!allowCreateSuccess) {
+          throw new Error('scene image create failed');
+        }
+        return {
+          taskId: `scene-task-${createAttempts}`,
+          sessionId,
+          roundNo: roundNo ?? null,
+          taskType: 'image',
+          status: 'pending',
+          result: null,
+          error: null,
+          createdAt: '2026-03-27T00:00:00Z',
+          updatedAt: '2026-03-27T00:00:00Z',
+          startedAt: null,
+          finishedAt: null,
+        };
+      }
+    );
+    trainingApiMocks.getTrainingMediaTask.mockImplementation(async (taskId: string) => ({
+      taskId,
+      sessionId: 'training-session-retry-scene',
+      roundNo: 1,
+      taskType: 'image',
+      status: 'succeeded',
+      result: {
+        preview_url: '/static/images/training/scene_retry.png',
+      },
+      error: null,
+      createdAt: '2026-03-27T00:00:00Z',
+      updatedAt: '2026-03-27T00:00:01Z',
+      startedAt: '2026-03-27T00:00:00Z',
+      finishedAt: '2026-03-27T00:00:01Z',
+    }));
+
+    renderRouterApp(ROUTES.TRAINING);
+
+    await waitFor(() => {
+      expect(document.querySelector('.training-mainhome__start')).toBeTruthy();
+    });
+    await clickLandingStartButton();
+
+    await waitFor(() => {
+      expect(trainingApiMocks.createTrainingMediaTask).toHaveBeenCalled();
+    });
+
+    const retryButton = await screen.findByRole('button', {
+      name: /重新生成场景图/,
+    });
+    const attemptsBeforeRetry = createAttempts;
+    allowCreateSuccess = true;
+    fireEvent.click(retryButton);
+
+    await waitFor(() => {
+      expect(createAttempts).toBeGreaterThan(attemptsBeforeRetry);
+    });
+    await expectSceneImageByTitle('Initial Briefing');
+  });
+
+  it('allows retrying scene image generation after polling failure on simplified page', async () => {
+    trainingApiMocks.initTraining.mockResolvedValueOnce({
+      sessionId: 'training-session-retry-poll',
+      trainingMode: 'guided',
+      status: 'initialized',
+      roundNo: 0,
+      runtimeState: createRuntimeState('scenario-1', 0),
+      nextScenario: createScenario('scenario-1', 'Initial Briefing'),
+      scenarioCandidates: [],
+    });
+    trainingApiMocks.getTrainingSessionSummary.mockResolvedValue(
+      createSessionSummary('training-session-retry-poll', 'scenario-1', 'Initial Briefing')
+    );
+
+    trainingApiMocks.createTrainingMediaTask.mockImplementation(
+      async ({ sessionId, roundNo }: { sessionId: string; roundNo?: number | null }) => ({
+        taskId: `scene-task-poll-${sessionId}-${roundNo ?? 0}`,
+        sessionId,
+        roundNo: roundNo ?? null,
+        taskType: 'image',
+        status: 'pending',
+        result: null,
+        error: null,
+        createdAt: '2026-03-27T00:00:00Z',
+        updatedAt: '2026-03-27T00:00:00Z',
+        startedAt: null,
+        finishedAt: null,
+      })
+    );
+
+    let allowPollingSuccess = false;
+    trainingApiMocks.getTrainingMediaTask.mockImplementation(async (taskId: string) => {
+      if (!allowPollingSuccess) {
+        return {
+          taskId,
+          sessionId: 'training-session-retry-poll',
+          roundNo: 1,
+          taskType: 'image',
+          status: 'failed',
+          result: null,
+          error: { message: 'scene polling failed once' },
+          createdAt: '2026-03-27T00:00:00Z',
+          updatedAt: '2026-03-27T00:00:01Z',
+          startedAt: '2026-03-27T00:00:00Z',
+          finishedAt: '2026-03-27T00:00:01Z',
+        };
+      }
+      return {
+        taskId,
+        sessionId: 'training-session-retry-poll',
+        roundNo: 1,
+        taskType: 'image',
+        status: 'succeeded',
+        result: {
+          preview_url: '/static/images/training/scene_retry_poll.png',
+        },
+        error: null,
+        createdAt: '2026-03-27T00:00:00Z',
+        updatedAt: '2026-03-27T00:00:01Z',
+        startedAt: '2026-03-27T00:00:00Z',
+        finishedAt: '2026-03-27T00:00:01Z',
+      };
+    });
+
+    renderRouterApp(ROUTES.TRAINING);
+
+    await waitFor(() => {
+      expect(document.querySelector('.training-mainhome__start')).toBeTruthy();
+    });
+    await clickLandingStartButton();
+
+    const retryButton = await screen.findByRole('button', {
+      name: /重新生成场景图/,
+    });
+    allowPollingSuccess = true;
+    fireEvent.click(retryButton);
+
+    await expectSceneImageByTitle('Initial Briefing');
   });
 
   it('restores session summary when submit returns scenario mismatch', async () => {
@@ -401,7 +618,7 @@ describe('Training route integration', () => {
     renderRouterApp(ROUTES.TRAINING);
 
     await clickLandingStartButton();
-    expect(await screen.findByText('Initial Briefing')).toBeTruthy();
+    await expectSceneImageByTitle('Initial Briefing');
 
     submitFirstScenarioOption();
 
@@ -419,13 +636,70 @@ describe('Training route integration', () => {
       );
     });
 
-    expect(await screen.findByText('Recovered Scenario')).toBeTruthy();
+    await expectSceneImageByTitle('Recovered Scenario');
     expect(
       screen.getByText(
         '\u63d0\u4ea4\u573a\u666f\u5df2\u53d8\u66f4\uff0c\u5df2\u6309\u670d\u52a1\u7aef\u6700\u65b0\u4f1a\u8bdd\u72b6\u6001\u6062\u590d\u3002'
       )
     ).toBeTruthy();
-    expectTrainingInsightLinks();
+  });
+
+  it('does not recreate scene image task when mismatch recovery keeps the same scenario', async () => {
+    trainingApiMocks.initTraining.mockResolvedValueOnce({
+      sessionId: 'training-session-mismatch-same-scene',
+      trainingMode: 'guided',
+      status: 'initialized',
+      roundNo: 0,
+      runtimeState: createRuntimeState('scenario-1', 0),
+      nextScenario: createScenario('scenario-1', 'Initial Briefing'),
+      scenarioCandidates: [],
+    });
+    trainingApiMocks.submitTrainingRound.mockRejectedValueOnce(
+      new ServiceError({
+        code: 'TRAINING_SCENARIO_MISMATCH',
+        status: 409,
+        message: 'scenario mismatch',
+      })
+    );
+    trainingApiMocks.getTrainingSessionSummary
+      .mockResolvedValueOnce(
+        createSessionSummary('training-session-mismatch-same-scene', 'scenario-1', 'Initial Briefing')
+      )
+      .mockResolvedValueOnce(
+        createSessionSummary('training-session-mismatch-same-scene', 'scenario-1', 'Initial Briefing')
+      );
+
+    renderRouterApp(ROUTES.TRAINING);
+
+    await clickLandingStartButton();
+    await expectSceneImageByTitle('Initial Briefing');
+
+    await waitFor(() => {
+      expect(trainingApiMocks.createTrainingMediaTask).toHaveBeenCalled();
+    });
+    const createTaskCallsBeforeRecovery = trainingApiMocks.createTrainingMediaTask.mock.calls.length;
+    expect(createTaskCallsBeforeRecovery).toBeGreaterThan(0);
+
+    submitFirstScenarioOption();
+
+    await waitFor(() => {
+      expect(trainingApiMocks.submitTrainingRound).toHaveBeenCalledWith({
+        sessionId: 'training-session-mismatch-same-scene',
+        scenarioId: 'scenario-1',
+        userInput: 'Hold publication',
+        selectedOption: 'scenario-1-opt-1',
+      });
+    });
+    await waitFor(() => {
+      expect(trainingApiMocks.getTrainingSessionSummary).toHaveBeenCalledWith(
+        'training-session-mismatch-same-scene'
+      );
+    });
+
+    await expectSceneImageByTitle('Initial Briefing');
+    expect(trainingApiMocks.createTrainingMediaTask).toHaveBeenCalledTimes(
+      createTaskCallsBeforeRecovery
+    );
   });
 
   it('does not auto-restore from cached resume target without explicit or active session', async () => {
@@ -497,7 +771,7 @@ describe('Training route integration', () => {
         'training-session-restore'
       );
     });
-    expect(await screen.findByText('Restore Scenario')).toBeTruthy();
+    await expectSceneImageByTitle('Restore Scenario');
   });
 
   it('prefers the active in-memory session over a stale resume target during auto restore', async () => {
@@ -531,47 +805,6 @@ describe('Training route integration', () => {
       updatedAt: '2026-03-20T09:15:00Z',
       endTime: null,
     });
-    trainingApiMocks.getTrainingProgress.mockResolvedValueOnce({
-      sessionId: 'training-session-active',
-      status: 'in_progress',
-      roundNo: 1,
-      totalRounds: 6,
-      runtimeState: createRuntimeState('scenario-active', 1),
-      decisionContext: null,
-      consequenceEvents: [],
-    });
-    trainingApiMocks.getTrainingReport.mockResolvedValueOnce({
-      sessionId: 'training-session-active',
-      status: 'in_progress',
-      rounds: 1,
-      kStateFinal: {
-        K1: 0.45,
-      },
-      sStateFinal: {
-        source_safety: 0.88,
-      },
-      improvement: 0.05,
-      playerProfile: null,
-      runtimeState: createRuntimeState('scenario-active', 1),
-      ending: null,
-      summary: null,
-      abilityRadar: [],
-      stateRadar: [],
-      growthCurve: [],
-      history: [],
-    });
-    trainingApiMocks.getTrainingDiagnostics.mockResolvedValueOnce({
-      sessionId: 'training-session-active',
-      status: 'in_progress',
-      roundNo: 1,
-      playerProfile: null,
-      runtimeState: createRuntimeState('scenario-active', 1),
-      summary: null,
-      recommendationLogs: [],
-      auditEvents: [],
-      ktObservations: [],
-    });
-
     renderRouterApp(ROUTES.TRAINING, {
       activeSession: {
         sessionId: 'training-session-active',
@@ -590,49 +823,11 @@ describe('Training route integration', () => {
       );
     });
 
-    expect(await screen.findByText('training-session-active')).toBeTruthy();
-    expect(screen.getByText('16.7%')).toBeTruthy();
-    expectTrainingInsightLinks();
+    await expectSceneImageByTitle('Active Session Restore');
     expect(readTrainingResumeTarget()).toMatchObject({
       sessionId: 'training-session-active',
       trainingMode: 'adaptive',
       characterId: '58',
-    });
-
-    const trainingSubnavLinks = document.querySelectorAll<HTMLButtonElement>(
-      '.training-shell__subnav .training-shell__subnav-link'
-    );
-    expect(trainingSubnavLinks.length).toBe(3);
-    fireEvent.click(trainingSubnavLinks[0]);
-
-    await waitFor(() => {
-      expect(trainingApiMocks.getTrainingProgress).toHaveBeenCalledWith(
-        'training-session-active'
-      );
-    });
-
-    const reportLink = document.querySelector<HTMLAnchorElement>(
-      '.training-insight-shell__nav-link[href*=\"/training/report\"]'
-    );
-    expect(reportLink).toBeTruthy();
-    fireEvent.click(reportLink!);
-
-    await waitFor(() => {
-      expect(trainingApiMocks.getTrainingReport).toHaveBeenCalledWith(
-        'training-session-active'
-      );
-    });
-
-    const diagnosticsLink = document.querySelector<HTMLAnchorElement>(
-      '.training-insight-shell__nav-link[href*=\"/training/diagnostics\"]'
-    );
-    expect(diagnosticsLink).toBeTruthy();
-    fireEvent.click(diagnosticsLink!);
-
-    await waitFor(() => {
-      expect(trainingApiMocks.getTrainingDiagnostics).toHaveBeenCalledWith(
-        'training-session-active'
-      );
     });
   });
 
@@ -688,7 +883,7 @@ describe('Training route integration', () => {
     expect(trainingApiMocks.getTrainingSessionSummary).not.toHaveBeenCalledWith(
       'training-session-active'
     );
-    expect(await screen.findByText('Explicit Route Restore')).toBeTruthy();
+    await expectSceneImageByTitle('Explicit Route Restore');
     expect(readTrainingResumeTarget()).toMatchObject({
       sessionId: 'training-session-explicit',
       trainingMode: 'adaptive',
@@ -721,4 +916,5 @@ describe('Training route integration', () => {
     expectTrainingEntryVisible();
   });
 });
+
 

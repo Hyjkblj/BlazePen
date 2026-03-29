@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import builtins
 from datetime import datetime, timedelta
+import importlib
 import time
 import unittest
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -16,7 +19,11 @@ from training.exceptions import (
     TrainingMediaProviderUnavailableError,
     TrainingMediaTaskExecutionFailedError,
 )
-from training.media_task_executor import TrainingMediaTaskExecutor, TrainingMediaTaskExecutorConfig
+from training.media_task_executor import (
+    TrainingMediaTaskExecutor,
+    TrainingMediaTaskExecutorConfig,
+    TrainingMediaTaskProviderDispatcher,
+)
 from training.training_repository import SqlAlchemyTrainingRepository
 from training.training_store import DatabaseTrainingStore
 
@@ -46,6 +53,30 @@ class _SlowDispatcher:
         self.calls += 1
         time.sleep(self.sleep_seconds)
         return {"text": "finished-late"}
+
+
+class _FakeImageService:
+    def __init__(self):
+        self.character_calls = 0
+        self.scene_calls = 0
+
+    def generate_character_image(
+        self,
+        *,
+        prompt,
+        character_id=None,
+        user_id=None,
+        image_type="portrait",
+        generate_group=True,
+        group_count=3,
+    ):
+        self.character_calls += 1
+        return [f"/static/images/characters/test_{self.character_calls}.png"]
+
+    def generate_scene_image(self, *, scene_data, scene_id=None, user_id=None):
+        self.scene_calls += 1
+        resolved_scene_id = str(scene_id or scene_data.get("scene_id") or "scene")
+        return f"/static/images/scenes/{resolved_scene_id}_{self.scene_calls}.png"
 
 
 class TrainingMediaTaskExecutorTestCase(unittest.TestCase):
@@ -245,6 +276,109 @@ class TrainingMediaTaskExecutorTestCase(unittest.TestCase):
         self.assertLess(elapsed, 0.4)
         self.assertEqual(dispatcher.calls, 1)
         executor.shutdown()
+
+    def test_scene_series_should_not_be_auto_enabled_by_scenario_tag_fields(self):
+        image_service = _FakeImageService()
+        dispatcher = TrainingMediaTaskProviderDispatcher(image_service=image_service)
+
+        result = dispatcher.execute_task(
+            task_type="image",
+            payload={
+                "prompt": "draw newsroom scene",
+                "image_type": "scene",
+                "scenario_id": "S1",
+                "major_scene_title": "Newsroom",
+                "generate_storyline_series": False,
+            },
+        )
+
+        self.assertIn("image_urls", result)
+        self.assertNotIn("small_scene_urls", result)
+        self.assertEqual(image_service.character_calls, 1)
+        self.assertEqual(image_service.scene_calls, 0)
+
+    def test_scene_series_should_require_explicit_flag_and_scene_image_type(self):
+        image_service = _FakeImageService()
+        dispatcher = TrainingMediaTaskProviderDispatcher(image_service=image_service)
+
+        result = dispatcher.execute_task(
+            task_type="image",
+            payload={
+                "prompt": "draw newsroom scene",
+                "image_type": "scene",
+                "generate_storyline_series": True,
+                "session_id": "session-1",
+                "round_no": 1,
+                "scenario_id": "S1",
+                "major_scene_title": "Newsroom",
+                "micro_scene_prompts": [
+                    "newsroom micro scene 1",
+                    "newsroom micro scene 2",
+                ],
+            },
+        )
+
+        self.assertIn("preview_url", result)
+        self.assertIn("small_scene_urls", result)
+        self.assertEqual(len(result.get("small_scene_urls", [])), 2)
+        self.assertEqual(image_service.character_calls, 0)
+        self.assertGreaterEqual(image_service.scene_calls, 3)
+
+    def test_two_executors_should_not_duplicate_provider_execution_for_same_task(self):
+        task = self.store.create_media_task(
+            session_id=self.session_id,
+            round_no=1,
+            task_type="text",
+            idempotency_key="executor-race-1",
+            request_payload={"prompt": "hello"},
+            max_retries=0,
+        )
+        dispatcher = _ScriptedDispatcher(default_result={"text": "done-once"})
+        config = TrainingMediaTaskExecutorConfig(
+            max_workers=1,
+            retry_backoff_seconds=0.01,
+            task_timeout_seconds=10,
+            recovery_timeout_seconds=5,
+        )
+        executor_a = TrainingMediaTaskExecutor(
+            training_store=self.store,
+            provider_dispatcher=dispatcher,
+            config=config,
+        )
+        executor_b = TrainingMediaTaskExecutor(
+            training_store=self.store,
+            provider_dispatcher=dispatcher,
+            config=config,
+        )
+
+        executor_a.submit_task(task.task_id)
+        executor_b.submit_task(task.task_id)
+        resolved = self._wait_until_terminal(task.task_id)
+
+        self.assertEqual(resolved.status, "succeeded")
+        self.assertEqual(dispatcher.calls, 1)
+        executor_a.shutdown()
+        executor_b.shutdown()
+
+    def test_executor_module_import_should_not_require_heavy_media_dependencies(self):
+        blocked_modules = {
+            "api.services.image_service",
+            "api.services.tts_service",
+            "models.text_model_service",
+        }
+        original_import = builtins.__import__
+
+        def _guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name in blocked_modules:
+                raise ImportError(f"blocked import: {name}")
+            return original_import(name, globals, locals, fromlist, level)
+
+        with patch("builtins.__import__", side_effect=_guarded_import):
+            module = importlib.import_module("training.media_task_executor")
+            module = importlib.reload(module)
+            dispatcher = module.TrainingMediaTaskProviderDispatcher()
+            with self.assertRaises(module.TrainingMediaProviderUnavailableError):
+                dispatcher.execute_task(task_type="image", payload={"prompt": "demo"})
 
     def _wait_until_terminal(self, task_id: str, timeout_seconds: float = 5.0):
         start = time.monotonic()

@@ -93,7 +93,6 @@ describe('useCharacterPortraitSelection', () => {
     vi.mocked(removeCharacterBackground).mockResolvedValueOnce({
       original_url: '/portrait-1.png',
       transparent_url: '/portrait-transparent.png',
-      local_path: '/tmp/portrait.png',
       selected_image_url: '/portrait-1.png',
     });
 

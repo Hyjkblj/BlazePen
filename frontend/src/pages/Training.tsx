@@ -1,16 +1,25 @@
-import { Alert, Button } from 'antd';
 import { Navigate, useSearchParams } from 'react-router-dom';
-import TrainingOutcomePanel from '@/components/training/TrainingOutcomePanel';
-import TrainingRoundPanel from '@/components/training/TrainingRoundPanel';
-import TrainingSessionSummaryPanel from '@/components/training/TrainingSessionSummaryPanel';
-import TrainingShellHeader from '@/components/training/TrainingShellHeader';
+import TrainingCinematicChoiceBand from '@/components/training/TrainingCinematicChoiceBand';
 import { ROUTES } from '@/config/routes';
 import { useTrainingMvpFlow } from '@/flows/useTrainingMvpFlow';
 import { normalizeTrainingSessionId } from '@/hooks/useTrainingSessionReadTarget';
 import './Training.css';
 
-const formatProgressPercent = (progressPercent: number): string =>
-  `${Number(progressPercent.toFixed(1))}%`;
+const buildScenePlaceholderText = ({
+  hasSession,
+  sceneImageStatus,
+}: {
+  hasSession: boolean;
+  sceneImageStatus: string;
+}): string => {
+  if (!hasSession) {
+    return '会话恢复中...';
+  }
+  if (sceneImageStatus === 'pending' || sceneImageStatus === 'running') {
+    return '后端正在生成场景图...';
+  }
+  return '';
+};
 
 function Training() {
   const [searchParams] = useSearchParams();
@@ -24,193 +33,98 @@ function Training() {
     noticeMessage,
     dismissNotice,
     retryRestore,
-    clearWorkspace,
+    retrySceneImage,
     sessionView,
     hasResumeTarget,
     insightSessionId,
-    latestOutcome,
+    sceneImageStatus,
+    sceneImageUrl,
+    sceneImageErrorMessage,
     selectedOptionId,
-    selectOption,
-    responseInput,
-    setResponseInput,
-    mediaTaskDraft,
-    updateMediaTaskDraft,
-    submissionPreview,
-    mediaTasks,
-    mediaTaskFeedStatus,
-    mediaTaskFeedErrorMessage,
-    isPollingMediaTasks,
-    refreshMediaTasks,
-    canSubmitRound,
-    submitCurrentRound,
+    submitOption,
   } = flow;
 
   const hasInsightEntry = insightSessionId !== null;
-
   if (!sessionView && !hasInsightEntry) {
     return <Navigate to={hasResumeTarget ? ROUTES.TRAINING_LANDING : ROUTES.TRAINING_MAINHOME} replace />;
   }
 
-  const loadingMessage =
-    roundStatus === 'submitting'
-      ? 'Submitting current round...'
-      : bootstrapStatus === 'restoring'
-        ? 'Restoring training session...'
-        : null;
-
-  if (!sessionView) {
-    return (
-      <div className="training-page">
-        <section className="training-shell">
-          <TrainingShellHeader
-            hasInsightEntry={hasInsightEntry}
-            insightSessionId={insightSessionId}
-            onClearWorkspace={clearWorkspace}
-          />
-
-          {loadingMessage ? (
-            <Alert className="training-shell__banner" type="info" showIcon message={loadingMessage} />
-          ) : null}
-
-          {bootstrapErrorMessage ? (
-            <Alert
-              className="training-shell__alert"
-              type="error"
-              showIcon
-              message="Failed to restore training session"
-              description={bootstrapErrorMessage}
-              action={
-                <Button size="small" onClick={() => void retryRestore()}>
-                  Retry restore
-                </Button>
-              }
-            />
-          ) : null}
-
-          {noticeMessage ? (
-            <Alert
-              className="training-shell__notice"
-              type="success"
-              showIcon
-              message={noticeMessage}
-              closable
-              onClose={dismissNotice}
-            />
-          ) : null}
-
-          <div className="training-shell__workspace">
-            <div className="training-shell__panel training-shell__panel--primary">
-              <p className="training-shell__empty">
-                Syncing session state from backend. The round view will appear automatically after recovery.
-              </p>
-              <div className="training-shell__stack-actions">
-                <Button
-                  className="training-shell__primary-button"
-                  type="primary"
-                  loading={bootstrapStatus === 'restoring'}
-                  onClick={() => void retryRestore()}
-                >
-                  Restore current session
-                </Button>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    );
-  }
-
-  const sessionTrainingModeLabel =
-    sessionView.trainingMode === 'self-paced'
-      ? 'Self-paced'
-      : sessionView.trainingMode === 'adaptive'
-        ? 'Adaptive'
-        : 'Guided';
-
-  const sessionProgressLabel = sessionView.progressAnchor
-    ? formatProgressPercent(sessionView.progressAnchor.progressPercent)
-    : null;
+  const hasSession = Boolean(sessionView);
+  const currentScenario = sessionView?.currentScenario ?? null;
+  const options = currentScenario?.options ?? [];
+  const isSubmitting = roundStatus === 'submitting';
+  const optionDisabled = !hasSession || isSubmitting || Boolean(sessionView?.isCompleted);
+  const showCompletionNotice = Boolean(sessionView?.isCompleted);
+  const showLoadingMask = isSubmitting || bootstrapStatus === 'restoring';
+  const placeholderText = buildScenePlaceholderText({ hasSession, sceneImageStatus });
+  const hasSceneImageWarning = !sceneImageUrl && sceneImageStatus === 'failed';
 
   return (
-    <div className="training-page">
-      <section className="training-shell">
-        <TrainingShellHeader
-          hasInsightEntry={hasInsightEntry}
-          insightSessionId={insightSessionId}
-          onClearWorkspace={clearWorkspace}
-        />
-
-        {loadingMessage ? (
-          <Alert className="training-shell__banner" type="info" showIcon message={loadingMessage} />
-        ) : null}
-
-        {roundErrorMessage ? (
-          <Alert
-            className="training-shell__alert"
-            type="error"
-            showIcon
-            message="Round submission failed"
-            description={roundErrorMessage}
-            action={
-              <Button size="small" onClick={() => void retryRestore()}>
-                Restore current session
-              </Button>
-            }
-          />
-        ) : null}
-
-        {noticeMessage ? (
-          <Alert
-            className="training-shell__notice"
-            type="success"
-            showIcon
-            message={noticeMessage}
-            closable
-            onClose={dismissNotice}
-          />
-        ) : null}
-
-        <div className="training-shell__workspace">
-          <TrainingSessionSummaryPanel
-            sessionId={sessionView.sessionId}
-            trainingModeLabel={sessionTrainingModeLabel}
-            status={sessionView.status}
-            roundNo={sessionView.roundNo}
-            totalRounds={sessionView.totalRounds}
-            progressLabel={sessionProgressLabel}
-            characterId={sessionView.characterId}
-            currentSceneId={sessionView.runtimeState.currentSceneId}
-            runtimeState={sessionView.runtimeState}
-          />
-          <TrainingRoundPanel
-            isCompleted={sessionView.isCompleted}
-            currentScenario={sessionView.currentScenario}
-            selectedOptionId={selectedOptionId}
-            selectOption={selectOption}
-            responseInput={responseInput}
-            setResponseInput={setResponseInput}
-            mediaTaskDraft={mediaTaskDraft}
-            updateMediaTaskDraft={updateMediaTaskDraft}
-            submissionPreview={submissionPreview}
-            canSubmitRound={canSubmitRound}
-            submitCurrentRound={() => {
-              void submitCurrentRound();
-            }}
-            retryRestore={() => {
-              void retryRestore();
-            }}
-            clearWorkspace={clearWorkspace}
-            completedEnding={latestOutcome?.ending ?? null}
-          />
-          <TrainingOutcomePanel
-            latestOutcome={latestOutcome}
-            mediaTasks={mediaTasks}
-            mediaTaskFeedStatus={mediaTaskFeedStatus}
-            mediaTaskFeedErrorMessage={mediaTaskFeedErrorMessage}
-            isPollingMediaTasks={isPollingMediaTasks}
-            refreshMediaTasks={refreshMediaTasks}
-          />
+    <div className="training-page training-page--simplified">
+      <section className="training-simplified" aria-live="polite">
+        <div className="training-simplified__scene-frame">
+          {sceneImageUrl ? (
+            <img
+              className="training-simplified__scene-image"
+              src={sceneImageUrl}
+              alt={currentScenario?.title ? `${currentScenario.title} 场景图` : '训练场景图'}
+            />
+          ) : (
+            <div className="training-simplified__scene-placeholder">{placeholderText}</div>
+          )}
+          {showLoadingMask ? <div className="training-simplified__scene-mask">训练流程处理中...</div> : null}
         </div>
+
+        <div className="training-simplified__feedback-stack">
+          {bootstrapErrorMessage ? (
+            <div className="training-simplified__feedback training-simplified__feedback--error">
+              <span>{bootstrapErrorMessage}</span>
+              <button type="button" onClick={() => void retryRestore()}>
+                重试恢复
+              </button>
+            </div>
+          ) : null}
+          {roundErrorMessage ? (
+            <div className="training-simplified__feedback training-simplified__feedback--error">
+              <span>{roundErrorMessage}</span>
+            </div>
+          ) : null}
+          {hasSceneImageWarning ? (
+            <div className="training-simplified__feedback training-simplified__feedback--warning">
+              <span>{sceneImageErrorMessage ?? '场景图生成失败，不影响当前回合选择。'}</span>
+              <button type="button" onClick={() => void retrySceneImage()}>
+                {'\u91cd\u65b0\u751f\u6210\u573a\u666f\u56fe'}
+              </button>
+            </div>
+          ) : null}
+          {noticeMessage ? (
+            <div className="training-simplified__feedback training-simplified__feedback--notice">
+              <span>{noticeMessage}</span>
+              <button type="button" onClick={() => dismissNotice()}>
+                关闭
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        {showCompletionNotice ? (
+          <div className="training-simplified__completion">训练已完成，评估结果将统一输出。</div>
+        ) : (
+          <div className="training-simplified__options">
+            {options.length > 0 ? (
+              <TrainingCinematicChoiceBand
+                options={options}
+                selectedOptionId={selectedOptionId}
+                disabled={optionDisabled}
+                onSelectOption={(optionId) => {
+                  void submitOption(optionId);
+                }}
+              />
+            ) : (
+              <div className="training-simplified__empty-options">当前场景暂无可选项</div>
+            )}
+          </div>
+        )}
       </section>
     </div>
   );

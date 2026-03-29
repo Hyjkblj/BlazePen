@@ -34,6 +34,7 @@ class CharacterResponse(BaseModel):
     background: Dict[str, Any]
     gender: Optional[str] = None
     age: Optional[int] = None
+    identity_code: Optional[str] = None
     identity: Optional[str] = None
     initial_scene: Optional[str] = None
     image_urls: Optional[List[str]] = Field(None, description="角色图片URL列表（组图，供前端三选一）")
@@ -97,6 +98,14 @@ class CharacterImagesResponse(BaseModel):
     images: List[str] = Field(default_factory=list, description="图片URL数组")
 
 
+class TrainingCharacterRemoveBackgroundResponse(BaseModel):
+    """训练角色去背景响应。"""
+
+    selected_image_url: Optional[str] = Field(None, description="选中的原图 URL")
+    transparent_url: Optional[str] = Field(None, description="去背景后的透明图 URL")
+    deleted_count: int = Field(0, description="清理未选图片数量")
+
+
 class RemoveBackgroundRequest(BaseModel):
     """去除背景请求"""
     image_url: Optional[str] = Field(None, description="图片URL（可选，如果不提供则使用角色最新图片）")
@@ -117,6 +126,49 @@ class TrainingPlayerProfileRequest(_StrictTrainingRequestModel):
     gender: Optional[str] = Field(None, description="玩家性别")
     identity: Optional[str] = Field(None, description="玩家身份")
     age: Optional[int] = Field(None, description="玩家年龄")
+
+
+class TrainingCreateCharacterRequest(_StrictTrainingRequestModel):
+    """训练入口专用角色创建请求。"""
+
+    identity_code: str = Field(..., description="训练身份预设标识")
+    name: Optional[str] = Field(None, description="角色名称（可选）")
+    gender: Optional[str] = Field(None, description="性别（可选）")
+    age: Optional[int] = Field(None, description="年龄（可选）")
+    identity: Optional[str] = Field(None, description="身份（可选）")
+    user_id: Optional[str] = Field(None, description="玩家ID（可选）")
+    image_type: Optional[str] = Field("portrait", description="图片类型（默认 portrait）")
+
+
+class TrainingCharacterPreviewJobCreateRequest(_StrictTrainingRequestModel):
+    """训练角色预览生图任务创建请求。"""
+
+    character_id: int = Field(..., gt=0, description="训练角色ID")
+    idempotency_key: str = Field(..., min_length=8, max_length=128, description="幂等键")
+    user_id: Optional[str] = Field(None, description="玩家ID（可选）")
+    image_type: Optional[str] = Field("portrait", description="图片类型（默认 portrait）")
+    group_count: int = Field(3, ge=1, le=3, description="生成组图数量（1-3）")
+    generate_scene_groups: bool = Field(False, description="是否异步生成场景组图（大场景+小场景）")
+    scene_group_count: int = Field(6, ge=1, le=6, description="场景组数量（默认 6 组）")
+    micro_scene_min: int = Field(2, ge=1, le=3, description="每组小场景最小数量")
+    micro_scene_max: int = Field(3, ge=1, le=3, description="每组小场景最大数量")
+
+
+class TrainingIdentityPresetResponse(BaseModel):
+    """训练身份预设响应。"""
+
+    code: str
+    title: str
+    description: str = ""
+    identity: str = ""
+    default_name: str = ""
+    default_gender: str = ""
+
+
+class TrainingIdentityPresetListResponse(BaseModel):
+    """训练身份预设列表响应。"""
+
+    presets: List[TrainingIdentityPresetResponse] = Field(default_factory=list)
 
 class TrainingInitRequest(_StrictTrainingRequestModel):
     """初始化训练请求"""
@@ -460,6 +512,27 @@ class TrainingMediaTaskListResponse(BaseModel):
     items: List[TrainingMediaTaskResponse] = Field(default_factory=list)
 
 
+class TrainingCharacterPreviewJobResponse(BaseModel):
+    """训练角色预览生图任务响应。"""
+
+    job_id: str
+    character_id: int
+    idempotency_key: str
+    status: str
+    image_urls: List[str] = Field(default_factory=list)
+    scene_storyline_script: Dict[str, Any] = Field(default_factory=dict)
+    scene_groups: List[Dict[str, Any]] = Field(default_factory=list)
+    scene_generation_status: str = "pending"
+    scene_generation_error: Optional[str] = None
+    scene_generated_at: Optional[str] = None
+    attempt_count: int = 0
+    last_failed_at: Optional[str] = None
+    last_error_message: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
 class TrainingRoundSubmitMediaTaskSummaryResponse(BaseModel):
     """Submit-round media task summary."""
 
@@ -671,6 +744,36 @@ class TrainingMediaTaskApiResponse(ApiResponse):
     """Training media task API response envelope."""
 
     data: Optional[TrainingMediaTaskResponse] = None
+
+
+class TrainingCharacterPreviewJobApiResponse(ApiResponse):
+    """Training character preview job API response envelope."""
+
+    data: Optional[TrainingCharacterPreviewJobResponse] = None
+
+
+class TrainingCharacterApiResponse(ApiResponse):
+    """Training character API response envelope."""
+
+    data: Optional[CharacterResponse] = None
+
+
+class TrainingCharacterImagesApiResponse(ApiResponse):
+    """Training character images API response envelope."""
+
+    data: Optional[CharacterImagesResponse] = None
+
+
+class TrainingCharacterRemoveBackgroundApiResponse(ApiResponse):
+    """Training character remove-background API response envelope."""
+
+    data: Optional[TrainingCharacterRemoveBackgroundResponse] = None
+
+
+class TrainingIdentityPresetListApiResponse(ApiResponse):
+    """Training identity preset list API response envelope."""
+
+    data: Optional[TrainingIdentityPresetListResponse] = None
 
 
 class TrainingMediaTaskListApiResponse(ApiResponse):

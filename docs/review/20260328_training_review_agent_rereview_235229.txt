@@ -1,0 +1,23 @@
+## 前端 Findings
+- [Blocker] frontend/src/hooks/useCharacterPortraitSelection.test.tsx:96
+  问题：测试 fixture 仍使用已从前端契约移除的 `local_path` 字段，导致 `tsc -b` 编译失败。
+  原因：`RemoveBackgroundResponse` 在 `frontend/src/types/api.ts:164` 已收口为只暴露 `original_url / transparent_url / selected_image_url`，测试 mock 仍沿用旧字段，契约与测试基线分叉。
+  影响：前端类型构建直接失败，属于合并前必须修复的阻塞问题；同时会误导后续测试继续依赖已废弃字段。
+  建议：删除该 fixture 的 `local_path`，并同步清理 `frontend/src/pages/Training.integration.test.tsx:265` 与 `frontend/src/pages/TrainingMainPathSmoke.integration.test.tsx:179` 的旧 mock 字段。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：`frontend/src/services/trainingCharacterApi.test.ts` 仍缺少去背景响应契约的明确断言，缺少对“响应不包含 `local_path`”的保护。
+- 前端：`frontend/src/pages/Training.integration.test.tsx` 与 `frontend/src/pages/TrainingMainPathSmoke.integration.test.tsx` 的 mock 数据仍带 `local_path`，虽不阻塞 vitest，但已偏离真实契约。
+- 后端：当前未发现新的关键测试缺口；`identity-presets`、preview conflict typed error、warmup fail-fast 与 `remove-background` 字段边界已有契约测试覆盖。
+
+## Review Summary
+- 本轮 review 未发现新的后端阻塞问题，训练角色路由契约与 warmup fail-fast 仍保持稳定。
+- 当前唯一阻塞点在前端测试基线：去背景响应契约已收口，但测试 fixture 仍沿用旧字段，导致 `tsc -b` 失败。
+- 这是编译期契约一致性问题，不是 UI 或运行时小问题，必须优先修复。
+- 修掉前端旧 mock 后，建议再跑一次 `tsc -b` 和训练相关 vitest 以确认基线恢复。

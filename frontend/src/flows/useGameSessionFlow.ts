@@ -147,7 +147,7 @@ export function useGameSessionFlow(): UseGameSessionFlowResult {
         derived.persistenceSnapshot
       );
     },
-    [characterId, derived.persistenceSnapshot, messages, saveGameProgress]
+    [characterId, derived.persistenceSnapshot, saveGameProgress]
   );
 
   const { selectOption } = useStoryTurnSubmission({

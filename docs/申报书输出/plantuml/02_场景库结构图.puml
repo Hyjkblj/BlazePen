@@ -1,0 +1,32 @@
+@startuml
+!theme plain
+left to right direction
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam rectangle {
+  RoundCorner 12
+}
+
+title BlazePen 场景库结构图
+
+rectangle "当前基础场景" as Base
+rectangle "6个主线场景" as Main
+rectangle "2个分支场景" as Branch
+rectangle "历史主线训练" as MainTrain
+rectangle "能力强化训练" as BranchTrain
+rectangle "后续扩展" as Extend
+rectangle "不少于12个高质量场景" as Goal
+rectangle "课堂实训" as ClassUse
+rectangle "课后训练" as AfterUse
+rectangle "教学展示" as DemoUse
+
+Base --> Main
+Base --> Branch
+Main --> MainTrain
+Branch --> BranchTrain
+Base --> Extend
+Extend --> Goal
+Goal --> ClassUse
+Goal --> AfterUse
+Goal --> DemoUse
+@enduml

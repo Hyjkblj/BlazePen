@@ -231,6 +231,27 @@ class TrainingMediaTask(Base):
     finished_at = Column(DateTime, nullable=True)
 
 
+class TrainingCharacterPreviewJob(Base):
+    """Persisted async preview-job lifecycle for training character portraits."""
+
+    __tablename__ = "training_character_preview_jobs"
+
+    job_id = Column(String(36), primary_key=True, default=_uuid_str)
+    character_id = Column(Integer, ForeignKey("characters.id"), nullable=False, index=True)
+    idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
+
+    status = Column(String(32), nullable=False, default="pending")
+    request_payload = Column(JSON, nullable=False, default=dict)
+    request_payload_canonical = Column(Text, nullable=False, default="")
+    image_urls = Column(JSON, nullable=False, default=list)
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+
 class KtObservation(Base):
     """KT 结构化观测表：沉淀每轮的关键训练事实，便于分析和诊断。"""
 

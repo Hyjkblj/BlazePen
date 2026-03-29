@@ -1,0 +1,64 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+- [Major] frontend/src/hooks/useTrainingCharacterPreviewFlow.ts:179
+  问题：`useTrainingCharacterPreviewFlow` 同时承载身份预设加载、角色创建、预览任务轮询、localStorage 恢复和训练启动前置处理，已经演变成巨型流程 hook。
+  原因：这把 `hooks / flows / services / storage` 的职责压进一个 hook，形成 `formDraft.characterId`、`activePreviewJobRef`、`localStorage` 三套可变状态，违反前端边界和单一事实源。
+  影响：恢复、刷新和重试路径只能靠这个 hook 的隐式状态拼起来，后续任一契约变更都会同时冲击 UI、存储和网络流程，测试也只能做笨重的集成覆盖。
+  建议：把预览编排下沉到 `flows`，把快照读写抽到独立 `storage` 模块，hook 只保留 UI 状态和事件转发；同时收敛为服务端 jobId 为主的单一恢复事实源。
+- [Major] frontend/src/hooks/useTrainingCharacterPreviewFlow.ts:380
+  问题：预览链路对 `createTrainingCharacter()` 没有幂等键或可恢复快照，只有拿到响应后才把 `characterId` 写回草稿。
+  原因：角色创建也是预览主链路的一部分，但当前恢复模型从 `create_preview_job` 才开始；一旦角色已在服务端创建而前端在响应前超时、断网或刷新，客户端没有任何稳定锚点可复用。
+  影响：用户在超时后重试会重复创建训练角色，后续预览 job 和背景处理会绑定到不同 `characterId`，造成重复数据和恢复歧义。
+  建议：为训练角色创建补上基于生成参数的幂等键，并在请求发出前持久化 creation snapshot；或者让后端按稳定请求键返回既有角色而不是继续新建。
+- [Major] frontend/src/hooks/useTrainingCharacterPreviewFlow.ts:475
+  问题：点击“进入训练”时先同步调用 `removeTrainingCharacterBackground()`，只有成功后才真正启动训练会话。
+  原因：重图片处理被塞进训练入口热路径，训练启动和图片后处理被强耦合，违反可恢复和重任务异步化原则。
+  影响：背景去除超时会直接阻断训练开始；用户重试还会重复触发删图和重处理，导致入口耗时长且副作用难恢复。
+  建议：先持久化“选中了哪张图”这个轻量事实并启动训练，把去背景和清理未选图片改为异步任务或后台补偿流程。
+
+## 后端 Findings
+- [Blocker] backend/training/training_character_preview_job_repository.py:53
+  问题：预览 job 的幂等冲突在并发下可以被绕过，重复 `idempotency_key` 会直接回收现有行而不校验请求作用域。
+  原因：服务层先按 `idempotency_key` 查询再插入，仓储层捕获唯一键冲突后直接 `return existing`；这样第二个并发请求即使 `character_id` 或 `request_payload_canonical` 不同，也可能拿到第一个请求的 job。
+  影响：不同逻辑请求会被错误折叠成同一 job，结果图可能绑定到错误角色，前端也无法收到应有的冲突响应，属于真实数据一致性错误。
+  建议：把“按 `idempotency_key` 创建或校验既有请求”收敛到单事务原子流程；唯一键冲突后必须重新读取并比对 `character_id` 和 canonical payload，不一致时返回 `TrainingCharacterPreviewJobConflictError`，不能直接复用。
+- [Major] backend/api/routers/training_characters.py:90
+  问题：preview-job 路由没有提供稳定 DTO 和 error_code，409 conflict、存储失败和 generic 500 仍然退化为 message 驱动契约。
+  原因：路由仍使用 `response_model=dict`，冲突分支没有专用 `error_code`，generic exception 直接回 raw message；同时 `backend/api/training_app.py:117` 对 preview warmup 失败只记日志不 fail fast，进一步放大了运行时脏错误。
+  影响：前端无法用稳定错误码区分 conflict、retryable storage fault 和真正的内部错误，调用侧只能退回 `UNKNOWN_ERROR`；运维也只能在请求时被动发现迁移或存储问题。
+  建议：为 preview-job 新增明确的请求/响应 DTO 与专用错误码，补齐 storage unavailable 或 migration missing 的 typed 映射，并让启动预热与 `training_media` 使用同一套失败策略。
+- [Major] backend/api/services/character_service.py:170
+  问题：训练角色创建没有把 `identity` 作为规范事实持久化，而读取时又把 `initial_scene/scene_id` 当成 `identity` 返回。
+  原因：`create_character()` 只存了 `identity_code`，`get_character()` 新旧路径分别在 `:244` 和 `:339` 用场景字段回填 `identity`，直接写脏了领域语义。
+  影响：训练角色的身份事实源丢失，后续预览、生成人物档案或其他消费方读取到的是错误身份；页面层未来很容易被迫兼容脏字段。
+  建议：创建时显式持久化 canonical `identity`，读取时只从同一事实源返回；对历史数据做兼容回填时也要严格区分 `identity` 与 `initial_scene`。
+- [Major] backend/api/services/training_service.py:201
+  问题：训练会话初始化现在默认把 `SessionStorylinePolicy` 注入 guided 训练，只要 `player_profile.identity` 存在就扩展出带 `storyline_*`、`scene_level`、`active_cast` 的连续剧情线路。
+  原因：这把 story 侧的会话语义直接塞进 training 主线，违反“故事主线和训练主线不能混用会话概念”的约束，也让 training 的场景序列不再只由 training policy 决定。
+  影响：guided 训练的场景 ID、总轮次和恢复快照会随 identity 自动变化，后续 submit、restore、report、diagnostics 都会被 story-like 字段污染，兼容面被无声放大。
+  建议：把这类叙事增强降级为展示层上下文或明确的独立模式开关，不要默认改写 training session sequence；若确需保留，至少隔离成独立 DTO/事实源并补齐端到端恢复契约。
+- [Major] backend/api/routers/training_characters.py:231
+  问题：训练入口仍在同步请求里执行 `remove_background_with_rembg()` 和未选图片删除。
+  原因：图片后处理和清理是重任务、副作用任务，却被放在确认进入训练的同步热路径中，且没有幂等保护或补偿模型。
+  影响：入口请求容易超时，重复提交会重复做去背景和删图，失败时也无法明确判断“训练没开始”还是“训练开始但图片后处理失败”。
+  建议：改成异步 media task 或独立后台 job，前台只提交选中图片的轻量事实；对删图和去背景增加任务状态、幂等键和补偿策略。
+
+## Open Questions
+- `guided` 训练在填写 `player_profile.identity` 后自动扩展 story-style storyline，是否是正式产品契约，而不是临时实验开关？
+- `POST /v1/training/characters/create` 是否允许按同一训练档案幂等复用角色；如果不允许，前端在超时、刷新后的恢复语义应以什么事实源为准？
+
+## 测试缺口
+- 前端：`frontend/src/components/training/TrainingLanding.test.tsx` 或新增 `frontend/src/hooks/useTrainingCharacterPreviewFlow.test.tsx` 需要覆盖“`createTrainingCharacter` 已在后端成功但前端超时/刷新”后的重试恢复，当前没有证明不会重复创建 `characterId`。
+- 前端：`frontend/src/components/training/TrainingLanding.test.tsx` 需要覆盖 `removeTrainingCharacterBackground` 超时、失败、重复点击确认时的入口恢复路径，当前没有验证训练启动不会被重图片处理锁死。
+- 前端：`frontend/src/services/trainingCharacterApi.test.ts` 需要覆盖 preview-job conflict 和 storage-unavailable 的 typed error code；当前 409 场景仍停留在 `UNKNOWN_ERROR` 回退。
+- 后端：`backend/test_training_character_preview_job_service.py` 需要新增并发用例，验证相同 `idempotency_key` 但不同 `character_id` 或 canonical payload 时一定返回 conflict，而不是复用已有 job。
+- 后端：`backend/test_training_character_route_contract.py` 需要覆盖 preview-job 409 conflict 与 storage-unavailable 或 migration-missing 的 HTTP/error_code 契约，避免再次退化为 message-driven 500。
+- 后端：`backend/test_training_service.py` 需要补 guided + identity 启用 storyline 扩展后的 init、submit、restore、report 端到端用例，证明扩展后 session sequence 和恢复模型仍然满足 training 主线契约。
+- 后端：`backend/test_character_route_contract.py` 或新增 `backend/test_training_character_background_task.py` 需要覆盖 remove-background 重试、重复提交时的幂等与副作用边界，当前没有证明删图和去背景不会破坏已选图片。
+
+## Review Summary
+- 本次改动在训练入口异步化和预览任务持久化方向上前进了一步，但关键一致性边界还没有收紧。
+- 前端最大的风险在于预览/确认流程仍是巨型 hook，角色创建与进入训练两段主链都缺少真正可恢复的请求边界。
+- 后端最严重的问题是 preview-job 幂等在并发下不成立，这一条在修复前不应合并。
+- 此外，训练角色 `identity` 契约已经被写脏，storyline 扩展又把 story 会话概念带入 training 主线，都会持续抬高恢复和兼容成本。
+- 当前测试主要覆盖顺序 happy path，尚未证明超时、并发冲突、存储失效以及 storyline 扩展后的恢复路径稳定。

@@ -42,7 +42,16 @@ class TrainingSessionRecoveryStateError(TrainingDomainError):
         self.details = dict(details or {})
 
 
-class TrainingModeUnsupportedError(TrainingDomainError):
+class TrainingStorageUnavailableError(TrainingDomainError):
+    """Training persistence infrastructure is unavailable for the requested operation."""
+
+    def __init__(self, *, message: str, details: dict | None = None):
+        normalized_message = str(message or "").strip() or "training storage unavailable"
+        super().__init__(normalized_message)
+        self.details = dict(details or {})
+
+
+class TrainingModeUnsupportedError(TrainingDomainError, ValueError):
     """Client requested an unsupported training mode."""
 
     def __init__(self, *, raw_mode: str, supported_modes: list[str] | tuple[str, ...]):
@@ -55,7 +64,7 @@ class TrainingModeUnsupportedError(TrainingDomainError):
         self.supported_modes = normalized_supported_modes
 
 
-class TrainingScenarioMismatchError(TrainingDomainError):
+class TrainingScenarioMismatchError(TrainingDomainError, ValueError):
     """Submitted scenario does not match the current persisted session facts."""
 
     def __init__(

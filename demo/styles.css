@@ -1,18 +1,16 @@
 :root {
   --bg-ink: #05070b;
-  --bg-shadow: rgba(2, 6, 12, 0.88);
   --beam-red: #d0332d;
-  --beam-hot: #ff9b82;
-  --beam-cool: #5ca0ff;
+  --beam-hot: #ffb19b;
+  --beam-cool: #6cbcff;
   --text-main: #f8f3ea;
   --text-dim: rgba(248, 243, 234, 0.72);
   --panel-border: rgba(255, 255, 255, 0.08);
   --panel-fill: rgba(10, 14, 18, 0.56);
   --reticle-x: 50%;
-  --reticle-y: 50%;
-  --beam-shift: 0px;
-  --choice-scale: 1;
-  --glow-strength: 0.8;
+  --reticle-y: 58%;
+  --beam-shift: 0%;
+  --choice-scale: 0.94;
   --cursor-x: 50vw;
   --cursor-y: 50vh;
 }
@@ -30,7 +28,7 @@ body {
 body {
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 50%, rgba(184, 48, 34, 0.2), transparent 30%),
+    radial-gradient(circle at 50% 50%, rgba(184, 48, 34, 0.18), transparent 28%),
     linear-gradient(180deg, #04070b 0%, #06070a 52%, #030406 100%);
   color: var(--text-main);
   font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
@@ -73,16 +71,16 @@ button {
 }
 
 .ghost-cursor {
-  left: calc(var(--cursor-x) - 16px);
-  top: calc(var(--cursor-y) - 16px);
-  width: 32px;
-  height: 32px;
+  left: calc(var(--cursor-x) - 12px);
+  top: calc(var(--cursor-y) - 12px);
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 158, 136, 0.5);
+  border: 1px solid rgba(255, 158, 136, 0.42);
   box-shadow:
-    0 0 24px rgba(255, 90, 58, 0.38),
-    inset 0 0 18px rgba(255, 200, 184, 0.08);
-  opacity: 0.8;
+    0 0 24px rgba(255, 90, 58, 0.28),
+    inset 0 0 18px rgba(255, 200, 184, 0.06);
+  opacity: 0.7;
   transform: translate3d(0, 0, 0);
   transition: transform 120ms ease-out, opacity 160ms ease-out;
 }
@@ -117,7 +115,7 @@ button {
 }
 
 .status-item {
-  min-width: 132px;
+  min-width: 148px;
   padding: 12px 14px;
   border: 1px solid var(--panel-border);
   background: linear-gradient(180deg, rgba(23, 27, 33, 0.72), rgba(8, 10, 14, 0.48));
@@ -164,29 +162,30 @@ button {
   inset: 0;
   background:
     linear-gradient(90deg, rgba(13, 29, 55, 0.78) 0%, rgba(86, 15, 12, 0.28) 32%, rgba(92, 15, 18, 0.26) 64%, rgba(6, 7, 12, 0.84) 100%),
-    radial-gradient(circle at 50% 50%, rgba(255, 100, 68, 0.22), transparent 30%);
+    radial-gradient(circle at 50% 52%, rgba(255, 100, 68, 0.2), transparent 28%);
 }
 
 .background-video {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: blur(26px) saturate(1.1) brightness(0.62);
-  transform: scale(1.12);
+  filter: blur(26px) saturate(1.08) brightness(0.62);
+  transform: scale(1.14);
+  transition: transform 320ms ease;
 }
 
 .decision-band {
   position: relative;
   align-self: center;
-  width: min(1500px, 100%);
-  height: min(56vh, 420px);
+  width: min(1520px, 100%);
+  height: min(54vh, 420px);
   margin: 0 auto;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 30px;
   background:
-    linear-gradient(180deg, rgba(11, 13, 17, 0.82), rgba(8, 9, 14, 0.48) 24%, rgba(8, 9, 14, 0.48) 76%, rgba(11, 13, 17, 0.82)),
-    linear-gradient(90deg, rgba(10, 20, 39, 0.75), rgba(42, 12, 12, 0.2) 42%, rgba(46, 13, 13, 0.24) 58%, rgba(8, 11, 18, 0.8));
+    linear-gradient(180deg, rgba(11, 13, 17, 0.84), rgba(8, 9, 14, 0.48) 24%, rgba(8, 9, 14, 0.5) 78%, rgba(11, 13, 17, 0.84)),
+    linear-gradient(90deg, rgba(10, 20, 39, 0.72), rgba(42, 12, 12, 0.2) 42%, rgba(46, 13, 13, 0.24) 58%, rgba(8, 11, 18, 0.78));
   box-shadow:
     inset 0 0 80px rgba(255, 61, 40, 0.1),
     0 20px 80px rgba(0, 0, 0, 0.48);
@@ -200,27 +199,40 @@ button {
   z-index: 1;
   pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(5, 7, 10, 0.84), transparent 28%, transparent 72%, rgba(5, 7, 10, 0.88)),
-    linear-gradient(90deg, rgba(8, 10, 15, 0.92) 0%, rgba(33, 8, 8, 0.16) 34%, rgba(38, 8, 8, 0.18) 66%, rgba(8, 10, 15, 0.92) 100%);
+    linear-gradient(180deg, rgba(5, 7, 10, 0.88), transparent 28%, transparent 72%, rgba(5, 7, 10, 0.9)),
+    linear-gradient(90deg, rgba(8, 10, 15, 0.94) 0%, rgba(33, 8, 8, 0.14) 34%, rgba(38, 8, 8, 0.18) 66%, rgba(8, 10, 15, 0.94) 100%);
+}
+
+.decision-band::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 58%, rgba(255, 255, 255, 0.18) 0 1%, rgba(255, 108, 82, 0.22) 4%, transparent 15%),
+    linear-gradient(90deg, transparent 28%, rgba(255, 91, 67, 0.1) 50%, transparent 72%);
+  mix-blend-mode: screen;
+  opacity: 0.78;
 }
 
 .reference-video {
   position: absolute;
-  left: 0;
-  top: 50%;
+  inset: 0;
   width: 100%;
-  height: 40%;
+  height: 100%;
   object-fit: cover;
-  transform: translateY(-50%) scale(1.08);
-  opacity: 0.46;
-  filter: blur(8px) saturate(1.08) brightness(0.44);
+  opacity: 0.5;
+  filter: blur(7px) saturate(1.08) brightness(0.46);
+  transform: scale(1.06);
+  transition: transform 320ms ease;
 }
 
 .band-shadow {
   position: absolute;
   left: 0;
   width: 100%;
-  height: 32%;
+  height: 34%;
   z-index: 1;
 }
 
@@ -252,10 +264,11 @@ button {
   content: "";
   position: absolute;
   left: -10%;
-  top: calc(50% - 10px);
+  top: calc(58% - 10px);
   width: 120%;
   height: 20px;
   transform: translateX(var(--beam-shift));
+  transition: transform 260ms ease;
 }
 
 .beam-core::before {
@@ -263,54 +276,52 @@ button {
     linear-gradient(
       90deg,
       transparent 0%,
-      rgba(255, 71, 47, 0.06) 12%,
-      rgba(231, 68, 48, 0.82) 28%,
-      rgba(255, 196, 176, 0.84) 50%,
-      rgba(229, 63, 51, 0.82) 72%,
-      rgba(255, 71, 47, 0.08) 88%,
+      rgba(255, 71, 47, 0.04) 10%,
+      rgba(231, 68, 48, 0.78) 28%,
+      rgba(255, 196, 176, 0.82) 50%,
+      rgba(229, 63, 51, 0.78) 72%,
+      rgba(255, 71, 47, 0.06) 90%,
       transparent 100%
     );
   filter: blur(8px);
-  opacity: 0.92;
+  opacity: 0.88;
 }
 
 .beam-core::after {
   height: 4px;
-  top: calc(50% - 2px);
+  top: calc(58% - 2px);
   background:
     linear-gradient(
       90deg,
       rgba(0, 0, 0, 0) 0%,
-      rgba(181, 29, 24, 0.16) 16%,
-      rgba(255, 222, 214, 0.9) 50%,
-      rgba(181, 29, 24, 0.16) 84%,
+      rgba(181, 29, 24, 0.12) 16%,
+      rgba(255, 222, 214, 0.88) 50%,
+      rgba(181, 29, 24, 0.12) 84%,
       rgba(0, 0, 0, 0) 100%
     );
-  filter: blur(1px);
+  filter: blur(0.6px);
 }
 
 .beam-fragments::before,
 .beam-fragments::after {
   content: "";
   position: absolute;
-  top: 50%;
-  width: 40%;
-  height: 60px;
-  transform: translateY(-50%) translateX(var(--beam-shift));
-  background:
-    linear-gradient(90deg, transparent, rgba(255, 61, 40, 0.28) 40%, transparent 100%);
+  top: 58%;
+  width: 26%;
+  height: 64px;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, transparent, rgba(255, 61, 40, 0.3) 45%, transparent 100%);
   filter: blur(18px);
-  opacity: 0.46;
+  opacity: 0.42;
   animation: fragment-sway 2.8s ease-in-out infinite alternate;
 }
 
 .beam-fragments::before {
-  left: -8%;
+  left: 2%;
 }
 
 .beam-fragments::after {
-  right: -8%;
-  transform: translateY(-50%) translateX(calc(var(--beam-shift) * -1));
+  right: 2%;
 }
 
 .scan-lines {
@@ -320,7 +331,7 @@ button {
       rgba(255, 255, 255, 0.03) 0 1px,
       rgba(255, 255, 255, 0) 1px 4px
     );
-  opacity: 0.4;
+  opacity: 0.38;
   mix-blend-mode: screen;
 }
 
@@ -328,11 +339,14 @@ button {
   position: absolute;
   left: var(--reticle-x);
   top: var(--reticle-y);
-  width: 136px;
-  height: 136px;
+  width: 126px;
+  height: 126px;
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 3;
+  transition:
+    left 180ms ease-out,
+    top 180ms ease-out;
 }
 
 .reticle-ring,
@@ -344,21 +358,21 @@ button {
 }
 
 .reticle-ring.outer {
-  width: 136px;
-  height: 136px;
+  width: 126px;
+  height: 126px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 153, 130, 0.18);
+  border: 1px solid rgba(255, 153, 130, 0.16);
   box-shadow:
-    0 0 24px rgba(255, 66, 46, 0.18),
+    0 0 24px rgba(255, 66, 46, 0.14),
     inset 0 0 34px rgba(255, 255, 255, 0.05);
   animation: reticle-spin 14s linear infinite;
 }
 
 .reticle-ring.inner {
-  width: 64px;
-  height: 64px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 212, 197, 0.24);
+  border: 1px solid rgba(255, 212, 197, 0.18);
 }
 
 .reticle-core {
@@ -367,105 +381,186 @@ button {
   border-radius: 50%;
   background: radial-gradient(circle, #fff 0%, #fff5ee 35%, #ff886c 70%, rgba(255, 136, 108, 0) 100%);
   box-shadow:
-    0 0 16px rgba(255, 240, 235, 0.95),
-    0 0 36px rgba(255, 103, 68, 0.74);
+    0 0 16px rgba(255, 240, 235, 0.94),
+    0 0 36px rgba(255, 103, 68, 0.72);
   animation: reticle-pulse 2.4s ease-in-out infinite;
 }
 
 .reticle-axis.horizontal {
-  width: 190px;
+  width: 184px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 181, 164, 0.72), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 181, 164, 0.46), transparent);
 }
 
 .reticle-axis.vertical {
   width: 1px;
-  height: 190px;
-  background: linear-gradient(180deg, transparent, rgba(255, 181, 164, 0.28), transparent);
+  height: 184px;
+  background: linear-gradient(180deg, transparent, rgba(255, 181, 164, 0.2), transparent);
 }
 
 .choice-card {
   position: absolute;
-  top: 50%;
-  width: clamp(240px, 21vw, 360px);
-  padding: 24px 26px 18px;
+  z-index: 4;
   border: 0;
+  padding: 0;
   background: transparent;
   color: var(--text-main);
   text-align: center;
   cursor: pointer;
-  transform: translateY(-50%) scale(var(--choice-scale));
+  white-space: nowrap;
+  transform: translate(-50%, -50%) scale(var(--choice-scale));
   transition:
     transform 220ms ease,
     opacity 220ms ease,
     filter 220ms ease,
     text-shadow 220ms ease;
-  z-index: 4;
+  opacity: 0.72;
+}
+
+.choice-card::before,
+.choice-card::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 64%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition:
+    opacity 220ms ease,
+    width 220ms ease,
+    filter 220ms ease;
 }
 
 .choice-card::before {
-  content: "";
-  position: absolute;
-  inset: auto 12px 22px;
-  height: 42px;
-  background: linear-gradient(90deg, transparent, rgba(195, 26, 26, 0.34), transparent);
-  filter: blur(10px);
-  opacity: 0.6;
-  transition: opacity 200ms ease, transform 220ms ease;
+  width: calc(100% + 110px);
+  height: 4px;
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(226, 57, 45, 0.2) 10%,
+      rgba(255, 188, 169, 0.9) 50%,
+      rgba(226, 57, 45, 0.2) 90%,
+      transparent 100%
+    );
+  filter: blur(0.6px);
+  opacity: 0.74;
+}
+
+.choice-card::after {
+  width: calc(100% + 200px);
+  height: 50px;
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(230, 56, 47, 0.22) 18%,
+      rgba(255, 180, 156, 0.34) 50%,
+      rgba(230, 56, 47, 0.22) 82%,
+      transparent 100%
+    );
+  filter: blur(14px);
+  opacity: 0.34;
 }
 
 .choice-card:hover,
 .choice-card.is-active {
-  filter: saturate(1.12);
+  opacity: 1;
+  filter: saturate(1.1);
 }
 
 .choice-card:hover::before,
 .choice-card.is-active::before {
-  opacity: 0.96;
-  transform: scaleX(1.08);
+  opacity: 1;
+  width: calc(100% + 180px);
 }
 
-.choice-card.is-confirmed {
-  text-shadow:
-    0 0 16px rgba(255, 255, 255, 0.24),
-    0 0 38px rgba(255, 74, 61, 0.34);
-}
-
-.choice-card[data-index="0"] {
-  left: 9%;
-}
-
-.choice-card[data-index="1"] {
-  right: 9%;
+.choice-card:hover::after,
+.choice-card.is-active::after {
+  opacity: 0.62;
 }
 
 .choice-meta {
   display: block;
-  margin-bottom: 10px;
-  color: rgba(255, 184, 170, 0.68);
-  font-size: 11px;
-  letter-spacing: 0.22em;
+  margin-bottom: 8px;
+  color: rgba(255, 184, 170, 0.72);
+  font-size: 10px;
+  letter-spacing: 0.26em;
   text-transform: uppercase;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.choice-card:hover .choice-meta,
+.choice-card.is-active .choice-meta,
+.choice-card.is-confirmed .choice-meta {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .choice-title {
   display: block;
-  font-size: clamp(40px, 4.2vw, 66px);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  line-height: 1.08;
+  color: rgba(248, 243, 234, 0.86);
+  line-height: 1.06;
+  letter-spacing: 0.03em;
+  transition:
+    color 220ms ease,
+    text-shadow 220ms ease;
 }
 
-.choice-caption {
-  display: inline-block;
-  margin-top: 12px;
-  padding: 5px 10px;
-  color: rgba(255, 242, 236, 0.78);
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+.choice-card--top {
+  left: 50%;
+  top: 26%;
+  width: min(48vw, 720px);
+}
+
+.choice-card--top .choice-title {
+  font-size: clamp(46px, 4.2vw, 74px);
+}
+
+.choice-card--left {
+  left: 18%;
+  top: 67%;
+  width: min(28vw, 440px);
+}
+
+.choice-card--right {
+  left: 82%;
+  top: 67%;
+  width: min(28vw, 440px);
+}
+
+.choice-card--left .choice-title,
+.choice-card--right .choice-title {
+  font-size: clamp(34px, 3vw, 56px);
+}
+
+.choice-card--top.is-active {
+  --choice-scale: 1.02;
+}
+
+.choice-card--left.is-active,
+.choice-card--right.is-active {
+  --choice-scale: 1.04;
+}
+
+.choice-card.is-active .choice-title {
+  color: #fff8f4;
+  text-shadow:
+    0 0 16px rgba(255, 240, 236, 0.44),
+    0 0 36px rgba(255, 78, 59, 0.26);
+}
+
+.choice-card.is-confirmed .choice-title {
+  text-shadow:
+    0 0 18px rgba(255, 255, 255, 0.3),
+    0 0 42px rgba(255, 74, 61, 0.36);
+}
+
+.choice-card.is-dimmed {
+  opacity: 0.28;
+  filter: blur(0.4px) saturate(0.76);
 }
 
 .hud-strip {
@@ -510,7 +605,7 @@ button {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-  width: min(920px, calc(100% - 32px));
+  width: min(980px, calc(100% - 32px));
   margin: 0 auto;
 }
 
@@ -518,8 +613,7 @@ button {
   padding: 16px 18px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(17, 20, 26, 0.74), rgba(8, 10, 14, 0.5));
+  background: linear-gradient(180deg, rgba(17, 20, 26, 0.74), rgba(8, 10, 14, 0.5));
   backdrop-filter: blur(12px);
   box-shadow: inset 0 0 40px rgba(255, 54, 40, 0.05);
 }
@@ -545,25 +639,42 @@ button {
   font-size: 14px;
 }
 
-.decision-stage.is-right .reference-video,
-.decision-stage.is-right .background-video {
-  transform: translateY(-50%) scale(1.035) translateX(1.2%);
+.decision-stage.is-left .reference-video {
+  transform: scale(1.06) translateX(-1.2%);
 }
 
-.decision-stage.is-left .reference-video,
+.decision-stage.is-right .reference-video {
+  transform: scale(1.06) translateX(1.2%);
+}
+
 .decision-stage.is-left .background-video {
-  transform: translateY(-50%) scale(1.035) translateX(-1.2%);
+  transform: scale(1.14) translateX(-1%);
+}
+
+.decision-stage.is-right .background-video {
+  transform: scale(1.14) translateX(1%);
 }
 
 .decision-stage.is-confirmed .beam-core::before {
   opacity: 1;
-  filter: blur(12px);
+  filter: blur(11px);
 }
 
 .decision-stage.is-confirmed .reticle-core {
   box-shadow:
     0 0 22px rgba(255, 240, 235, 1),
     0 0 50px rgba(255, 103, 68, 0.94);
+}
+
+@media (max-width: 1180px) {
+  .choice-card--top .choice-title {
+    font-size: clamp(38px, 4.4vw, 62px);
+  }
+
+  .choice-card--left .choice-title,
+  .choice-card--right .choice-title {
+    font-size: clamp(28px, 2.8vw, 42px);
+  }
 }
 
 @media (max-width: 960px) {
@@ -585,33 +696,54 @@ button {
   }
 
   .decision-band {
-    height: min(62vh, 520px);
+    height: min(70vh, 560px);
   }
 
   .choice-card {
-    width: min(76vw, 360px);
+    width: min(84vw, 620px);
+    white-space: normal;
   }
 
-  .choice-card[data-index="0"] {
+  .choice-card--top {
     left: 50%;
-    right: auto;
-    top: 34%;
-    transform: translate(-50%, -50%) scale(var(--choice-scale));
+    top: 24%;
   }
 
-  .choice-card[data-index="1"] {
+  .choice-card--left {
     left: 50%;
-    right: auto;
-    top: 66%;
-    transform: translate(-50%, -50%) scale(var(--choice-scale));
+    top: 56%;
   }
 
-  .beam-core::before,
-  .beam-core::after,
-  .beam-fragments::before,
-  .beam-fragments::after {
-    transform: rotate(90deg) translateX(var(--beam-shift));
-    transform-origin: center;
+  .choice-card--right {
+    left: 50%;
+    top: 78%;
+  }
+
+  .choice-card--top .choice-title {
+    font-size: clamp(34px, 6vw, 52px);
+  }
+
+  .choice-card--left .choice-title,
+  .choice-card--right .choice-title {
+    font-size: clamp(28px, 5vw, 38px);
+  }
+
+  .reticle {
+    width: 104px;
+    height: 104px;
+  }
+
+  .reticle-ring.outer {
+    width: 104px;
+    height: 104px;
+  }
+
+  .reticle-axis.horizontal {
+    width: 148px;
+  }
+
+  .reticle-axis.vertical {
+    height: 148px;
   }
 
   .review-panel {

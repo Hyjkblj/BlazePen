@@ -9,6 +9,7 @@ export const ROUTES = {
   TRAINING: '/training',
   TRAINING_MAINHOME: '/training/mainhome',
   TRAINING_LANDING: '/training/landing',
+  TRAINING_CINEMATIC_DEMO: '/training/cinematic-demo',
   TRAINING_PROGRESS: '/training/progress',
   TRAINING_REPORT: '/training/report',
   TRAINING_DIAGNOSTICS: '/training/diagnostics',

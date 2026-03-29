@@ -7,7 +7,54 @@ from datetime import datetime
 import inspect
 from typing import Any, Dict, List, Protocol
 
+from sqlalchemy.exc import DatabaseError, OperationalError, ProgrammingError
+
+from training.exceptions import TrainingStorageUnavailableError
 from training.training_repository import SqlAlchemyTrainingRepository
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
+
+
+def _is_missing_training_media_tasks_table_error(exc: Exception) -> bool:
+    """Detect DB errors caused by missing `training_media_tasks` table."""
+    message = str(exc or "")
+    lowered = message.lower()
+    if "training_media_tasks" not in lowered:
+        return False
+    return any(
+        token in lowered
+        for token in (
+            "undefinedtable",
+            "does not exist",
+            "doesn't exist",
+            "no such table",
+            "unknown table",
+            "relation",
+        )
+    )
+
+
+def _raise_media_task_storage_unavailable(
+    *,
+    operation: str,
+    error: Exception,
+    details: dict | None = None,
+) -> None:
+    logger.error(
+        "training media task storage unavailable: operation=%s error=%s details=%s",
+        operation,
+        str(error),
+        dict(details or {}),
+    )
+    raise TrainingStorageUnavailableError(
+        message="training media task storage unavailable: training_media_tasks table is missing",
+        details={
+            "operation": operation,
+            **dict(details or {}),
+        },
+    ) from error
 
 
 @dataclass(slots=True)
@@ -385,38 +432,108 @@ class DatabaseTrainingStore:
         request_payload: dict,
         max_retries: int = 0,
     ) -> TrainingMediaTaskRecord:
-        row = self.storage_backend.create_media_task(
-            session_id=session_id,
-            round_no=round_no,
-            task_type=task_type,
-            idempotency_key=idempotency_key,
-            request_payload=request_payload,
-            max_retries=max_retries,
-        )
+        try:
+            row = self.storage_backend.create_media_task(
+                session_id=session_id,
+                round_no=round_no,
+                task_type=task_type,
+                idempotency_key=idempotency_key,
+                request_payload=request_payload,
+                max_retries=max_retries,
+            )
+        except (ProgrammingError, OperationalError, DatabaseError) as exc:
+            if _is_missing_training_media_tasks_table_error(exc):
+                _raise_media_task_storage_unavailable(
+                    operation="create_media_task",
+                    error=exc,
+                    details={
+                        "session_id": session_id,
+                        "round_no": round_no,
+                        "task_type": task_type,
+                    },
+                )
+            raise
         return self._to_training_media_task_record(row)
 
     def get_media_task(self, task_id: str) -> TrainingMediaTaskRecord | None:
-        row = self.storage_backend.get_media_task(task_id)
+        try:
+            row = self.storage_backend.get_media_task(task_id)
+        except (ProgrammingError, OperationalError, DatabaseError) as exc:
+            if _is_missing_training_media_tasks_table_error(exc):
+                _raise_media_task_storage_unavailable(
+                    operation="get_media_task",
+                    error=exc,
+                    details={"task_id": task_id},
+                )
+            raise
         return self._to_training_media_task_record(row)
 
     def get_media_task_by_idempotency_key(self, idempotency_key: str) -> TrainingMediaTaskRecord | None:
-        row = self.storage_backend.get_media_task_by_idempotency_key(idempotency_key)
+        try:
+            row = self.storage_backend.get_media_task_by_idempotency_key(idempotency_key)
+        except (ProgrammingError, OperationalError, DatabaseError) as exc:
+            if _is_missing_training_media_tasks_table_error(exc):
+                _raise_media_task_storage_unavailable(
+                    operation="get_media_task_by_idempotency_key",
+                    error=exc,
+                    details={"idempotency_key": idempotency_key},
+                )
+            raise
         return self._to_training_media_task_record(row)
 
     def update_media_task(self, task_id: str, updates: dict) -> TrainingMediaTaskRecord | None:
-        row = self.storage_backend.update_media_task(task_id, updates)
+        try:
+            row = self.storage_backend.update_media_task(task_id, updates)
+        except (ProgrammingError, OperationalError, DatabaseError) as exc:
+            if _is_missing_training_media_tasks_table_error(exc):
+                _raise_media_task_storage_unavailable(
+                    operation="update_media_task",
+                    error=exc,
+                    details={"task_id": task_id},
+                )
+            raise
         return self._to_training_media_task_record(row)
 
     def list_media_tasks(self, session_id: str, round_no: int | None = None) -> List[TrainingMediaTaskRecord]:
-        rows = self.storage_backend.list_media_tasks(session_id=session_id, round_no=round_no)
+        try:
+            rows = self.storage_backend.list_media_tasks(session_id=session_id, round_no=round_no)
+        except (ProgrammingError, OperationalError, DatabaseError) as exc:
+            if _is_missing_training_media_tasks_table_error(exc):
+                _raise_media_task_storage_unavailable(
+                    operation="list_media_tasks",
+                    error=exc,
+                    details={
+                        "session_id": session_id,
+                        "round_no": round_no,
+                    },
+                )
+            raise
         return [self._to_training_media_task_record(row) for row in rows]
 
     def list_media_tasks_by_status(self, statuses: List[str]) -> List[TrainingMediaTaskRecord]:
-        rows = self.storage_backend.list_media_tasks_by_status(statuses=statuses)
+        try:
+            rows = self.storage_backend.list_media_tasks_by_status(statuses=statuses)
+        except (ProgrammingError, OperationalError, DatabaseError) as exc:
+            if _is_missing_training_media_tasks_table_error(exc):
+                _raise_media_task_storage_unavailable(
+                    operation="list_media_tasks_by_status",
+                    error=exc,
+                    details={"statuses": list(statuses or [])},
+                )
+            raise
         return [self._to_training_media_task_record(row) for row in rows]
 
     def claim_media_task(self, task_id: str) -> TrainingMediaTaskRecord | None:
-        row = self.storage_backend.claim_media_task(task_id)
+        try:
+            row = self.storage_backend.claim_media_task(task_id)
+        except (ProgrammingError, OperationalError, DatabaseError) as exc:
+            if _is_missing_training_media_tasks_table_error(exc):
+                _raise_media_task_storage_unavailable(
+                    operation="claim_media_task",
+                    error=exc,
+                    details={"task_id": task_id},
+                )
+            raise
         return self._to_training_media_task_record(row)
 
     def complete_media_task(
@@ -428,13 +545,22 @@ class DatabaseTrainingStore:
         error_payload: dict | None = None,
         retry_count: int | None = None,
     ) -> TrainingMediaTaskRecord | None:
-        row = self.storage_backend.complete_media_task(
-            task_id,
-            status=status,
-            result_payload=result_payload,
-            error_payload=error_payload,
-            retry_count=retry_count,
-        )
+        try:
+            row = self.storage_backend.complete_media_task(
+                task_id,
+                status=status,
+                result_payload=result_payload,
+                error_payload=error_payload,
+                retry_count=retry_count,
+            )
+        except (ProgrammingError, OperationalError, DatabaseError) as exc:
+            if _is_missing_training_media_tasks_table_error(exc):
+                _raise_media_task_storage_unavailable(
+                    operation="complete_media_task",
+                    error=exc,
+                    details={"task_id": task_id},
+                )
+            raise
         return self._to_training_media_task_record(row)
 
     def get_training_rounds(self, session_id: str) -> List[TrainingRoundRecord]:

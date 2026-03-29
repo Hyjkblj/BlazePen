@@ -1,0 +1,55 @@
+## 前端 Findings
+- [Major] frontend/src/hooks/useTrainingCharacterPreviewFlow.ts:160
+  问题：preview 恢复把 localStorage 中的 characterId/jobId 当成可复用实体事实源。
+  原因：generationKey 只由表单字段拼出来，不含任何服务端 user/session 维度；命中缓存后会直接在 frontend/src/hooks/useTrainingCharacterPreviewFlow.ts:365-377 回填 characterId，随后又在 frontend/src/hooks/useTrainingCharacterPreviewFlow.ts:439-485 依据这个本地值跳过 createTrainingCharacter。这已经把本地缓存抬成了后端实体选择的事实源。
+  影响：同一浏览器上，只要表单字段一致，就可能把上一次训练的角色实体和预览任务静默复用到新的训练入口，形成跨尝试污染；一旦本地缓存与服务端状态漂移，恢复路径会先相信本地，再让后端被动兜底。
+  建议：本地只缓存“可恢复 job 的 token/id”，不要直接回写 characterId 到表单事实源；恢复前先向后端做一次 server-scoped 校验或换取 resume token，把可复用角色判定收回到服务端。
+
+- [Major] frontend/src/flows/useTrainingMvpFlow.ts:291
+  问题：场景图任务创建/轮询被直接塞进主训练 flow，并且以整个 sessionView 为触发条件。
+  原因：该 hook 同时承担会话恢复、回合提交、媒体任务创建/轮询、报告加载；scene image effect 依赖的是完整 sessionView，并在 frontend/src/flows/useTrainingMvpFlow.ts:307-311 先清空现有图和状态，破坏了 flows / hooks / services 的职责边界，也没有区分“同场景同步”与“进入新场景”。
+  影响：重复提交恢复、手动 retryRestore、后端 summary 回填等只要重新构造了同一场景的 sessionView，前端就会把已有场景图重置为 pending 并再次触发任务创建，恢复路径会闪烁、空白或重复请求。
+  建议：把场景图生命周期拆成独立 hook，例如 useTrainingSceneImageFlow(sessionId, scenarioId, roundNo)；依赖只绑定 sessionId + scenarioId + attemptNo，同场景恢复时保留现有 taskId/url，只在场景切换时 reset。
+
+## 后端 Findings
+- [Blocker] backend/training/training_character_preview_job_repository.py:101
+  问题：preview job claim 不是原子 compare-and-set，多个 worker/实例可以同时领取同一个 pending job。
+  原因：这里是先查 status='pending'，再在 Python 中改成 running 并 flush，没有 SELECT ... FOR UPDATE SKIP LOCKED 或 UPDATE ... WHERE status='pending' RETURNING ... 这种数据库级原子迁移。新加的 startup recovery 和线程池会放大这个竞态窗口。
+  影响：同一个 idempotency job 可能被重复生成图片、重复计费、重复写错误/attempt 元数据；幂等承诺在并发和多实例部署下站不住，这类问题不应带着上线。
+  建议：把 claim 改成数据库原子状态迁移，并补一个双线程/双 session 并发 claim 测试，确保只有一个 worker 能成功领取。
+
+- [Major] backend/api/training_app.py:114
+  问题：训练服务启动被 preview/media warmup 硬绑定，非核心媒体依赖异常会直接拉垮整个 training API。
+  原因：startup event 中对 preview executor 和 media executor 的任何异常都直接 raise RuntimeError；这把本应可降级的后台能力升级成了训练主链路的前置可用性条件。
+  影响：图片/TTS provider 短暂异常、迁移滞后或 warmup 本身的 bug，都会让训练会话读写路由无法启动，恢复能力和运维韧性明显下降。
+  建议：改成记录 degraded 状态并暴露 health/readiness 指标；只有训练核心存储不可用时才阻断启动，媒体 warmup 失败应走后台重试和告警。
+
+- [Major] backend/training/media_task_executor.py:123
+  问题：image 任务只要 payload 带 scenario_id/scene_id/... 就会被隐式升级为 scene-series 多图生成。
+  原因：这里靠脏字段推断任务语义，而不是靠显式 task type 或强约束 flag；结果是 DTO 语义不稳定，并把多次图片生成塞进单个 media task 执行槽位。
+  影响：任何只是想给图片任务打场景标签的调用方，都可能意外触发 1+N 张图生成、超时和资源放大；契约不再可预测，容量控制和 observability 也会变差。
+  建议：把 scene-series 做成显式 taskType，或至少要求 image_type=scene 且 generate_storyline_series=true 才进入该分支；同时为 fan-out 任务单独计量和限流。
+
+- [Major] backend/api/routers/training_characters.py:99
+  问题：新训练角色路由大量返回仅靠 message 区分语义的错误响应，缺少稳定 error.code。
+  原因：/create、/{character_id}、/{character_id}/images、remove-background 的多条 4xx/5xx 路径没有对齐 typed error code，而 preview job 子路由又是结构化错误；同一 router 内部契约已经不一致。
+  影响：前端只能依赖消息文本或 HTTP status 做分支，文案、语言或实现一变就会打断恢复/重试逻辑，也削弱 trace 和 contract test 的价值。
+  建议：统一走 domain exception -> stable error.code/details/traceId 映射，至少补齐 validation、not_found、storage_unavailable、provider_failure 这几类。
+
+## Open Questions
+- preview/media warmup 是否真的应该阻断训练会话主链路启动，还是应该允许 training core 在 degraded media 模式下继续可用？
+- 同一浏览器、同一表单字段命中旧 preview snapshot 时，是否有意复用旧 characterId，还是应该由服务端重新判定可复用实体？
+
+## 测试缺口
+- 前端：frontend/src/hooks/useTrainingCharacterPreviewFlow.test.tsx 只覆盖 retry/conflict/timeout，没有覆盖“localStorage 命中同 generationKey 的旧 snapshot 时，不应直接把旧 characterId 回填成事实源”的场景。
+- 前端：frontend/src/flows/useTrainingMvpFlow.test.tsx 和 frontend/src/pages/Training.integration.test.tsx 没有覆盖“同一 sessionId + scenarioId 的 restore/duplicate recovery 不应清空已有 sceneImageUrl、不应重复创建 task”的恢复路径；而且前者还在 mock 已经移除的 useTrainingMediaTaskFeed，对新媒体逻辑基本失焦。
+- 后端：backend/test_training_character_preview_job_service.py 没有并发 claim 测试，无法证明 claim_preview_job 在双线程/双 session 下只有一个成功领取。
+- 后端：backend/test_training_media_route_smoke.py 没有 contract case 证明“带 scenario_id 但未显式开启 scene-series 的 image 任务仍保持单图语义”；backend/test_training_standalone_app.py 只验证了 fail-fast，没有 degraded-startup 合约测试。
+
+## Review Summary
+- 这批改动把训练链路做得更完整，但前后端都明显把恢复和媒体能力往主干上堆，边界开始变厚。
+- 前端最危险的是把 localStorage 抬成了角色复用判断的事实源，同时把场景图生命周期塞进主 flow，导致恢复路径不稳。
+- 后端的阻塞问题是 preview job claim 非原子，幂等保护在并发下不成立。
+- 其余后端问题集中在把重媒体能力做成隐式契约，以及把非核心 warmup 升级成整站启动依赖。
+- 已执行 vitest run src/flows/useTrainingMvpFlow.test.tsx src/hooks/useTrainingCharacterPreviewFlow.test.tsx src/pages/TrainingMainPathSmoke.integration.test.tsx。
+- 已执行 pytest test_training_character_preview_job_service.py test_training_character_route_contract.py test_training_media_route_smoke.py test_training_standalone_app.py；目标用例通过，但没有覆盖上述关键并发与恢复缺口。

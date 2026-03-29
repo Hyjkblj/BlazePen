@@ -1,0 +1,36 @@
+## 前端 Findings
+- [Blocker] frontend/src/hooks/useTrainingCharacterPreviewFlow.ts:141
+  问题：preview snapshot 迁移代码把版本类型收窄成 `2`，却又在运行时兼容 `version === 1`，导致 TypeScript 构建直接失败。
+  原因：`PersistedPreviewJobSnapshot` 的 `version` 被声明为字面量 `2`，`parsed` 又基于它做 `Partial<>`，于是 `parsed.version !== 1` 成为不可能分支，说明 v1/v2 兼容建模没有在类型层闭环。
+  影响：`npx tsc -b --pretty false` 当前报 `TS2367`，前端构建不可发布；这类兼容逻辑也更难继续维护。
+  建议：拆分 `PersistedPreviewJobSnapshotV1/V2`，或把解析阶段类型显式放宽为 `1 | 2 | undefined`，让迁移逻辑和类型系统一致。
+
+- [Major] frontend/src/pages/Training.tsx:91
+  问题：简化训练页在场景图失败时只显示 warning，没有任何恢复动作；而 flow 层也没有暴露 scene-image retry。
+  原因：`frontend/src/flows/useTrainingMvpFlow.ts:249` 到 `:369` 把场景图创建/轮询封装成一次性 effect，失败后只落 `sceneImageStatus='failed'` 与错误文案，页面层 `Training.tsx` 仅消费为只读提示，恢复链路到此中断。
+  影响：一旦当前回合的场景图因为媒体服务波动失败，简化页会长期停留在黑屏/无图状态；由于该页现在把画面本身作为主信息载体，用户会失去当前回合的核心视觉上下文。
+  建议：在 flow 层显式暴露 `retrySceneImage(sessionId, scenarioId)` 或等价 action，页面层为 warning 提供“重新生成场景图”按钮，并补一条集成测试覆盖 create/poll 失败后的恢复路径。
+
+## 后端 Findings
+- [Minor] backend/api/schemas.py:143
+  问题：公开 DTO 仍接受 `generate_scene_groups`，但训练运行时通过 `backend/api/dependencies.py:140` 固定禁用了该能力，形成“接口可传、运行时静默忽略”的契约歧义。
+  原因：schema 仍把该字段定义为训练预览路由的正式输入，而依赖注入把 `TrainingCharacterPreviewJobService(enable_scene_group_generation=False)` 写死；请求方无法从契约上判断这是暂时关闭还是永久不支持。
+  影响：后续调用方如果按 DTO 传 `generate_scene_groups=true`，只会拿到 `skipped`/空结果，问题会在联调期以“接口没报错但功能没生效”的形式暴露；同时这也给未来重新打开该能力埋下双事实源回潮的入口。
+  建议：二选一收口。要么把 `generate_scene_groups` 从训练公开 DTO 去掉并在路由层拒绝该输入，要么保留该能力但在 runtime 明确做 feature flag 响应与契约测试，不要静默吞掉。
+
+## Open Questions
+- `generate_scene_groups` 在训练预览路由中是否还打算作为公开能力保留？如果不保留，建议直接从请求契约移除；如果保留，需要明确 training-only runtime 的启用条件和返回语义。
+
+## 测试缺口
+- 前端：`frontend/src/hooks/useTrainingCharacterPreviewFlow.ts` 的 v1/v2 快照兼容分支没有被类型检查基线保护；现有 `frontend/src/hooks/useTrainingCharacterPreviewFlow.test.tsx` 覆盖了运行时 retry，但没有阻止 `npx tsc -b --pretty false` 在 `:141` 处直接失败。
+- 前端：`frontend/src/pages/Training.integration.test.tsx` 与 `frontend/src/pages/TrainingMainPathSmoke.integration.test.tsx` 还没有覆盖简化页的 `bootstrapErrorMessage / roundErrorMessage / noticeMessage / retryRestore` 展示，以及场景图 create/poll 失败后的恢复路径。
+- 后端：`backend/test_training_character_route_contract.py` 没有锁住 `generate_scene_groups=true` 在 training-only runtime 下的显式语义，当前是“可传字段 + 静默跳过”，没有契约测试防回归。
+- 后端：`backend/test_training_character_preview_job_service.py` 仍没有覆盖 `shutdown()` 与进行中 preview/scene generation 并发交错时的收口行为，无法证明关闭期间不会留下半状态或再次落库。
+
+## Review Summary
+- 这轮修复把前次最严重的 preview retry、warmup fail-fast 和基础测试基线补回来了，方向是对的。
+- 但前端现在仍有一个明确的阻塞项：preview snapshot 兼容逻辑没有通过 TypeScript 构建，`npx tsc -b --pretty false` 直接失败。
+- 简化训练页的恢复链路也还没有完全闭环，场景图失败后只有提示、没有重试动作。
+- 后端本轮没有再看到新的恢复性阻塞问题，相关 `pytest` 套件通过，preview service 的失败重排队和 shutdown 收口比上一版明显更稳。
+- 剩余后端风险主要是契约诚实性而不是执行正确性：公开 DTO 仍暴露了 runtime 已关闭的 `generate_scene_groups` 能力。
+- 当前状态不建议直接合并，至少先修复前端构建失败，并明确 scene group 公共契约的收口方式。

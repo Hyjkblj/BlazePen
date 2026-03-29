@@ -6,7 +6,7 @@ import unittest
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -174,6 +174,68 @@ class TrainingMediaRouteSqliteSmokeTestCase(unittest.TestCase):
         conflict_payload = conflict_response.json()
         self.assertEqual(conflict_payload["error"]["code"], "TRAINING_MEDIA_TASK_CONFLICT")
         self.assertEqual(conflict_payload["error"]["details"]["route"], "training.media.create_task")
+
+    def test_media_task_create_should_keep_single_image_contract_without_explicit_scene_series_flag(self):
+        session_id = self._init_session()
+
+        create_response = self.client.post(
+            "/api/v1/training/media/tasks",
+            json={
+                "session_id": session_id,
+                "round_no": 1,
+                "task_type": "image",
+                "payload": {
+                    "prompt": "draw city skyline",
+                    "image_type": "scene",
+                    "scenario_id": "S1",
+                },
+            },
+        )
+        self.assertEqual(create_response.status_code, 200)
+        task = create_response.json()["data"]
+        self.assertEqual(task["status"], "pending")
+
+        get_response = self.client.get(f"/api/v1/training/media/tasks/{task['task_id']}")
+        self.assertEqual(get_response.status_code, 200)
+        fetched = get_response.json()["data"]
+        persisted = self.store.get_media_task(fetched["task_id"])
+        request_payload = dict(getattr(persisted, "request_payload", {}) or {})
+        self.assertEqual(request_payload.get("scenario_id"), "S1")
+        self.assertNotIn("generate_storyline_series", request_payload)
+
+    def test_media_task_list_should_return_storage_unavailable_when_media_table_is_missing(self):
+        session_id = self._init_session()
+
+        with self.engine.begin() as connection:
+            connection.execute(text("DROP TABLE training_media_tasks"))
+
+        response = self.client.get(f"/api/v1/training/media/sessions/{session_id}/tasks")
+        self.assertEqual(response.status_code, 503)
+        payload = response.json()
+        self.assertEqual(payload["error"]["code"], "TRAINING_STORAGE_UNAVAILABLE")
+        self.assertEqual(payload["error"]["details"]["route"], "training.media.list_tasks")
+        self.assertEqual(payload["error"]["details"]["session_id"], session_id)
+
+    def test_media_task_create_should_return_storage_unavailable_when_media_table_is_missing(self):
+        session_id = self._init_session()
+
+        with self.engine.begin() as connection:
+            connection.execute(text("DROP TABLE training_media_tasks"))
+
+        response = self.client.post(
+            "/api/v1/training/media/tasks",
+            json={
+                "session_id": session_id,
+                "round_no": 1,
+                "task_type": "image",
+                "payload": {"prompt": "draw skyline"},
+            },
+        )
+        self.assertEqual(response.status_code, 503)
+        payload = response.json()
+        self.assertEqual(payload["error"]["code"], "TRAINING_STORAGE_UNAVAILABLE")
+        self.assertEqual(payload["error"]["details"]["route"], "training.media.create_task")
+        self.assertEqual(payload["error"]["details"]["session_id"], session_id)
 
 
 if __name__ == "__main__":

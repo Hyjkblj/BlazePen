@@ -62,6 +62,7 @@ const TRAINING_ERROR_CODES = new Set<ServiceErrorCode>([
   'TRAINING_MEDIA_PROVIDER_UNAVAILABLE',
   'TRAINING_MEDIA_TASK_EXECUTION_FAILED',
   'TRAINING_MEDIA_TASK_TIMEOUT',
+  'TRAINING_STORAGE_UNAVAILABLE',
 ]);
 
 const normalizeOptionalString = (value: unknown): string | null => {

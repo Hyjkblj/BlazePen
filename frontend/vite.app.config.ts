@@ -8,6 +8,7 @@ interface CreateAppViteConfigOptions {
   outDir: string;
   apiTargetEnvVar: string;
   defaultApiTarget: string;
+  base?: string;
 }
 
 export const resolveApiTarget = (
@@ -42,6 +43,7 @@ export const createAppViteConfig = ({
   outDir,
   apiTargetEnvVar,
   defaultApiTarget,
+  base,
 }: CreateAppViteConfigOptions) =>
   defineConfig(({ mode }) => {
     const env = loadEnv(mode, __dirname, '');
@@ -75,7 +77,7 @@ export const createAppViteConfig = ({
         host: devHost,
         port,
       },
-      base: './',
+      base: base ?? './',
       build: {
         outDir: path.resolve(__dirname, outDir),
         assetsDir: 'assets',

@@ -39,6 +39,8 @@ export interface CreateCharacterRequest {
   identity?: string;
   initial_scene?: string;
   initial_scene_prompt?: string;
+  user_id?: string;
+  image_type?: string;
 }
 
 export interface CreateCharacterResponse extends GenericApiRecord {
@@ -50,6 +52,79 @@ export interface CreateCharacterResponse extends GenericApiRecord {
 
 export interface CharacterImagesResponse {
   images?: string[];
+}
+
+export interface TrainingIdentityPresetApiResponse extends GenericApiRecord {
+  code?: string;
+  title?: string;
+  description?: string;
+  identity?: string;
+  default_name?: string;
+  default_gender?: string;
+}
+
+export interface TrainingIdentityPresetListResponse extends GenericApiRecord {
+  presets?: TrainingIdentityPresetApiResponse[] | null;
+}
+
+export interface TrainingCreateCharacterRequest extends GenericApiRecord {
+  identity_code: string;
+  name?: string;
+  gender?: string;
+  age?: number;
+  identity?: string;
+  user_id?: string;
+  image_type?: string;
+}
+
+export interface TrainingCreateCharacterResponse extends GenericApiRecord {
+  character_id?: string | number;
+  name?: string;
+  identity_code?: string;
+  image_url?: string;
+  image_urls?: string[] | null;
+}
+
+export interface TrainingCharacterPreviewJobCreateRequest extends GenericApiRecord {
+  character_id: number;
+  idempotency_key: string;
+  user_id?: string;
+  image_type?: string;
+  group_count?: number;
+  generate_scene_groups?: boolean;
+  scene_group_count?: number;
+  micro_scene_min?: number;
+  micro_scene_max?: number;
+}
+
+export interface TrainingSceneGroupResponse extends GenericApiRecord {
+  group_index?: number;
+  major_scene_id?: string | null;
+  major_scene_title?: string;
+  major_scene_url?: string | null;
+  small_scene_urls?: string[] | null;
+  image_urls?: string[] | null;
+  prompt_bundle?: GenericApiRecord[] | null;
+  series_profile?: GenericApiRecord | null;
+}
+
+export interface TrainingCharacterPreviewJobResponse extends GenericApiRecord {
+  job_id?: string;
+  character_id?: number | string;
+  idempotency_key?: string;
+  status?: string;
+  image_urls?: string[] | null;
+  scene_storyline_script?: GenericApiRecord | null;
+  scene_groups?: TrainingSceneGroupResponse[] | null;
+  scene_generation_status?: string | null;
+  scene_generation_error?: string | null;
+  scene_generated_at?: string | null;
+  attempt_count?: number;
+  last_failed_at?: string | null;
+  last_error_message?: string | null;
+  error_message?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface StoryResponsePayload extends GenericApiRecord {
@@ -87,9 +162,8 @@ export interface StoryEndingSummaryItemPayload extends GenericApiRecord {
 }
 
 export interface RemoveBackgroundResponse {
-  original_url: string;
-  transparent_url: string;
-  local_path: string;
+  original_url?: string;
+  transparent_url?: string;
   selected_image_url?: string;
 }
 

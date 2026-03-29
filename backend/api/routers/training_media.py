@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from api.dependencies import get_training_media_task_service
 from api.error_codes import (
     INTERNAL_ERROR,
+    TRAINING_STORAGE_UNAVAILABLE,
     TRAINING_MEDIA_TASK_CONFLICT,
     TRAINING_MEDIA_TASK_INVALID,
     TRAINING_MEDIA_TASK_NOT_FOUND,
@@ -25,6 +26,7 @@ from training.exceptions import (
     TrainingMediaTaskInvalidError,
     TrainingMediaTaskNotFoundError,
     TrainingMediaTaskUnsupportedError,
+    TrainingStorageUnavailableError,
     TrainingSessionNotFoundError,
 )
 from utils.logger import get_logger
@@ -95,6 +97,16 @@ def _build_training_media_error_response(
             details=details,
         )
 
+    if isinstance(exc, TrainingStorageUnavailableError):
+        if exc.details:
+            details.update(dict(exc.details))
+        return error_response(
+            code=503,
+            message=str(exc),
+            error_code=TRAINING_STORAGE_UNAVAILABLE,
+            details=details,
+        )
+
     raise TypeError(f"unsupported training media domain exception: {type(exc)!r}")
 
 
@@ -121,6 +133,7 @@ async def create_media_task(
         TrainingMediaTaskInvalidError,
         TrainingMediaTaskConflictError,
         TrainingMediaTaskUnsupportedError,
+        TrainingStorageUnavailableError,
     ) as exc:
         return _build_training_media_error_response(
             exc,
@@ -158,6 +171,7 @@ async def get_media_task(
         TrainingMediaTaskInvalidError,
         TrainingMediaTaskConflictError,
         TrainingMediaTaskUnsupportedError,
+        TrainingStorageUnavailableError,
     ) as exc:
         return _build_training_media_error_response(
             exc,
@@ -194,6 +208,7 @@ async def list_media_tasks(
         TrainingMediaTaskInvalidError,
         TrainingMediaTaskConflictError,
         TrainingMediaTaskUnsupportedError,
+        TrainingStorageUnavailableError,
     ) as exc:
         return _build_training_media_error_response(
             exc,

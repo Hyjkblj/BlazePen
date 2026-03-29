@@ -1,0 +1,41 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+- [Major] frontend/src/hooks/useTrainingCharacterPreviewFlow.ts:452
+  问题：预览任务创建遇到 409 幂等冲突时，页面仍然直接落入失败分支，没有恢复到服务端已经存在的 preview job。
+  原因：这个 hook 已经承担了 preview 恢复模型和本地 snapshot 管理，但在 `createTrainingCharacterPreviewJob` 失败后只做通用错误展示，没有消费 `existing_job_id` 继续轮询，导致恢复链路在最关键的重复提交分支断掉。
+  影响：首次请求已被后端受理但客户端响应丢失、超时或用户连点时，用户会看到“生成失败”，而不是接回已有任务；这会破坏预览流程的可恢复性，也会让前端错误地把重复提交当成真实失败。
+  建议：在 `catch` 中识别 preview conflict，并优先从 `error.details.existing_job_id` 恢复 `applyPreviewResult` 和本地 snapshot；同时补一条“409 conflict -> resume existing job”的 hook 测试。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+- [Major] backend/api/routers/training_characters.py:124
+  问题：preview job 幂等冲突返回 409 时没有稳定 `error_code`，前端只能拿到通用状态码和 message。
+  原因：幂等冲突是明确的业务契约分支，不应依赖 message 文本承载语义；当前实现与训练媒体任务路由已有的 typed error contract 不一致，属于契约层退化。
+  影响：前端无法稳定地区分“重复提交但已有任务存在”和“其他 409 错误”，恢复分流、埋点归因和自动重试都会变脆弱。
+  建议：为该分支补稳定错误码，例如新增 `TRAINING_CHARACTER_PREVIEW_JOB_CONFLICT`，并在前后端统一消费；同时在契约测试里断言 409 的 `error.code` 和 `existing_job_id`。
+- [Major] backend/api/routers/training_characters.py:41
+  问题：训练角色创建、读取、图片列表和去背景接口仍使用 `response_model=dict`，OpenAPI 没有暴露稳定 DTO。
+  原因：这些接口已经是训练主链路的一部分，但路由层仍把 schema 留在“任意字典”状态，违背 DTO 边界清晰和契约优先的要求。
+  影响：前端虽然在 service 层做了规范化，但后端文档、客户端生成、回归测试都无法对这些响应字段提供约束，后续很容易再次引入脏字段或字段漂移。
+  建议：为 `/create`、`/{character_id}`、`/{character_id}/images`、`/{character_id}/remove-background` 分别补响应 DTO 和 envelope，并增加 OpenAPI/路由契约测试。
+- [Major] backend/api/training_app.py:117
+  问题：training-only app 只对 `TrainingStorageUnavailableError` 做 fail-fast，其他 preview/media warmup 异常仍会被记录后继续启动。
+  原因：如果 warmup 被定义为训练运行时可用性的启动前校验，那么 generic runtime failure 也应影响 readiness；当前实现只对存储类异常严格，对其他执行器异常仍然容忍，ready 语义不一致。
+  影响：应用可能在健康检查通过后才在首个 preview/media 请求上暴露故障，形成“启动看起来正常、热路径才失败”的运维风险和恢复风险。
+  建议：统一 warmup 异常策略，要么全部 startup-fatal，要么显式把失败状态暴露到 readiness/health；同时补“generic exception during warmup” 的测试，而不只覆盖 storage unavailable。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：`frontend/src/hooks/useTrainingCharacterPreviewFlow.test.tsx` 缺少“create preview job 返回 409 conflict 且携带 `existing_job_id` 时，前端恢复并继续轮询既有 job”的测试。
+- 前端：`frontend/src/services/trainingCharacterApi.test.ts` 目前仍把 preview 409 视为 `UNKNOWN_ERROR`，没有对稳定 conflict error code 建立保护，一旦后端补齐 typed error，当前测试不会帮助约束新契约。
+- 后端：`backend/test_training_character_route_contract.py` 缺少 preview conflict `error.code` / `existing_job_id` 的契约断言，也缺少训练角色 create/images/remove-background 路由的 OpenAPI schema 断言。
+- 后端：`backend/test_training_standalone_app.py` 只覆盖了 `TrainingStorageUnavailableError` 的 fail-fast，缺少 preview/media warmup 抛出通用异常时的启动失败或健康状态测试。
+
+## Review Summary
+- 当前训练主链路的核心修复已经落地，preview observability、failed job 重排队、训练页错误展示和 smoke 基线都比上一轮更稳。
+- 本轮没有发现阻塞合并的问题，主路径编译和当前训练相关测试也都通过了。
+- 剩余风险集中在“幂等冲突如何被稳定建模并被前端恢复”以及“训练角色相关接口仍有多处未类型化 DTO”这两类契约问题。
+- 另一个需要尽快收口的是 training-only app 的 startup 语义，目前对 warmup 异常的容忍度不一致，容易留下半可用运行态。
+- 这些问题都不是表面样式或局部实现细节，而是会直接影响恢复能力、契约稳定性和线上可诊断性的设计问题，建议下一轮优先处理。

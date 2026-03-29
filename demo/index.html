@@ -18,21 +18,21 @@
       <header class="demo-header">
         <div>
           <p class="eyebrow">BLAZEPEN // CINEMATIC DECISION DEMO</p>
-          <h1>战地决策二选一 UI 原型</h1>
+          <h1>战地决策三选一 UI 原型</h1>
         </div>
         <div class="status-cluster" aria-live="polite">
           <div class="status-item">
             <span>模式</span>
-            <strong>剧情抉择</strong>
+            <strong>三选项镜头</strong>
           </div>
           <div class="status-item">
             <span>状态</span>
-            <strong id="statusText">待选择</strong>
+            <strong id="statusText">聚焦中央主选项</strong>
           </div>
         </div>
       </header>
 
-      <main class="decision-stage" id="decisionStage">
+      <main class="decision-stage is-center" id="decisionStage">
         <div class="background-bleed" aria-hidden="true">
           <video
             class="background-video"
@@ -45,7 +45,7 @@
           ></video>
         </div>
 
-        <section class="decision-band" aria-label="电影化选择界面">
+        <section class="decision-band" aria-label="电影化三选项界面">
           <div class="band-shadow top" aria-hidden="true"></div>
           <div class="band-shadow bottom" aria-hidden="true"></div>
 
@@ -71,59 +71,56 @@
           </div>
 
           <button
-            class="choice-card is-active"
+            class="choice-card choice-card--left"
             id="choiceLeft"
             data-index="0"
+            data-status="聚焦左侧备选"
+            data-pressure="61%"
+            data-beam-shift="-10%"
             type="button"
           >
             <span class="choice-meta">OPTION 01</span>
-            <strong class="choice-title">能放弃</strong>
-            <span class="choice-caption">切断执念，保留退路</span>
+            <strong class="choice-title">出自《忽尔今夏》</strong>
           </button>
 
           <button
-            class="choice-card"
-            id="choiceRight"
+            class="choice-card choice-card--top is-active"
+            id="choiceCenter"
             data-index="1"
+            data-status="聚焦中央主选项"
+            data-pressure="74%"
+            data-beam-shift="0%"
             type="button"
           >
-            <span class="choice-meta">OPTION 02</span>
-            <strong class="choice-title">我不知道</strong>
-            <span class="choice-caption">承认不确定，换取核验时间</span>
+            <span class="choice-meta">PRIMARY TRACK</span>
+            <strong class="choice-title">出自《玫瑰的故事》</strong>
           </button>
 
-          <div class="hud-strip top-left">
-            <span>ACT 03</span>
-            <span>FRONTLINE INTERVIEW</span>
-          </div>
+          <button
+            class="choice-card choice-card--right"
+            id="choiceRight"
+            data-index="2"
+            data-status="聚焦右侧备选"
+            data-pressure="83%"
+            data-beam-shift="10%"
+            type="button"
+          >
+            <span class="choice-meta">OPTION 03</span>
+            <strong class="choice-title">尝试转移话题</strong>
+          </button>
 
-          <div class="hud-strip top-right">
-            <span>PRESSURE</span>
-            <span id="pressureValue">74%</span>
-          </div>
-
-          <div class="hud-strip bottom-left">
-            <span>K1 史实核验</span>
-            <span>RISK COMM</span>
-          </div>
-
-          <div class="hud-strip bottom-right">
-            <span>A / ← 选择左侧</span>
-            <span>D / → 选择右侧</span>
-            <span>Enter 确认</span>
-          </div>
         </section>
 
         <aside class="review-panel">
           <div class="metric-card">
-            <span class="metric-label">可信度</span>
-            <strong>0.72</strong>
-            <p>当前 UI 重心放在“临场压迫感”和“选择瞬间的戏剧张力”。</p>
+            <span class="metric-label">布局节奏</span>
+            <strong>中央主选项 + 两侧备选</strong>
+            <p>中间文案上移并放大，左右选项压到下沿，尽量贴近视频里“三点构图”的镜头感。</p>
           </div>
           <div class="metric-card">
-            <span class="metric-label">可评审项</span>
-            <strong>动效 / 氛围 / 可读性</strong>
-            <p>鼠标悬停、键盘切换、确认锁定、准星追踪都已做成可交互原型。</p>
+            <span class="metric-label">交互状态</span>
+            <strong>悬停 / 切换 / 锁定</strong>
+            <p>鼠标悬停、键盘左右切换和确认态都已经同步到三选项逻辑，方便继续微调节奏和动画。</p>
           </div>
         </aside>
       </main>

@@ -1,0 +1,35 @@
+## 前端 Findings
+- [Major] frontend/src/flows/useTrainingMvpFlow.ts:137
+  问题：`useTrainingMvpFlow` 继续同时承担会话恢复、表单回填、回合提交、场景图任务编排/轮询、完成报告拉取等多条主线职责。
+  原因：这已经明显越过 `flows / hooks / services` 的职责边界，训练主流程的读写、媒体副作用和报告查询被揉进一个巨型 hook；任何一个状态分支变化都可能影响其他分支的 effect 触发条件，违反高内聚和可测试性要求。
+  影响：后续继续改训练恢复、图片生成或报告加载时，回归面会越来越大，问题会集中在同一个 hook 内交叉触发，维护成本和恢复路径排障成本都会上升。
+  建议：把场景图生命周期、完成报告读取、训练会话 bootstrap 分拆成独立 hook，由 `useTrainingMvpFlow` 只保留 orchestration 和最小状态拼装。
+
+## 后端 Findings
+- [Blocker] backend/training/training_repository.py:233
+  问题：`claim_media_task` 仍然是“先查 pending 再改 running”的非原子领取流程。
+  原因：这里没有数据库级 compare-and-set 语义；在多线程 recovery、重复 warmup 或多实例部署下，两个 worker 仍可能同时读到同一条 `pending` task 并进入执行。训练媒体任务的幂等保护不能依赖进程内时序运气。
+  影响：同一媒体任务可能被重复执行、重复生成图片/音频、重复计费，并把结果和错误上下文相互覆盖；这属于不能接受的一致性缺陷，不应合并。
+  建议：将领取改成数据库原子状态迁移，例如 `UPDATE ... WHERE status='pending' RETURNING ...` 或等价方案，并补并发领取测试保证只能成功一次。
+
+- [Major] backend/training/media_task_executor.py:15
+  问题：训练媒体执行器在模块导入阶段就直接依赖 `ImageService/TTSService/TextModelService` 等重组件。
+  原因：这让训练域代码在 import 时就穿透到 PIL、numpy、图像处理乃至更外层依赖，破坏了训练后端应有的低耦合和延迟装配边界；本次复审尝试跑相关 pytest 时，正是在这些导入链上出现了 `MemoryError` 和 `numpy` 收集失败。
+  影响：训练路由、训练测试和训练-only 进程会因为无关的多媒体/科学计算依赖异常而整体不可用，降低可恢复性，也让契约测试和 smoke test 变得脆弱。
+  建议：把这些依赖降到注入边界或函数内延迟导入，执行器面向协议/抽象工作；训练-only 测试应能在不加载完整图像/向量栈的情况下完成收集和运行。
+
+## Open Questions
+- 无
+
+## 测试缺口
+- 前端：frontend/src/flows/useTrainingMvpFlow.test.tsx 目前只覆盖表单失效和“同 session 同 scenario 不重复建图”路径，没有覆盖“报告拉取、场景图轮询、回合提交”三条副作用在同一生命周期内互不串扰的回归用例。
+- 后端：backend/test_training_media_task_repository_store.py 仍缺少 `claim_media_task` 的并发竞争测试，无法证明媒体任务只会被一个 worker 领取。
+- 后端：backend/test_training_media_task_executor.py 缺少“两个 worker 同时竞争同一 task 不会重复执行 provider”的执行层保护测试。
+- 后端：backend/test_training_media_task_executor.py 和 backend/test_training_standalone_app.py 缺少训练模块在裁掉 PIL/numpy/vector 依赖时仍能完成模块导入/基础收集的边界测试。
+
+## Review Summary
+- 前端上次最危险的本地快照事实源问题已经明显收敛，但主训练 flow 仍在继续膨胀。
+- 后端 preview job 的原子 claim 已补上，这是实质性改进。
+- 当前真正的阻塞点转移到了 media task claim：媒体任务幂等在并发下仍不成立。
+- 另外，训练媒体执行器的导入边界仍然过重，已经开始影响训练域测试与运行时韧性。
+- 本次尝试复跑 `vitest` 和 `pytest` 目标集未成功；前者在 esbuild 启动阶段 OOM，后者在训练模块导入链上触发 `MemoryError` / `numpy` 导入异常，因此未能得到新的通过性验证。

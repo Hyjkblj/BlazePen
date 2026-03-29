@@ -1,4 +1,4 @@
-import { Card, Descriptions, List, Tag, Typography } from 'antd';
+import { Card, Descriptions, Tag, Typography } from 'antd';
 import type { TrainingRuntimeState } from '@/types/training';
 
 interface TrainingSessionSummaryPanelProps {
@@ -24,8 +24,20 @@ function TrainingSessionSummaryPanel({
   currentSceneId,
   runtimeState,
 }: TrainingSessionSummaryPanelProps) {
+  const stateBarRows = [
+    `editorTrust: ${runtimeState.stateBar.editorTrust}`,
+    `publicStability: ${runtimeState.stateBar.publicStability}`,
+    `sourceSafety: ${runtimeState.stateBar.sourceSafety}`,
+  ];
+  const runtimeFlagRows = [
+    `panicTriggered: ${String(runtimeState.runtimeFlags.panicTriggered)}`,
+    `sourceExposed: ${String(runtimeState.runtimeFlags.sourceExposed)}`,
+    `editorLocked: ${String(runtimeState.runtimeFlags.editorLocked)}`,
+    `highRiskPath: ${String(runtimeState.runtimeFlags.highRiskPath)}`,
+  ];
+
   return (
-    <Card className="training-shell__panel training-shell__panel--antd" bordered={false}>
+    <Card className="training-shell__panel training-shell__panel--antd" variant="borderless">
       <Typography.Title level={4}>当前训练状态</Typography.Title>
 
       <Descriptions
@@ -50,30 +62,19 @@ function TrainingSessionSummaryPanel({
       <div className="training-shell__state-grid">
         <div>
           <Typography.Title level={5}>State Bar</Typography.Title>
-          <List
-            size="small"
-            className="training-shell__metric-list training-shell__metric-list--antd"
-            dataSource={[
-              `editorTrust: ${runtimeState.stateBar.editorTrust}`,
-              `publicStability: ${runtimeState.stateBar.publicStability}`,
-              `sourceSafety: ${runtimeState.stateBar.sourceSafety}`,
-            ]}
-            renderItem={(item) => <List.Item>{item}</List.Item>}
-          />
+          <ul className="training-shell__metric-list training-shell__metric-list--antd">
+            {stateBarRows.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </div>
         <div>
           <Typography.Title level={5}>Runtime Flags</Typography.Title>
-          <List
-            size="small"
-            className="training-shell__metric-list training-shell__metric-list--antd"
-            dataSource={[
-              `panicTriggered: ${String(runtimeState.runtimeFlags.panicTriggered)}`,
-              `sourceExposed: ${String(runtimeState.runtimeFlags.sourceExposed)}`,
-              `editorLocked: ${String(runtimeState.runtimeFlags.editorLocked)}`,
-              `highRiskPath: ${String(runtimeState.runtimeFlags.highRiskPath)}`,
-            ]}
-            renderItem={(item) => <List.Item>{item}</List.Item>}
-          />
+          <ul className="training-shell__metric-list training-shell__metric-list--antd">
+            {runtimeFlagRows.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </div>
       </div>
     </Card>

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from api.services.game_session import GameSessionManager
     from api.services.image_service import ImageService
     from api.services.training_service import TrainingService
+    from api.services.training_character_preview_job_service import TrainingCharacterPreviewJobService
     from api.services.training_media_task_service import TrainingMediaTaskService
     from training.media_task_executor import TrainingMediaTaskExecutor
     from api.services.tts_service import TTSService
@@ -31,6 +32,8 @@ _image_service: Optional[ImageService] = None
 _tts_service: Optional[TTSService] = None
 _session_manager: Optional[GameSessionManager] = None
 _training_service: Optional[TrainingService] = None
+_training_character_preview_job_service: Optional[TrainingCharacterPreviewJobService] = None
+_training_character_preview_job_service_warmed_up: bool = False
 _training_media_task_service: Optional[TrainingMediaTaskService] = None
 _training_media_task_executor: Optional[TrainingMediaTaskExecutor] = None
 _training_media_task_executor_warmed_up: bool = False
@@ -127,6 +130,31 @@ def get_training_service() -> TrainingService:
 
         _training_service = TrainingService()
     return _training_service
+
+
+def get_training_character_preview_job_service() -> TrainingCharacterPreviewJobService:
+    global _training_character_preview_job_service
+    if _training_character_preview_job_service is None:
+        from api.services.training_character_preview_job_service import TrainingCharacterPreviewJobService
+
+        _training_character_preview_job_service = TrainingCharacterPreviewJobService(
+            character_service=get_character_service(),
+            enable_scene_group_generation=False,
+        )
+    return _training_character_preview_job_service
+
+
+def warmup_training_character_preview_job_service() -> dict[str, int]:
+    """Recover pending preview jobs once during startup."""
+
+    global _training_character_preview_job_service_warmed_up
+    if _training_character_preview_job_service_warmed_up:
+        return {"recovered": 0, "timed_out": 0, "scene_recovered": 0, "scene_timed_out": 0}
+
+    service = get_training_character_preview_job_service()
+    result = service.recover_pending_jobs()
+    _training_character_preview_job_service_warmed_up = True
+    return result
 
 
 def get_training_media_task_service() -> TrainingMediaTaskService:

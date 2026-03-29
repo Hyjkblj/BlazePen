@@ -10,6 +10,14 @@ import random
 logger = get_logger(__name__)
 
 
+class CharacterNotFoundError(LookupError):
+    """Raised when character does not exist."""
+
+    def __init__(self, character_id: int):
+        self.character_id = int(character_id)
+        super().__init__(f"character not found: {self.character_id}")
+
+
 class CharacterService:
     """角色服务"""
     
@@ -163,6 +171,7 @@ class CharacterService:
             'name': request_data.get('name', '未命名角色'),
             'gender': request_data.get('gender', ''),
             'age': request_data.get('age'),
+            'identity_code': request_data.get('identity_code'),
             'appearance': request_data.get('appearance', {}),
             'personality': request_data.get('personality', {}),
             'background': request_data.get('background', {}),
@@ -198,7 +207,10 @@ class CharacterService:
         Returns:
             角色信息字典，包含完整的character_data数据
         """
-        character_info = self.character_creator.get_character_info(character_id)
+        try:
+            character_info = self.character_creator.get_character_info(character_id)
+        except ValueError as exc:
+            raise CharacterNotFoundError(character_id=character_id) from exc
         
         # 优先使用character_data字段（新系统）
         # 检查是否是字典类型（新系统）还是字符串类型（旧系统）
@@ -222,6 +234,7 @@ class CharacterService:
                 'name': character_info.get('name', ''),
                 'gender': character_info.get('gender', ''),
                 'age': character_info.get('age'),
+                'identity_code': character_info.get('identity_code'),
                 'height': character_info.get('height'),
                 'weight': character_info.get('weight'),
                 'appearance': character_info.get('appearance', {}),
@@ -312,6 +325,7 @@ class CharacterService:
             'height': appearance_data.get('height'),
             'weight': appearance_data.get('weight'),
             'age': age,
+            'identity_code': attributes.get('identity_code'),
             'gender': gender_raw or (character_info.get('gender') if character_info.get('gender') in ['male', 'female'] else None),
             'appearance': {
                 'keywords': appearance_data.get('keywords', []),

@@ -1,6 +1,7 @@
 import { Alert, Button } from 'antd';
 import TrainingIdentitySetup from '@/components/training/TrainingIdentitySetup';
 import TrainingPortraitPreview from '@/components/training/TrainingPortraitPreview';
+import { useTrainingCharacterPreviewFlow } from '@/hooks/useTrainingCharacterPreviewFlow';
 import './TrainingLanding.css';
 
 type TrainingFormDraftValue = {
@@ -32,14 +33,22 @@ function TrainingLanding({
   canStartTraining,
   formDraft,
   hasResumeTarget,
-  resumeSessionId,
   onBackToEntryRoute,
   onManualRestore,
   onRetryRestore,
   onStartTraining,
   updateFormDraft,
 }: TrainingLandingProps) {
-  const isStarting = bootstrapStatus === 'starting' || bootstrapStatus === 'restoring';
+  const previewFlow = useTrainingCharacterPreviewFlow({
+    formDraft,
+    onStartTraining,
+    updateFormDraft,
+  });
+
+  const isStarting =
+    bootstrapStatus === 'starting' ||
+    bootstrapStatus === 'restoring' ||
+    previewFlow.isPersistingPortraitSelection;
 
   return (
     <div className="training-landing">
@@ -48,9 +57,6 @@ function TrainingLanding({
           <div className="training-landing__restore-content">
             <h3>恢复上次训练</h3>
             <p>检测到本地缓存会话，可手动恢复到最近一次训练进度。</p>
-            {resumeSessionId ? (
-              <code className="training-landing__restore-session">{resumeSessionId}</code>
-            ) : null}
           </div>
           <Button
             className="training-landing__restore"
@@ -66,16 +72,32 @@ function TrainingLanding({
       <div className="training-landing__content">
         <div className="training-landing__setup">
           <TrainingIdentitySetup
-            canStartTraining={canStartTraining}
             formDraft={formDraft}
-            isStarting={isStarting}
-            onBack={onBackToEntryRoute}
-            onConfirm={onStartTraining}
+            hasGeneratedPortrait={previewFlow.previewStatus === 'ready'}
+            identityPresetError={previewFlow.identityPresetError}
+            identityPresetOptions={previewFlow.identityPresetOptions}
+            identityPresetStatus={previewFlow.identityPresetStatus}
+            isGeneratingPortrait={previewFlow.previewStatus === 'loading'}
+            onGeneratePortrait={() => {
+              void previewFlow.handleGeneratePreview();
+            }}
             updateFormDraft={updateFormDraft}
           />
         </div>
 
-        <TrainingPortraitPreview formDraft={formDraft} />
+        <TrainingPortraitPreview
+          canStartTraining={canStartTraining}
+          isStartingTraining={isStarting}
+          onBack={onBackToEntryRoute}
+          onConfirm={previewFlow.handleConfirmTraining}
+          onSelectPreview={(index) => {
+            previewFlow.setSelectedPreviewIndex(index);
+          }}
+          previewError={previewFlow.previewError}
+          previewImageUrls={previewFlow.previewImageUrls}
+          previewStatus={previewFlow.previewStatus}
+          selectedPreviewIndex={previewFlow.selectedPreviewIndex}
+        />
       </div>
 
       {bootstrapErrorMessage ? (
@@ -83,7 +105,7 @@ function TrainingLanding({
           className="training-landing__alert"
           type="error"
           showIcon
-          message="训练初始化失败"
+          title="训练初始化失败"
           description={bootstrapErrorMessage}
           action={
             <Button size="small" onClick={onRetryRestore}>

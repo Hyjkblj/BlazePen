@@ -1,0 +1,33 @@
+@startuml
+!theme plain
+left to right direction
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam rectangle {
+  RoundCorner 12
+}
+
+title BlazePen 知识追踪与推荐机制图
+
+rectangle "学习者输入" as Input
+rectangle "回合评估" as Eval
+rectangle "BKT 更新" as BKT
+rectangle "风险标记" as Risk
+rectangle "k_state 更新" as KState
+rectangle "s_state 更新" as SState
+rectangle "阶段策略" as Phase
+rectangle "下一场景推荐" as Next
+rectangle "训练推进" as Flow
+rectangle "预留 LLM-KT / DKT 扩展" as Future
+
+Input --> Eval
+Eval --> BKT
+Eval --> Risk
+BKT --> KState
+Risk --> SState
+KState --> Phase
+SState --> Phase
+Phase --> Next
+Next --> Flow
+BKT --> Future
+@enduml

@@ -1,0 +1,46 @@
+## 前端 Findings
+- [Blocker] frontend/src/components/training/TrainingLanding.tsx:119
+  问题：预览生图请求在 `portraitPresetId` 没有任何 UI 写入路径的情况下，静默回落到固定的 `correspondent-female`，导致用户选择“摄影记者/通讯联络员/男”等信息时仍按同一个后端预设出图。
+  原因：`TrainingIdentitySetup` 已移除原先的人设预设选择，也没有任何 `updateFormDraft('portraitPresetId', ...)` 的代码路径；页面继续自行拼 `identity_code`，却没有消费后端新增的 `/v1/training/identity-presets` 作为单一事实源。
+  影响：页面展示的身份信息与后端实际使用的人设模板分叉，训练入口最核心的预览功能对大部分输入都会给出错误结果，属于明确的契约错绑。
+  建议：把 preset 选择/解析收回到 flow 或专用 hook，直接消费后端 preset 列表；没有显式 preset 时禁止调用预览接口，而不是静默回落到固定 code。
+
+- [Major] frontend/src/components/training/TrainingLanding.tsx:125
+  问题：页面把预览接口返回的 `characterId` 写回启动表单，但后续编辑姓名/性别/身份/年龄或切换选中图片都不会使这个绑定失效，`进入训练` 仍可能启动旧角色。
+  原因：`TrainingLanding` 同时维护 `formDraft`、`previewImageUrls`、`selectedPreviewIndex` 三套可变状态，而 `useTrainingMvpFlow.startTraining` 只消费 `formDraft.characterId` 和 `playerProfile`；这里既没有在表单变更后清空旧 `characterId`，也没有把 `selectedPreviewIndex` 通过 `/v1/training/characters/{id}/remove-background` 或其他契约提交给后端。
+  影响：后端 `TrainingService.init_training` 会直接把旧 `character_id` 持久化到会话，造成界面上看到的新身份/选图与服务端实际绑定角色不一致，刷新和恢复后更难排查。
+  建议：把预览状态下沉到 flow/hook，建立单一的 `characterDraft` 事实源；任一表单字段或选图变化都应让旧 `characterId` 失效，并在确认前显式持久化用户最终选择的图片。
+
+## 后端 Findings
+- [Blocker] backend/api/schemas.py:13
+  问题：共享 `CreateCharacterRequest` 被改成几乎全可选，通用 `/v1/characters/create` 现在可接受空 payload，并且同一 DTO 还承载了训练专用 `identity_code`。
+  原因：训练专用画像预设被塞进通用角色 DTO/路由，破坏了 `routers / dto` 的领域边界和原有校验契约；实际验证里 `CreateCharacterRequest().model_dump(exclude_none=True)` 已经会生成 `{'appearance': {}, 'personality': {}, 'background': {}, 'image_type': 'portrait'}`，足以进入通用创建链路。
+  影响：故事主线的角色创建契约被悄悄放宽，空请求也可能落出随机默认角色；同时训练域字段渗透到通用角色路由，后续客户端无法稳定判断哪个字段属于哪个域。
+  建议：恢复通用 `CreateCharacterRequest` 的必填约束，新增独立的 `TrainingCreateCharacterRequest` 仅给 `/v1/training/characters/*` 使用，并把 `resolve_character_request_identity_preset` 严格限制在训练路由内。
+
+- [Blocker] backend/api/routers/training_characters.py:62
+  问题：训练预览创建接口在单个同步 HTTP 请求里同时落库角色并执行三张生图，没有幂等键、没有任务化，也没有可恢复的中间状态。
+  原因：这条路由把重任务直接塞进热路径，绕开了现有 training media task 异步机制；一旦超时或前端重试，只能再次创建新角色并重复跑生图。
+  影响：会产生重复角色、孤儿图片和难以清理的半成状态；请求超时后前端无法判断“角色已创建但图片未返回”还是“整体失败”，恢复和一致性都会出问题。
+  建议：把“创建预览角色”和“生成预览图片”拆开，预览图片走异步任务或至少引入显式 idempotency key / preview job 记录；客户端轮询任务结果，而不是持有 180 秒同步请求。
+
+- [Major] backend/training/training_store.py:431
+  问题：当 `training_media_tasks` 表不存在时，store 直接吞掉数据库异常并返回空列表。
+  原因：这把基础设施错误伪装成“当前没有任务”，破坏了 repository-store 层对真实持久化状态的表达，调用方也拿不到任何可观测的失败信号。
+  影响：`TrainingMediaTaskExecutor.recover_pending_tasks` 和媒体任务查询会把“迁移没跑 / 表被删了 / 配置错库”误判为正常空队列，导致待恢复任务永久丢失，启动探活也不会报警。
+  建议：返回显式的基础设施错误或统一的 `TRAINING_STORAGE_UNAVAILABLE` 类异常；至少要记录 error 级日志并让 startup/health 检查失败，而不是 silently empty。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：`frontend/src/pages/Training.integration.test.tsx` 和 `frontend/src/pages/TrainingMainPathSmoke.integration.test.tsx` 没有覆盖“先生成预览，再修改身份/性别/年龄后启动训练”的路径，因此 `characterId` 漂移不会被发现。
+- 前端：仓内没有任何针对 `frontend/src/components/training/TrainingLanding.tsx` / `frontend/src/components/training/TrainingIdentitySetup.tsx` 的测试去校验 `identity_code` 映射；现有新增测试只覆盖 `TrainingRoundPanel` 和 `TrainingCinematicChoiceBand`，没有覆盖训练入口最关键的 preset 契约。
+- 后端：仓内没有测试保护通用 `/v1/characters/create` 在空 payload 下应拒绝请求的契约；`backend/test_training_standalone_app.py` 只验证训练路由 happy path，防不住共享 DTO 被训练域污染。
+- 后端：`backend/test_training_media_task_repository_store.py` 和 `backend/test_training_media_route_smoke.py` 反而把“缺少 `training_media_tasks` 表返回空列表”固化成期望；缺少针对 startup/warmup 失败、health 报警和恢复中断的测试。
+
+## Review Summary
+- 本次改动把训练入口体验做厚了，但在角色预览这条主链路上同时引入了前端契约错绑和后端同步重任务，当前实现不满足“单一事实源 + 可恢复 + 契约优先”的基线。
+- 前端最大问题是预设 code 与表单显示身份已经分叉，且预览生成出来的 `characterId` 会在后续编辑后继续污染启动请求。
+- 后端最大问题是训练专用画像逻辑反向污染了通用角色 DTO/路由，同时把生图和建角放进同步热路径；此外 media task 缺表被静默吞掉，观测与恢复模型不可靠。
+- 现有新增测试主要覆盖 happy path 和组件渲染，没有覆盖这些高风险路径，因此不能证明本次改动可安全合并。

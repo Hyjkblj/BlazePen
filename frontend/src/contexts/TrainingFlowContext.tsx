@@ -46,8 +46,25 @@ const reducer = (state: TrainingFlowState, action: TrainingFlowAction): Training
   }
 };
 
-export function TrainingFlowProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, createTrainingFlowState());
+interface TrainingFlowProviderProps {
+  children: ReactNode;
+  initialActiveSession?: SetActiveTrainingSessionParams | null;
+}
+
+const createInitialTrainingFlowState = (
+  initialActiveSession: SetActiveTrainingSessionParams | null | undefined
+): TrainingFlowState =>
+  initialActiveSession
+    ? {
+        activeSession: buildActiveTrainingSession(initialActiveSession),
+      }
+    : createTrainingFlowState();
+
+export function TrainingFlowProvider({
+  children,
+  initialActiveSession = null,
+}: TrainingFlowProviderProps) {
+  const [state, dispatch] = useReducer(reducer, initialActiveSession, createInitialTrainingFlowState);
 
   const setActiveSession = (params: SetActiveTrainingSessionParams) => {
     dispatch({

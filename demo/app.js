@@ -1,54 +1,107 @@
 const shell = document.getElementById("demoShell");
 const stage = document.getElementById("decisionStage");
-const reticle = document.getElementById("reticle");
 const statusText = document.getElementById("statusText");
-const pressureValue = document.getElementById("pressureValue");
 const ghostCursor = document.getElementById("ghostCursor");
 const choices = Array.from(document.querySelectorAll(".choice-card"));
 
-let activeIndex = 0;
+const defaultReticle = {
+  x: 50,
+  y: 58,
+};
+
+let activeIndex = 1;
 let confirmedIndex = null;
 
-function setActiveChoice(index) {
-  activeIndex = index;
-  stage.classList.toggle("is-left", index === 0);
-  stage.classList.toggle("is-right", index === 1);
-  stage.style.setProperty("--beam-shift", index === 0 ? "-7%" : "7%");
+function clampIndex(index) {
+  return Math.max(0, Math.min(choices.length - 1, index));
+}
 
-  choices.forEach((choice, choiceIndex) => {
-    choice.classList.toggle("is-active", choiceIndex === index);
-    choice.style.setProperty("--choice-scale", choiceIndex === index ? "1.05" : "0.96");
-    choice.style.opacity = choiceIndex === index ? "1" : "0.72";
+function setStageDirection(index) {
+  stage.classList.remove("is-left", "is-center", "is-right");
+
+  if (index === 0) {
+    stage.classList.add("is-left");
+    return;
+  }
+
+  if (index === choices.length - 1) {
+    stage.classList.add("is-right");
+    return;
+  }
+
+  stage.classList.add("is-center");
+}
+
+function syncChoicePresentation() {
+  choices.forEach((choice, index) => {
+    const isActive = index === activeIndex;
+    const isConfirmed = index === confirmedIndex;
+
+    choice.classList.toggle("is-active", isActive);
+    choice.classList.toggle("is-confirmed", isConfirmed);
+    choice.classList.toggle("is-dimmed", confirmedIndex !== null && !isConfirmed);
+
+    if (confirmedIndex !== null) {
+      choice.style.opacity = isConfirmed ? "1" : "0.28";
+      choice.style.filter = isConfirmed ? "saturate(1.12)" : "blur(0.4px) saturate(0.76)";
+      choice.style.setProperty("--choice-scale", isConfirmed ? "1.05" : "0.92");
+      return;
+    }
+
+    choice.style.opacity = isActive ? "1" : index === 1 ? "0.78" : "0.7";
+    choice.style.filter = isActive ? "saturate(1.08)" : "saturate(0.9)";
+    choice.style.setProperty("--choice-scale", isActive ? (index === 1 ? "1.02" : "1.04") : "0.94");
   });
+}
+
+function setActiveChoice(index) {
+  activeIndex = clampIndex(index);
+  setStageDirection(activeIndex);
+
+  const currentChoice = choices[activeIndex];
+  stage.style.setProperty("--beam-shift", currentChoice.dataset.beamShift || "0%");
+
+  syncChoicePresentation();
 
   if (confirmedIndex === null) {
-    statusText.textContent = index === 0 ? "聚焦左侧" : "聚焦右侧";
-    pressureValue.textContent = index === 0 ? "68%" : "81%";
+    statusText.textContent = currentChoice.dataset.status || "聚焦中央主选项";
   }
 }
 
 function confirmChoice(index) {
-  confirmedIndex = index;
-  stage.classList.add("is-confirmed");
-  statusText.textContent = index === 0 ? "已锁定：能放弃" : "已锁定：我不知道";
+  confirmedIndex = clampIndex(index);
+  const currentChoice = choices[confirmedIndex];
+  const title = currentChoice.querySelector(".choice-title")?.textContent?.trim() || "当前选项";
 
-  choices.forEach((choice, choiceIndex) => {
-    choice.classList.toggle("is-confirmed", choiceIndex === index);
-    choice.style.opacity = choiceIndex === index ? "1" : "0.34";
-    choice.style.filter = choiceIndex === index ? "saturate(1.18)" : "blur(0.5px)";
-    choice.style.setProperty("--choice-scale", choiceIndex === index ? "1.08" : "0.92");
-  });
+  stage.classList.add("is-confirmed");
+  statusText.textContent = `已锁定：${title}`;
+
+  setActiveChoice(confirmedIndex);
+}
+
+function clearConfirmation() {
+  confirmedIndex = null;
+  stage.classList.remove("is-confirmed");
+  setActiveChoice(activeIndex);
 }
 
 function updateReticle(clientX, clientY) {
   const rect = stage.getBoundingClientRect();
-  const x = ((clientX - rect.left) / rect.width) * 100;
-  const y = ((clientY - rect.top) / rect.height) * 100;
+  const xRatio = (clientX - rect.left) / rect.width - 0.5;
+  const yRatio = (clientY - rect.top) / rect.height - 0.5;
 
-  stage.style.setProperty("--reticle-x", `${Math.max(8, Math.min(92, x))}%`);
-  stage.style.setProperty("--reticle-y", `${Math.max(18, Math.min(82, y))}%`);
+  const reticleX = defaultReticle.x + xRatio * 8;
+  const reticleY = defaultReticle.y + yRatio * 6;
+
+  stage.style.setProperty("--reticle-x", `${Math.max(42, Math.min(58, reticleX))}%`);
+  stage.style.setProperty("--reticle-y", `${Math.max(52, Math.min(64, reticleY))}%`);
   shell.style.setProperty("--cursor-x", `${clientX}px`);
   shell.style.setProperty("--cursor-y", `${clientY}px`);
+}
+
+function resetReticle() {
+  stage.style.setProperty("--reticle-x", `${defaultReticle.x}%`);
+  stage.style.setProperty("--reticle-y", `${defaultReticle.y}%`);
 }
 
 choices.forEach((choice, index) => {
@@ -56,6 +109,7 @@ choices.forEach((choice, index) => {
     if (confirmedIndex !== null) {
       return;
     }
+
     setActiveChoice(index);
   });
 
@@ -63,6 +117,7 @@ choices.forEach((choice, index) => {
     if (confirmedIndex !== null) {
       return;
     }
+
     setActiveChoice(index);
   });
 
@@ -74,53 +129,39 @@ choices.forEach((choice, index) => {
 
 stage.addEventListener("mousemove", (event) => {
   updateReticle(event.clientX, event.clientY);
-  ghostCursor.style.opacity = "0.92";
+  ghostCursor.style.opacity = "0.88";
 });
 
 stage.addEventListener("mouseleave", () => {
-  ghostCursor.style.opacity = "0.45";
-  stage.style.setProperty("--reticle-x", "50%");
-  stage.style.setProperty("--reticle-y", "50%");
+  ghostCursor.style.opacity = "0.4";
+  resetReticle();
 });
 
 window.addEventListener("keydown", (event) => {
-  if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") {
-    if (confirmedIndex === null) {
-      setActiveChoice(0);
-    }
+  const key = event.key.toLowerCase();
+
+  if ((event.key === "ArrowLeft" || key === "a") && confirmedIndex === null) {
+    setActiveChoice(activeIndex - 1);
   }
 
-  if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") {
-    if (confirmedIndex === null) {
-      setActiveChoice(1);
-    }
+  if ((event.key === "ArrowRight" || key === "d") && confirmedIndex === null) {
+    setActiveChoice(activeIndex + 1);
   }
 
   if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
+
     if (confirmedIndex === null) {
       confirmChoice(activeIndex);
     } else {
-      confirmedIndex = null;
-      stage.classList.remove("is-confirmed");
-      choices.forEach((choice) => {
-        choice.classList.remove("is-confirmed");
-        choice.style.filter = "";
-      });
-      setActiveChoice(activeIndex);
+      clearConfirmation();
     }
   }
 
   if (event.key === "Escape") {
-    confirmedIndex = null;
-    stage.classList.remove("is-confirmed");
-    choices.forEach((choice) => {
-      choice.classList.remove("is-confirmed");
-      choice.style.filter = "";
-    });
-    statusText.textContent = "待选择";
-    setActiveChoice(activeIndex);
+    clearConfirmation();
   }
 });
 
-setActiveChoice(0);
+resetReticle();
+setActiveChoice(activeIndex);

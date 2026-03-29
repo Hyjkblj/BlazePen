@@ -10,6 +10,7 @@ export type FrontendTelemetryEvent =
   | 'story.turn.submit'
   | 'training.init'
   | 'training.restore'
+  | 'training.form.hydration'
   | 'training.round.submit';
 
 export interface FrontendTelemetryErrorContext {

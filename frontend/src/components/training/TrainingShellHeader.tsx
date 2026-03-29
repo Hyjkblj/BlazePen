@@ -37,11 +37,10 @@ function TrainingShellHeader({
 
   return (
     <>
-      <div className="training-shell__eyebrow">PR-07</div>
-      <h1 className="training-shell__title">Training Frontend MVP</h1>
+      <div className="training-shell__eyebrow">训练主线</div>
+      <h1 className="training-shell__title">沉浸式训练</h1>
       <Typography.Paragraph className="training-shell__description">
-        训练主线通过独立 <code>sessionId</code> 驱动。初始化、回合提交、刷新恢复都收口到训练专用
-        <code>services / hooks / flow</code>，页面层不直接兼容后端脏字段，也不复用 story 会话实现。
+        场景由后端异步生成并持续推进，你只需要在关键时刻做出选择，系统会在训练结束后统一输出评估结果。
       </Typography.Paragraph>
 
       <Space className="training-shell__actions" wrap>

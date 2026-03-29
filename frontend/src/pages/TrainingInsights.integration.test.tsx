@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -26,33 +25,6 @@ const trainingApiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/services/trainingApi', () => trainingApiMocks);
-
-function TrainingFlowSeed({
-  activeSession,
-  children,
-}: {
-  activeSession: ActiveTrainingSessionState | null;
-  children: ReactNode;
-}) {
-  const { setActiveSession } = useTrainingFlow();
-  const [isReady, setReady] = useState(activeSession === null);
-  const initializedRef = useRef(activeSession === null);
-
-  useLayoutEffect(() => {
-    if (initializedRef.current) {
-      return;
-    }
-
-    initializedRef.current = true;
-    if (activeSession) {
-      setActiveSession(activeSession);
-    }
-
-    setReady(true);
-  }, [activeSession, setActiveSession]);
-
-  return isReady ? <>{children}</> : null;
-}
 
 function TrainingFlowStateProbe() {
   const { state } = useTrainingFlow();
@@ -92,17 +64,15 @@ const renderInsightRoute = (
   { activeSession = null }: { activeSession?: ActiveTrainingSessionState | null } = {}
 ) =>
   render(
-    <TrainingFlowProvider>
-      <TrainingFlowSeed activeSession={activeSession}>
-        <MemoryRouter initialEntries={[initialEntry]}>
-          <TrainingFlowStateProbe />
-          <Routes>
-            <Route path={ROUTES.TRAINING_PROGRESS} element={<TrainingProgress />} />
-            <Route path={ROUTES.TRAINING_REPORT} element={<TrainingReport />} />
-            <Route path={ROUTES.TRAINING_DIAGNOSTICS} element={<TrainingDiagnostics />} />
-          </Routes>
-        </MemoryRouter>
-      </TrainingFlowSeed>
+    <TrainingFlowProvider initialActiveSession={activeSession}>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <TrainingFlowStateProbe />
+        <Routes>
+          <Route path={ROUTES.TRAINING_PROGRESS} element={<TrainingProgress />} />
+          <Route path={ROUTES.TRAINING_REPORT} element={<TrainingReport />} />
+          <Route path={ROUTES.TRAINING_DIAGNOSTICS} element={<TrainingDiagnostics />} />
+        </Routes>
+      </MemoryRouter>
     </TrainingFlowProvider>
   );
 

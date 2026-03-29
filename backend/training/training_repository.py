@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime
 
+from sqlalchemy import case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -235,21 +236,33 @@ class SqlAlchemyTrainingRepository:
     def claim_media_task(self, task_id: str) -> TrainingMediaTask | None:
         """Claim a pending media task using a compare-and-set style transition."""
         with self.get_session() as session:
-            row = (
+            now = datetime.utcnow()
+            updated_rows = (
                 session.query(TrainingMediaTask)
                 .filter(
                     TrainingMediaTask.task_id == task_id,
                     TrainingMediaTask.status == "pending",
                 )
-                .first()
+                .update(
+                    {
+                        TrainingMediaTask.status: "running",
+                        TrainingMediaTask.started_at: case(
+                            (TrainingMediaTask.started_at.is_(None), now),
+                            else_=TrainingMediaTask.started_at,
+                        ),
+                        TrainingMediaTask.updated_at: now,
+                    },
+                    synchronize_session=False,
+                )
             )
-            if row is None:
+            if updated_rows != 1:
                 return None
 
-            now = datetime.utcnow()
-            row.status = "running"
-            row.started_at = row.started_at or now
-            row.updated_at = now
+            row = (
+                session.query(TrainingMediaTask)
+                .filter(TrainingMediaTask.task_id == task_id)
+                .first()
+            )
             session.flush()
             return row
 

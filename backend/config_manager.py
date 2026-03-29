@@ -62,7 +62,7 @@ class Config:
         self.volcengine_region = os.getenv('VOLCENGINE_REGION', 'cn-beijing')
         self.volcengine_text_model = get_text_llm_model()
         self.volcengine_text_api_url = os.getenv('VOLCENGINE_TEXT_API_URL', '')
-        self.volcengine_image_model = os.getenv('VOLCENGINE_IMAGE_MODEL', 'doubao-seedream-4-0-250828')
+        self.volcengine_image_model = os.getenv('VOLCENGINE_IMAGE_MODEL', 'doubao-seedream-3-0-t2i-250415')
         self.volcengine_image_size = os.getenv('VOLCENGINE_IMAGE_SIZE', '2K')
         
         # 火山引擎TTS配置（敏感信息，必须从环境变量读取）

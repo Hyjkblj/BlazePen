@@ -1,0 +1,24 @@
+## 前端 Findings
+- [Blocker] frontend/src/hooks/useCharacterPortraitSelection.test.tsx:96
+  问题：测试 fixture 仍然使用已经从前端契约中移除的 `local_path` 字段，导致 `npx tsc -b --pretty false` 直接失败。
+  原因：`RemoveBackgroundResponse` 已经在 [frontend/src/types/api.ts:164](D:/Develop/Project/BlazePen/frontend/src/types/api.ts#L164) 收口为只暴露 `original_url / transparent_url / selected_image_url`，但该单测仍按旧响应结构构造 mock，测试基线和当前 DTO 已经分叉。
+  影响：前端基础类型构建无法通过，这个问题在合并前必须处理；同时它会继续误导后续测试围绕已经废弃的脏字段编写断言。
+  建议：删除该 fixture 中的 `local_path`，并同步清理同类旧 mock（如 [frontend/src/pages/Training.integration.test.tsx:265](D:/Develop/Project/BlazePen/frontend/src/pages/Training.integration.test.tsx#L265) 和 [frontend/src/pages/TrainingMainPathSmoke.integration.test.tsx:179](D:/Develop/Project/BlazePen/frontend/src/pages/TrainingMainPathSmoke.integration.test.tsx#L179)），确保测试数据只使用当前公开契约字段。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：`frontend/src/services/trainingCharacterApi.test.ts` 仍缺少 `remove-background` 响应契约测试，当前没有专门保护“响应不再包含 `local_path`”这条边界，导致旧字段仍能在测试 fixture 中悄悄存活。
+- 前端：`frontend/src/pages/Training.integration.test.tsx` 与 `frontend/src/pages/TrainingMainPathSmoke.integration.test.tsx` 的 mock 数据仍沿用旧字段 `local_path`，虽然当前不会阻塞 vitest 运行，但已经偏离真实契约，后续容易继续传播脏字段。
+- 后端：本轮未发现新的关键测试缺口；`identity-presets`、preview conflict typed error、warmup fail-fast 和 `remove-background` 字段边界已有对应契约测试保护。
+
+## Review Summary
+- 本轮重新 review 后，上一轮的后端主要问题已经基本收口，训练角色路由契约和 warmup fail-fast 都比之前完整。
+- 当前最直接的阻塞项落在前端测试基线：去背景响应契约已经变更，但单测和部分页面 mock 还停留在旧字段上。
+- 这不是样式级问题，而是会直接让 `frontend` 类型构建失败的合并阻塞项。
+- 我复核时，训练相关 vitest 和后端 pytest 都通过了，但 `npx tsc -b --pretty false` 失败，说明问题集中在编译期契约一致性，而不是运行时主路径。
+- 先把前端旧 mock 字段清理干净，再做下一轮 review 会更有效。

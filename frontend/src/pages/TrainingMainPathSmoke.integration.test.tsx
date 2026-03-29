@@ -14,10 +14,22 @@ const trainingApiMocks = vi.hoisted(() => ({
   getTrainingSessionSummary: vi.fn(),
   submitTrainingRound: vi.fn(),
   getNextTrainingScenario: vi.fn(),
+  createTrainingMediaTask: vi.fn(),
+  getTrainingMediaTask: vi.fn(),
   getTrainingProgress: vi.fn(),
 }));
 
+const trainingCharacterApiMocks = vi.hoisted(() => ({
+  listTrainingIdentityPresets: vi.fn(),
+  createTrainingCharacter: vi.fn(),
+  createTrainingCharacterPreviewJob: vi.fn(),
+  waitForTrainingCharacterPreviewJob: vi.fn(),
+  getTrainingCharacterImages: vi.fn(),
+  removeTrainingCharacterBackground: vi.fn(),
+}));
+
 vi.mock('@/services/trainingApi', () => trainingApiMocks);
+vi.mock('@/services/trainingCharacterApi', () => trainingCharacterApiMocks);
 
 const createRuntimeState = (sceneId: string, roundNo: number) => ({
   currentRoundNo: roundNo,
@@ -57,6 +69,16 @@ const createScenario = (id: string, title: string, optionLabel = 'Hold publicati
       id: `${id}-opt-1`,
       label: optionLabel,
       impactHint: 'Protect source safety',
+    },
+    {
+      id: `${id}-opt-2`,
+      label: 'Clarify source chain',
+      impactHint: 'Expand evidence scope',
+    },
+    {
+      id: `${id}-opt-3`,
+      label: 'Escalate to editor desk',
+      impactHint: 'Reduce field risk first',
     },
   ],
   completionHint: '',
@@ -112,6 +134,79 @@ describe('training main path smoke baseline', () => {
     sessionStorage.clear();
     localStorage.clear();
     vi.clearAllMocks();
+    trainingCharacterApiMocks.listTrainingIdentityPresets.mockResolvedValue([
+      {
+        code: 'correspondent-female',
+        title: '战地记者（女）',
+        description: 'Smoke preset',
+        identity: '战地记者',
+        defaultName: '前线女记者',
+        defaultGender: 'female',
+      },
+    ]);
+    trainingCharacterApiMocks.createTrainingCharacter.mockResolvedValue({
+      characterId: '42',
+      name: '前线女记者',
+      imageUrl: null,
+      imageUrls: [],
+    });
+    trainingCharacterApiMocks.createTrainingCharacterPreviewJob.mockResolvedValue({
+      jobId: 'preview-job-1',
+      characterId: '42',
+      idempotencyKey: 'preview-key-1',
+      status: 'pending',
+      imageUrls: [],
+      errorMessage: null,
+      createdAt: '2026-03-26T10:00:00',
+      updatedAt: '2026-03-26T10:00:00',
+    });
+    trainingCharacterApiMocks.waitForTrainingCharacterPreviewJob.mockResolvedValue({
+      jobId: 'preview-job-1',
+      characterId: '42',
+      idempotencyKey: 'preview-key-1',
+      status: 'succeeded',
+      imageUrls: ['/static/images/characters/training_smoke_1.png'],
+      errorMessage: null,
+      createdAt: '2026-03-26T10:00:00',
+      updatedAt: '2026-03-26T10:00:00',
+    });
+    trainingCharacterApiMocks.getTrainingCharacterImages.mockResolvedValue({
+      images: ['/static/images/characters/training_smoke_1.png'],
+    });
+    trainingCharacterApiMocks.removeTrainingCharacterBackground.mockResolvedValue({
+      selected_image_url: '/static/images/characters/training_smoke_1.png',
+      transparent_url: '/static/images/characters/training_smoke_1_transparent.png',
+    });
+    trainingApiMocks.createTrainingMediaTask.mockImplementation(
+      async ({ sessionId, roundNo }: { sessionId: string; roundNo?: number | null }) => ({
+        taskId: `scene-task-${sessionId}-${roundNo ?? 0}`,
+        sessionId,
+        roundNo: roundNo ?? null,
+        taskType: 'image',
+        status: 'pending',
+        result: null,
+        error: null,
+        createdAt: '2026-03-27T00:00:00Z',
+        updatedAt: '2026-03-27T00:00:00Z',
+        startedAt: null,
+        finishedAt: null,
+      })
+    );
+    trainingApiMocks.getTrainingMediaTask.mockResolvedValue({
+      taskId: 'scene-task-default',
+      sessionId: 'training-session-1',
+      roundNo: 1,
+      taskType: 'image',
+      status: 'succeeded',
+      result: {
+        preview_url: '/static/images/training/scene_default.png',
+      },
+      error: null,
+      createdAt: '2026-03-27T00:00:00Z',
+      updatedAt: '2026-03-27T00:00:01Z',
+      startedAt: '2026-03-27T00:00:00Z',
+      finishedAt: '2026-03-27T00:00:01Z',
+    });
   });
 
   afterEach(() => {
@@ -191,18 +286,6 @@ describe('training main path smoke baseline', () => {
     }
 
     await waitFor(() => {
-      const hasLandingStart = Boolean(document.querySelector('.training-landing__start'));
-      const identityInputs = document.querySelectorAll<HTMLInputElement>(
-        '.training-landing__identity-group .ant-radio-input'
-      );
-      expect(hasLandingStart || identityInputs.length > 0).toBe(true);
-    });
-    const landingStart = document.querySelector<HTMLButtonElement>('.training-landing__start');
-    if (landingStart) {
-      fireEvent.click(landingStart);
-    }
-
-    await waitFor(() => {
       const identityInputs = document.querySelectorAll<HTMLInputElement>(
         '.training-landing__identity-group .ant-radio-input'
       );
@@ -212,26 +295,34 @@ describe('training main path smoke baseline', () => {
       '.training-landing__identity-group .ant-radio-input'
     );
     fireEvent.click(identityInputs[0]);
-    const imageCards = document.querySelectorAll<HTMLButtonElement>('.training-landing__image-card');
-    expect(imageCards.length).toBeGreaterThan(0);
-    fireEvent.click(imageCards[0]);
+
+    const generateButton = document.querySelector<HTMLButtonElement>(
+      '.training-landing__preview-generate'
+    );
+    expect(generateButton).toBeTruthy();
+    fireEvent.click(generateButton!);
+
+    await waitFor(() => {
+      const previewSlots = document.querySelectorAll<HTMLButtonElement>(
+        '.training-landing__preview-slot:not(:disabled)'
+      );
+      expect(previewSlots.length).toBeGreaterThan(0);
+    });
+
     const confirmButton = document.querySelector<HTMLButtonElement>('.training-landing__confirm');
     expect(confirmButton).toBeTruthy();
     fireEvent.click(confirmButton!);
 
-    expect(await screen.findByText('Initial Briefing')).toBeTruthy();
+    const initialSceneImage = await screen.findByRole('img', {
+      name: /Initial Briefing/,
+    });
+    expect(initialSceneImage).toBeTruthy();
 
-    const optionInputs = document.querySelectorAll<HTMLInputElement>(
-      '.training-shell__option-list .ant-radio-input'
+    const optionButton = document.querySelector<HTMLButtonElement>(
+      '.training-cinematic-choice-band__option'
     );
-    expect(optionInputs.length).toBeGreaterThan(0);
-    fireEvent.click(optionInputs[0]);
-
-    const submitButton = document.querySelector<HTMLButtonElement>(
-      '.training-shell__panel--primary .training-shell__primary-button'
-    );
-    expect(submitButton).toBeTruthy();
-    fireEvent.click(submitButton!);
+    expect(optionButton).toBeTruthy();
+    fireEvent.click(optionButton!);
 
     await waitFor(() => {
       expect(trainingApiMocks.submitTrainingRound).toHaveBeenCalledWith({
@@ -242,8 +333,10 @@ describe('training main path smoke baseline', () => {
       });
     });
 
-    expect(await screen.findByText('Follow Up Interview')).toBeTruthy();
-    expect(screen.getByText('confirmed timeline')).toBeTruthy();
+    const followUpSceneImage = await screen.findByRole('img', {
+      name: /Follow Up Interview/,
+    });
+    expect(followUpSceneImage).toBeTruthy();
   });
 });
 

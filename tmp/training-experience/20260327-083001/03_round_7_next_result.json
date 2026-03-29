@@ -1,0 +1,132 @@
+{
+  "session_id": "c2a0b2bb-a182-446d-8fa5-37c581dcd2c7",
+  "status": "in_progress",
+  "round_no": 8,
+  "scenario": {
+    "id": "S3",
+    "title": "南京失守高冲突信息处置",
+    "era_date": "1937-12-13",
+    "location": "南京外围撤离点",
+    "brief": "主线第3/6幕，承接“淞沪会战连续战况·小场景2·现场回访节点”。固定角色协同：老何(印刷与发布)、陈编辑(总编把关)。你获得一份高敏感线索，内容涉及幸存者身份、撤离路线和未公开目击信息。",
+    "mission": "在保护线索人物安全的前提下完成关键信息报道。（完成后进入本幕小场景，且每个小场景都参与测评）",
+    "decision_focus": "来源保护与公众知情权边界",
+    "target_skills": [
+      "K2",
+      "K5",
+      "K6"
+    ],
+    "risk_tags": [
+      "source_exposure",
+      "privacy_leak",
+      "ethical_boundary"
+    ],
+    "options": [
+      {
+        "id": "A",
+        "label": "公开证人真实姓名和躲藏地点",
+        "impact_hint": "证据感强，但极高风险。"
+      },
+      {
+        "id": "B",
+        "label": "匿名处理身份并模糊敏感细节",
+        "impact_hint": "优先保护来源安全。"
+      },
+      {
+        "id": "C",
+        "label": "暂缓发布，等待更安全的核验路径",
+        "impact_hint": "牺牲时效换安全空间。"
+      }
+    ],
+    "completion_hint": "重点看你是否知道哪些细节必须删、哪些证据可以换方式呈现。",
+    "phase_tags": [
+      "middle"
+    ],
+    "branch_tags": [
+      "mainline",
+      "major_scene"
+    ],
+    "next_rules": [],
+    "scene_level": "major",
+    "major_scene_id": "S3",
+    "major_scene_order": 3,
+    "storyline_id": "storyline_5a839ee4aeff",
+    "active_cast": [
+      {
+        "name": "老何",
+        "role": "印刷与发布"
+      },
+      {
+        "name": "陈编辑",
+        "role": "总编把关"
+      }
+    ],
+    "is_assessment_round": true,
+    "storyline_order": 8,
+    "storyline_total": 20,
+    "storyline_prev_scene_id": "S2_micro_2_2_9ee4aeff",
+    "storyline_next_scene_id": "S3_micro_3_1_9ee4aeff"
+  },
+  "k_state": {
+    "K1": 0.87,
+    "K2": 0.73,
+    "K3": 0.52,
+    "K4": 0.52,
+    "K5": 0.52,
+    "K6": 0.52,
+    "K7": 0.52,
+    "K8": 0.52
+  },
+  "s_state": {
+    "credibility": 0.81,
+    "accuracy": 0.88,
+    "public_panic": 0.3,
+    "source_safety": 0.65,
+    "editor_trust": 0.55,
+    "actionability": 0.5
+  },
+  "player_profile": {
+    "name": "李敏",
+    "gender": "女",
+    "identity": "战地记者",
+    "age": 24
+  },
+  "runtime_state": {
+    "current_round_no": 7,
+    "k_state": {
+      "K1": 0.87,
+      "K2": 0.73,
+      "K3": 0.52,
+      "K4": 0.52,
+      "K5": 0.52,
+      "K6": 0.52,
+      "K7": 0.52,
+      "K8": 0.52
+    },
+    "s_state": {
+      "credibility": 0.81,
+      "accuracy": 0.88,
+      "public_panic": 0.3,
+      "source_safety": 0.65,
+      "editor_trust": 0.55,
+      "actionability": 0.5
+    },
+    "runtime_flags": {
+      "panic_triggered": false,
+      "source_exposed": false,
+      "editor_locked": false,
+      "high_risk_path": false
+    },
+    "state_bar": {
+      "editor_trust": 0.55,
+      "public_stability": 0.7,
+      "source_safety": 0.65
+    },
+    "current_scene_id": "S3",
+    "player_profile": {
+      "name": "李敏",
+      "gender": "女",
+      "identity": "战地记者",
+      "age": 24
+    }
+  }
+}

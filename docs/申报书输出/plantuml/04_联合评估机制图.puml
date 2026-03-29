@@ -1,0 +1,34 @@
+@startuml
+!theme plain
+left to right direction
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam rectangle {
+  RoundCorner 12
+}
+
+title BlazePen 联合评估机制图
+
+rectangle "学习者输入" as Input
+rectangle "规则引擎" as Rule
+rectangle "Rubric 评分" as Rubric
+rectangle "LLM 语义分析" as LLM
+rectangle "风险识别" as Risk
+rectangle "维度评分" as Score
+rectangle "证据提取" as Evidence
+rectangle "JSON Schema 校验" as Schema
+rectangle "结构化评估结果" as Result
+rectangle "反馈与改进建议" as Feedback
+
+Input --> Rule
+Input --> Rubric
+Input --> LLM
+Rule --> Risk
+Rubric --> Score
+LLM --> Evidence
+Risk --> Schema
+Score --> Schema
+Evidence --> Schema
+Schema --> Result
+Result --> Feedback
+@enduml

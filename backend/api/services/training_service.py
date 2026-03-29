@@ -1,4 +1,4 @@
-﻿"""训练服务（P2）：负责流程编排、状态更新与持久化调用。"""
+"""训练服务（P2）：负责流程编排、状态更新与持久化调用。"""
 
 from __future__ import annotations
 
@@ -32,6 +32,7 @@ from training.runtime_state import GameRuntimeFlags, GameRuntimeState
 from training.media_task_policy import TrainingMediaTaskPolicy
 from training.scenario_policy import ScenarioPolicy
 from training.session_snapshot_policy import SessionScenarioSnapshotPolicy
+from training.session_storyline_policy import SessionStorylinePolicy
 from training.training_outputs import (
     TrainingAuditEventOutput,
     TrainingConsequenceEventOutput,
@@ -157,6 +158,7 @@ class TrainingService:
         output_assembler_policy: TrainingOutputAssemblerPolicy | None = None,
         report_context_policy: TrainingReportContextPolicy | None = None,
         media_task_policy: TrainingMediaTaskPolicy | None = None,
+        session_storyline_policy: SessionStorylinePolicy | None = None,
         runtime_config: Any = None,
         query_service: "TrainingQueryService | None" = None,
     ):
@@ -195,6 +197,11 @@ class TrainingService:
             default_sequence=self._scenario_sequence,
             scenario_version=self.runtime_config.scenario.version,
             runtime_config=self.runtime_config,
+        )
+        # 会话剧本策略：在初始化时可按需扩展为「大场景 + 小场景」连续线路，
+        # 且小场景与大场景一样参与完整回合测评。
+        self.session_storyline_policy = session_storyline_policy or SessionStorylinePolicy(
+            scenario_repository=self.scenario_repository,
         )
         # 会话快照策略独立抽离，便于后续继续演进老会话回填、快照诊断和分支冻结逻辑。
         self.session_snapshot_policy = session_snapshot_policy or SessionScenarioSnapshotPolicy(
@@ -285,6 +292,30 @@ class TrainingService:
 
             self.query_service = TrainingQueryService.from_runtime(self)
 
+    def _build_init_session_sequence(
+        self,
+        *,
+        training_mode: str,
+        player_profile: Dict[str, Any] | None,
+    ) -> List[Dict[str, Any]]:
+        """Resolve init-time session sequence with optional storyline expansion."""
+        base_sequence = self.scenario_policy.get_default_sequence()
+        try:
+            expanded_sequence = self.session_storyline_policy.build_session_sequence(
+                training_mode=training_mode,
+                base_sequence=base_sequence,
+                player_profile=player_profile,
+            )
+        except Exception as exc:
+            logger.warning(
+                "build init session sequence failed, fallback to default sequence: mode=%s error=%s",
+                training_mode,
+                str(exc),
+            )
+            return list(base_sequence)
+
+        return list(expanded_sequence or base_sequence)
+
     def init_training(
         self,
         user_id: str,
@@ -296,9 +327,13 @@ class TrainingService:
         normalized_mode = self.mode_catalog.normalize(training_mode, default="guided")
 
         with self._lock:
+            session_sequence = self._build_init_session_sequence(
+                training_mode=normalized_mode,
+                player_profile=player_profile,
+            )
             # 在会话创建时同时冻结主线快照和可达分支目录，避免后续发版导致老会话内容漂移。
             snapshot_bundle = self.session_snapshot_policy.freeze_session_snapshots(
-                self.scenario_policy.get_default_sequence()
+                session_sequence
             )
             frozen_payload_sequence = snapshot_bundle.scenario_payload_sequence
             frozen_payload_catalog = snapshot_bundle.scenario_payload_catalog

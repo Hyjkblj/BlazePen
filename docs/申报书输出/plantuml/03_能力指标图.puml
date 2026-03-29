@@ -1,0 +1,30 @@
+@startuml
+!theme plain
+left to right direction
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam rectangle {
+  RoundCorner 12
+}
+
+title BlazePen 能力指标图
+
+rectangle "8项核心能力" as Core
+rectangle "K1 史实核验" as K1
+rectangle "K2 来源可信评估" as K2
+rectangle "K3 时效与准确平衡" as K3
+rectangle "K4 风险沟通表达" as K4
+rectangle "K5 伦理与安全边界" as K5
+rectangle "K6 反谣与纠偏" as K6
+rectangle "K7 公共行动指引" as K7
+rectangle "K8 沟通闭环管理" as K8
+
+Core --> K1
+Core --> K2
+Core --> K3
+Core --> K4
+Core --> K5
+Core --> K6
+Core --> K7
+Core --> K8
+@enduml

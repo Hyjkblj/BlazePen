@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { GameMessage } from '@/types/game';
 
 const ROLE_LABELS: Record<GameMessage['role'], string> = {
@@ -29,7 +29,7 @@ export interface UseStorySessionTranscriptResult {
 export function useStorySessionTranscript({
   messages,
 }: UseStorySessionTranscriptOptions): UseStorySessionTranscriptResult {
-  const [isTranscriptDialogOpen, setTranscriptDialogOpen] = useState(false);
+  const [isTranscriptDialogRequested, setTranscriptDialogRequested] = useState(false);
 
   const transcriptEntries = useMemo(
     () =>
@@ -45,22 +45,18 @@ export function useStorySessionTranscript({
     [messages]
   );
 
-  useEffect(() => {
-    if (transcriptEntries.length === 0) {
-      setTranscriptDialogOpen(false);
-    }
-  }, [transcriptEntries.length]);
+  const isTranscriptDialogOpen = isTranscriptDialogRequested && transcriptEntries.length > 0;
 
   const openTranscriptDialog = useCallback(() => {
     if (transcriptEntries.length === 0) {
       return;
     }
 
-    setTranscriptDialogOpen(true);
+    setTranscriptDialogRequested(true);
   }, [transcriptEntries.length]);
 
   const closeTranscriptDialog = useCallback(() => {
-    setTranscriptDialogOpen(false);
+    setTranscriptDialogRequested(false);
   }, []);
 
   return {

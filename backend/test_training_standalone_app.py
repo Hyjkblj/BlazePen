@@ -370,6 +370,28 @@ class TrainingStandaloneAppTestCase(unittest.TestCase):
             "degraded",
         )
 
+    def test_warmup_should_allow_degraded_startup_when_media_dependency_import_crashes(self):
+        with patch(
+            "api.training_app.warmup_training_character_preview_job_service",
+            return_value={"recovered": 0, "timed_out": 0},
+        ), patch(
+            "api.training_app.warmup_training_media_task_executor",
+            side_effect=ModuleNotFoundError("No module named 'numpy'"),
+        ):
+            asyncio.run(warmup_training_media_runtime())
+
+        runtime_state = app.state.training_media_runtime_state
+        self.assertTrue(runtime_state.get("ready"))
+        self.assertTrue(runtime_state.get("degraded"))
+        self.assertEqual(
+            runtime_state.get("components", {}).get("media_warmup", {}).get("status"),
+            "degraded",
+        )
+        error = str(runtime_state.get("components", {}).get("media_warmup", {}).get("error") or "")
+        self.assertTrue(error)
+        self.assertNotIn("Traceback", error)
+        self.assertNotIn("\n", error)
+
     def test_readiness_endpoint_should_expose_media_runtime_state(self):
         app.state.training_media_runtime_state = {
             "ready": True,

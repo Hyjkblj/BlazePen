@@ -1,0 +1,33 @@
+## 前端 Findings
+- [Minor] frontend/src/flows/useTrainingMvpFlow.test.tsx:484-488,640-642
+  问题：用 `window.setTimeout` 做“等待副作用不再发生”的时间型断言，存在潜在不稳定与 CI 抖动风险。
+  原因：这类测试依赖真实计时器与调度时序（25ms / 0ms），在不同机器负载、jsdom 事件循环、以及未来实现改动（例如内部改成 microtask/raf/更长轮询间隔）时容易出现“偶发红/偶发绿”。
+  影响：测试不稳定会降低信号质量，导致大家对用例失去信任；同时也可能掩盖真正的重复轮询/重复 effect 注册问题（时间窗不同）。
+  建议：
+  - 使用 `vi.useFakeTimers()` + `vi.advanceTimersByTime()`（或 `runOnlyPendingTimers`）来推进时间，并配合显式断言关键调用次数，避免真实时间等待。
+  - 若 flow 的设计目标是“restore 后旧 poll 必须被取消”，优先断言“旧 poll 的取消/忽略条件”（例如基于 taskId/sessionId/roundNo/scenarioId 的 guard）而不是靠 sleep。
+
+- [Minor] frontend/src/flows/useTrainingMvpFlow.test.tsx:577-596
+  问题：`getTrainingMediaTask` 的 mock 返回值使用 `as any` 绕过类型，降低了测试对 DTO 契约的约束能力。
+  原因：当 service/DTO 发生字段漂移时（snake_case/camelCase、必填字段、nullability），`any` 会让测试继续通过，从而失去“契约守门”价值。
+  影响：更容易出现“接口返回结构漂移但前端静默兼容/运行时出错”的回归。
+  建议：尽量返回与真实 DTO 一致的结构（至少补齐关键字段），减少 `any`；必要时引入一个最小的 typed factory（例如 `makeTrainingMediaTask()`）统一生成。
+
+## 后端 Findings
+- [Minor] backend/test_training_standalone_app.py:373-390
+  问题：已将异常对齐为 `ModuleNotFoundError` 且不再依赖 message 子串，覆盖更贴近真实“依赖缺失”形态；但仍缺少对“错误对外暴露策略”的稳定约束。
+  原因：当前断言只检查 `error` truthy，并未约束 error 的格式（是否应脱敏、是否应分类、是否应截断），这部分一旦变动会影响运维可观测性与安全边界。
+  影响：未来 readiness/runtime_state 结构调整时，测试可能无法提供“是否符合预期策略”的明确反馈（只知道有/没有 error）。
+  建议：如果项目期望对外暴露稳定的错误分类/码，建议把断言从 `truthy` 提升为检查稳定字段（例如 `error_type`/`error_code`/`category`）；若明确要隐藏细节，也应在测试中固化“不得包含内部堆栈/敏感信息”的约束。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：已补“旧轮询不覆盖恢复后图片”的回归用例，但仍建议补一条“restore 后 roundNo/sceneId 变化时旧任务轮询被取消（而不是仅仅最终不覆盖）”的用例，确保不会有隐性后台轮询泄漏。
+- 后端：warmup degraded 路径覆盖更完整了；若系统存在“必须 ready=false 才算失败”的策略分支（例如关键依赖失败禁止 degraded），建议补对应断言用例。
+
+## Review Summary
+- 这轮改动相对上一版明显更强：前端去掉了对文案硬编码耦合，并补上了关键的“旧轮询不覆盖恢复后图片”的竞态回归用例；后端异常类型也更贴近真实依赖缺失。
+- 当前未发现阻塞性问题。
+- 主要剩余风险在于前端测试仍使用真实计时器做时间窗断言，存在不稳定与信号偏弱的问题；建议用 fake timers + 更契约化的断言进一步固化行为边界。

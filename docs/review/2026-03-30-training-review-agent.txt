@@ -1,0 +1,29 @@
+## 前端 Findings
+- [Major] frontend/src/flows/useTrainingMvpFlow.test.tsx:303-482
+  问题：新增用例验证“单生命周期隔离副作用”，但断言粒度偏粗，仍可能放过重复触发/竞态导致的回归。
+  原因：该用例主要用“调用次数=1 / not called”来侧面约束副作用，没有对关键边界条件做强约束（例如：轮次推进后是否仍在轮询旧任务、第二次 submit 是否触发不期望的额外 poll、start/restore/re-render 是否重复注册 effect）。
+  影响：一旦 `useTrainingMvpFlow` 内部 effect 依赖或状态源（sessionId/scenarioId/roundNo）发生轻微调整，仍可能出现“重复 createTask / 重复 poll / 提前拉报告 / 旧任务覆盖新任务”的问题，但测试不一定能第一时间报警。
+  建议：
+  - 增加更“契约级”的断言：例如第二次 `submitOption` 前后，明确断言 `getTrainingMediaTask` 不再被调用、且 `createTrainingMediaTask` 不会因为 round 变化而被误触发；如果 flow 设计要求在某些状态下允许再次 poll，则把条件写清楚并用断言固化。
+  - 避免把 `userInput` 写死为 `'Hold publication'`（frontend/src/flows/useTrainingMvpFlow.test.tsx:466）；建议从 `createScenario(...).options[0].label` 取值，降低测试与 fixture 文本耦合，减少“改文案导致测试失败”的噪音。
+
+## 后端 Findings
+- [Minor] backend/test_training_standalone_app.py:370-393
+  问题：新增用例用 `MemoryError` 模拟“媒体依赖 import 链崩溃”，但异常类型与真实 import 崩溃不完全对齐，且对错误泄漏策略缺少约束。
+  原因：真实更常见的是 `ImportError/ModuleNotFoundError` 或依赖初始化抛出的 `Exception`；当前用例验证的是“degraded + error 字段包含异常文本”，但没有明确服务对外暴露错误的策略边界（是否应脱敏/截断/归一化）。
+  影响：测试覆盖面可能偏离真实故障形态；如果后续改为对外隐藏内部错误细节，这条测试会变成阻碍或产生误导。
+  建议：
+  - 视真实目标将 `MemoryError` 调整为 `ImportError/ModuleNotFoundError` 或更贴近的异常；或补一条用例覆盖 import 相关异常。
+  - 若产品/安全要求不允许把内部异常文本透出到 readiness/runtime_state，可把断言改为检查稳定的错误码/分类字段（例如 `error_type`），而不是具体 message 子串。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：当前新增用例没有覆盖“restore 之后 roundNo/sceneId 变化时，旧轮询任务是否被正确取消”的路径；建议补一条在 `buildTrainingSessionViewFromSummary` 返回不同 `currentSceneId`/`currentRoundNo` 时，验证不会把旧 `preview_url` 覆盖到新场景。
+- 后端：warmup 的 degraded 路径目前覆盖了 preview/storage、generic exception、media warmup generic exception、以及本次的“依赖崩溃”，但缺少“ready=false（完全不可用）”的断言用例（例如两个组件都失败且不允许 degraded 启动的策略场景，如存在的话）。
+
+## Review Summary
+- 本次改动主要是补充训练链路的可靠性测试与 Review 流程文档要求，未引入新的生产逻辑风险。
+- 前端新增用例方向正确，但目前更多是“次数型”断言，建议把关键契约与取消/隔离边界用更强断言固化，避免将来出现隐性重复副作用。
+- 后端新增用例补齐了媒体 warmup 异常形态的一角，但建议对齐更真实的异常类型，并明确错误信息对外暴露策略，避免测试与产品策略相互掣肘。

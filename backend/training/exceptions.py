@@ -195,3 +195,21 @@ class TrainingMediaTaskTimeoutError(TrainingDomainError):
         )
         self.task_type = normalized_task_type
         self.timeout_seconds = normalized_timeout
+
+
+class TrainingStoryScriptInvalidError(TrainingDomainError):
+    """Story script payload violates required training scenario contract."""
+
+    def __init__(self, message: str, *, details: dict | None = None):
+        normalized_message = str(message or "").strip() or "invalid training story script payload"
+        super().__init__(normalized_message)
+        self.details = dict(details or {})
+
+
+class TrainingStoryScriptNotFoundError(TrainingDomainError):
+    """Training story script not found for given session."""
+
+    def __init__(self, *, session_id: str):
+        normalized_session_id = str(session_id or "").strip()
+        super().__init__(f"training story script not found: session_id={normalized_session_id}")
+        self.session_id = normalized_session_id

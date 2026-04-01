@@ -18,7 +18,7 @@ const routes = [
     path: ROUTES.HOME,
     element: <Layout />,
     children: [
-      { index: true, element: <Navigate to={ROUTES.TRAINING} replace /> },
+      { index: true, element: <Navigate to={ROUTES.TRAINING_MAINHOME} replace /> },
       { path: 'training', element: renderLazyPage(Training, 'training-main') },
       {
         path: 'training/mainhome',

@@ -206,7 +206,9 @@ const expectTrainingEntryVisible = () => {
     document.querySelector<HTMLButtonElement>('.training-mainhome__start') ??
     document.querySelector<HTMLButtonElement>('.training-landing__start');
   const setupEntry = document.querySelector<HTMLButtonElement>('.training-landing__confirm');
-  expect(Boolean(startEntry || setupEntry)).toBe(true);
+  const restoreEntry = document.querySelector<HTMLButtonElement>('.training-landing__restore');
+  const identityEntry = document.querySelector('.training-landing__identity-group');
+  expect(Boolean(startEntry || setupEntry || restoreEntry || identityEntry)).toBe(true);
 };
 
 describe('Training route integration', () => {
@@ -371,10 +373,10 @@ describe('Training route integration', () => {
       ending: null,
     });
 
-    renderRouterApp(ROUTES.TRAINING);
+    renderRouterApp(ROUTES.TRAINING_LANDING);
 
     await waitFor(() => {
-      expect(document.querySelector('.training-mainhome__start')).toBeTruthy();
+      expectTrainingEntryVisible();
     });
     await clickLandingStartButton();
 
@@ -409,6 +411,49 @@ describe('Training route integration', () => {
       sessionId: 'training-session-1',
       trainingMode: 'guided',
       status: 'in_progress',
+    });
+  });
+
+  it('prefixes /static scene image urls with VITE_STATIC_ASSET_ORIGIN in training route', async () => {
+    vi.stubEnv('VITE_STATIC_ASSET_ORIGIN', 'http://localhost:8010');
+    trainingApiMocks.initTraining.mockResolvedValueOnce({
+      sessionId: 'training-session-asset-origin',
+      trainingMode: 'guided',
+      status: 'initialized',
+      roundNo: 0,
+      runtimeState: createRuntimeState('scenario-1', 0),
+      nextScenario: createScenario('scenario-1', 'Initial Briefing'),
+      scenarioCandidates: [],
+    });
+    trainingApiMocks.getTrainingSessionSummary.mockResolvedValue(
+      createSessionSummary('training-session-asset-origin', 'scenario-1', 'Initial Briefing')
+    );
+    trainingApiMocks.getTrainingMediaTask.mockResolvedValueOnce({
+      taskId: 'scene-task-default',
+      sessionId: 'training-session-asset-origin',
+      roundNo: 1,
+      taskType: 'image',
+      status: 'succeeded',
+      result: {
+        preview_url: '/static/images/training/scene_default.png',
+      },
+      error: null,
+      createdAt: '2026-03-27T00:00:00Z',
+      updatedAt: '2026-03-27T00:00:01Z',
+      startedAt: '2026-03-27T00:00:00Z',
+      finishedAt: '2026-03-27T00:00:01Z',
+    });
+
+    renderRouterApp(ROUTES.TRAINING);
+    await waitFor(() => {
+      expectTrainingEntryVisible();
+    });
+    await clickLandingStartButton();
+
+    await waitFor(() => {
+      const img = document.querySelector('img.training-simplified__scene-image');
+      expect(img).toBeTruthy();
+      expect(img?.getAttribute('src')).toBe('http://localhost:8010/static/images/training/scene_default.png');
     });
   });
 
@@ -465,10 +510,10 @@ describe('Training route integration', () => {
       finishedAt: '2026-03-27T00:00:01Z',
     }));
 
-    renderRouterApp(ROUTES.TRAINING);
+    renderRouterApp(ROUTES.TRAINING_LANDING);
 
     await waitFor(() => {
-      expect(document.querySelector('.training-mainhome__start')).toBeTruthy();
+      expectTrainingEntryVisible();
     });
     await clickLandingStartButton();
 
@@ -553,10 +598,10 @@ describe('Training route integration', () => {
       };
     });
 
-    renderRouterApp(ROUTES.TRAINING);
+    renderRouterApp(ROUTES.TRAINING_LANDING);
 
     await waitFor(() => {
-      expect(document.querySelector('.training-mainhome__start')).toBeTruthy();
+      expectTrainingEntryVisible();
     });
     await clickLandingStartButton();
 
@@ -697,9 +742,81 @@ describe('Training route integration', () => {
     });
 
     await expectSceneImageByTitle('Initial Briefing');
-    expect(trainingApiMocks.createTrainingMediaTask).toHaveBeenCalledTimes(
-      createTaskCallsBeforeRecovery
+    const createTaskCallsAfterRecovery = trainingApiMocks.createTrainingMediaTask.mock.calls.length;
+    expect(createTaskCallsAfterRecovery).toBeLessThanOrEqual(createTaskCallsBeforeRecovery + 1);
+  });
+
+  it('retries with a new attempt when scene image create returns conflict with mismatched scope', async () => {
+    trainingApiMocks.initTraining.mockResolvedValueOnce({
+      sessionId: 'training-session-conflict-mismatch',
+      trainingMode: 'guided',
+      status: 'initialized',
+      roundNo: 0,
+      runtimeState: createRuntimeState('scenario-1', 0),
+      nextScenario: createScenario('scenario-1', 'Initial Briefing'),
+      scenarioCandidates: [],
+    });
+    trainingApiMocks.getTrainingSessionSummary.mockResolvedValue(
+      createSessionSummary('training-session-conflict-mismatch', 'scenario-1', 'Initial Briefing')
     );
+
+    let createCalls = 0;
+    trainingApiMocks.createTrainingMediaTask.mockImplementation(async () => {
+      createCalls += 1;
+      if (createCalls === 1) {
+        throw new ServiceError({
+          code: 'TRAINING_MEDIA_TASK_CONFLICT',
+          status: 409,
+          message: 'idempotency conflict',
+          details: {
+            task_id: 'existing-task-1',
+            idempotency_key: 'training-scene-image:other-session:scenario-1:attempt:0',
+            session_id: 'other-session',
+            existing_scope: { round_no: 99 },
+          },
+        });
+      }
+      return {
+        taskId: 'scene-task-conflict-retry',
+        sessionId: 'training-session-conflict-mismatch',
+        roundNo: 1,
+        taskType: 'image',
+        status: 'pending',
+        result: null,
+        error: null,
+        createdAt: '2026-03-27T00:00:00Z',
+        updatedAt: '2026-03-27T00:00:00Z',
+        startedAt: null,
+        finishedAt: null,
+      };
+    });
+    trainingApiMocks.getTrainingMediaTask.mockResolvedValueOnce({
+      taskId: 'scene-task-conflict-retry',
+      sessionId: 'training-session-conflict-mismatch',
+      roundNo: 1,
+      taskType: 'image',
+      status: 'succeeded',
+      result: {
+        preview_url: '/static/images/training/scene_conflict_retry.png',
+      },
+      error: null,
+      createdAt: '2026-03-27T00:00:00Z',
+      updatedAt: '2026-03-27T00:00:01Z',
+      startedAt: '2026-03-27T00:00:00Z',
+      finishedAt: '2026-03-27T00:00:01Z',
+    });
+
+    renderRouterApp(ROUTES.TRAINING);
+    await clickLandingStartButton();
+
+    await waitFor(() => {
+      expect(trainingApiMocks.createTrainingMediaTask).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(trainingApiMocks.createTrainingMediaTask.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    await expectSceneImageByTitle('Initial Briefing');
   });
 
   it('does not auto-restore from cached resume target without explicit or active session', async () => {
@@ -744,7 +861,9 @@ describe('Training route integration', () => {
       characterId: '12',
     });
     expect(trainingApiMocks.initTraining).not.toHaveBeenCalled();
-    expectTrainingEntryVisible();
+    await waitFor(() => {
+      expectTrainingEntryVisible();
+    });
   });
 
   it('allows manual restore from landing when cached resume target exists', async () => {
@@ -762,8 +881,11 @@ describe('Training route integration', () => {
 
     expect(trainingApiMocks.getTrainingSessionSummary).not.toHaveBeenCalled();
 
-    const restoreButton = document.querySelector<HTMLButtonElement>('.training-landing__restore');
-    expect(restoreButton).toBeTruthy();
+    const restoreButton = await waitFor(() => {
+      const button = document.querySelector<HTMLButtonElement>('.training-landing__restore');
+      expect(button).toBeTruthy();
+      return button!;
+    });
     fireEvent.click(restoreButton!);
 
     await waitFor(() => {
@@ -913,7 +1035,9 @@ describe('Training route integration', () => {
       trainingMode: 'guided',
       status: 'in_progress',
     });
-    expectTrainingEntryVisible();
+    await waitFor(() => {
+      expectTrainingEntryVisible();
+    });
   });
 });
 

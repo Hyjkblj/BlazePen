@@ -140,6 +140,7 @@ class TrainingMediaTaskService:
                 "idempotency key conflicts with another training session",
                 details={
                     "field": "idempotency_key",
+                    "idempotency_key": normalized_request.idempotency_key,
                     "session_id": normalized_request.session_id,
                     "existing_session_id": existing.session_id,
                     "task_id": existing.task_id,
@@ -158,6 +159,7 @@ class TrainingMediaTaskService:
             "idempotency key conflicts with a different media task request",
             details={
                 "field": "idempotency_key",
+                "idempotency_key": normalized_request.idempotency_key,
                 "session_id": normalized_request.session_id,
                 "task_id": existing.task_id,
                 "existing_scope": {
@@ -178,6 +180,11 @@ class TrainingMediaTaskService:
         return json.dumps(dict(payload or {}), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
     def _to_task_response(self, row: TrainingMediaTaskRecord) -> dict[str, Any]:
+        error_payload = dict(row.error_payload or {}) if row.error_payload is not None else None
+        if error_payload is not None and "message" not in error_payload:
+            fallback_message = error_payload.get("reason") or error_payload.get("detail") or error_payload.get("error")
+            if fallback_message:
+                error_payload["message"] = str(fallback_message)
         return {
             "task_id": row.task_id,
             "session_id": row.session_id,
@@ -185,7 +192,7 @@ class TrainingMediaTaskService:
             "task_type": row.task_type,
             "status": row.status,
             "result": dict(row.result_payload or {}) if row.result_payload is not None else None,
-            "error": dict(row.error_payload or {}) if row.error_payload is not None else None,
+            "error": error_payload,
             "created_at": self._serialize_optional_datetime(row.created_at),
             "updated_at": self._serialize_optional_datetime(row.updated_at),
             "started_at": self._serialize_optional_datetime(row.started_at),
@@ -194,10 +201,16 @@ class TrainingMediaTaskService:
 
     def _dispatch_task(self, task_id: str) -> None:
         if self.media_task_executor is None:
+            logger.info("training media task dispatch skipped: reason=no_executor task_id=%s", task_id)
             return
 
         try:
-            self.media_task_executor.submit_task(task_id)
+            submitted = self.media_task_executor.submit_task(task_id)
+            logger.info(
+                "training media task dispatch: submitted=%s task_id=%s",
+                bool(submitted),
+                task_id,
+            )
         except Exception as exc:
             logger.warning("failed to dispatch training media task: task_id=%s error=%s", task_id, str(exc))
 

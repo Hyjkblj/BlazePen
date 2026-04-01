@@ -1,0 +1,55 @@
+## 前端 Findings
+- [Blocker] frontend/src/services/assetUrl.ts:1-22
+  问题：静态资源获取引入 `VITE_STATIC_ASSET_ORIGIN` 新契约，但未看到在所有运行入口（story/training/electron）被强制注入或有统一默认策略，仍可能导致训练场景图“后端生成但前端取不到”回归。
+  原因：`/static/...` 的可达性在多入口、多端口模式下不是天然同源；若某入口既无 `/static` 代理也未配置 origin，则资源请求落错服务。
+  影响：训练主路径资产（场景图/小场景图/角色图）偶发 404，用户体验与恢复路径被阻塞，排障成本高。
+  建议：
+  - 明确统一策略：要么所有入口都通过代理保证 `/static` 指向正确后端，要么所有入口都用同一套 `VITE_STATIC_ASSET_ORIGIN` 注入规则（并写入 runbook/README）。
+  - 用单测/冒烟测试固化：`assetUrl.test.ts` 至少覆盖 `/static` 拼接、非 `/static` 绝对路径不拼接、空配置回退行为。
+
+- [Major] frontend/src/assets/images/home-fenghuo-mainpage.jpg:1
+  问题：静态大图资源被删除，但未明确替换与引用清理范围。
+  原因：资源删除若仍被引用会引发打包缺失或运行期 404，属于入口 UI 风险。
+  影响：Landing/背景可能破损，影响主路径视觉与可用性。
+  建议：全局定位引用并同步替换；至少补一个入口页 smoke 确保无资源 404。
+
+## 后端 Findings
+- [Blocker] backend/api/services/training_story_script_service.py:20-83, backend/api/routers/training.py:330-353
+  问题：读接口 `GET /v1/training/story-scripts/{session_id}` 内部执行“惰性 ensure（可能触发 LLM 生成）+ 写库”，把重任务塞进同步热路径，并用吞错/空 payload 维持表面稳定。
+  原因：LLM 生成高延迟高失败；GET 语义被隐式变为写入与副作用，缺少超时/并发保护/状态机与稳定错误码，且异常会被降级吞掉。
+  影响：高概率出现长尾延迟与并发放大；当 migration 未执行或外部依赖异常时，调用方只拿到空 payload，导致“假成功”并把故障扩散到下游。
+  建议：
+  - 立即改为异步状态流：GET 只读（ready/pending/failed），ensure 走单独 endpoint 或后台任务；返回稳定 `status/error_code`，禁止以 message 文本承载语义。
+  - 缺表/存储不可用应返回稳定错误码（503 + `TRAINING_STORAGE_UNAVAILABLE` 类），不要返回空 payload。
+
+- [Blocker] backend/training/session_storyline_policy.py:744-760
+  问题：storyline seed 在未显式提供时引入 `uuid4()`，破坏恢复一致性（同会话恢复可能产生不同 storyline/序列）。
+  原因：seed 属于会话事实源的一部分；恢复与重放必须可重复。随机 seed 如果未持久化为 session 的单一事实源，将导致漂移。
+  影响：同 `sessionId` 恢复后场景序列变化，用户感知强烈且不可复现/不可排障，属于不应合并的恢复一致性风险。
+  建议：seed 必须首次生成并持久化（或基于 sessionId 做确定性 derivation），恢复时只读取，不得再随机。
+
+- [Major] backend/training/story_script_agent.py:8-12,161-196
+  问题：脚本池化“从其他 session 抽样并克隆”属于跨会话数据复用，破坏会话隔离与事实源边界，且存在合规/隐私与一致性风险。
+  原因：抽样源来自真实 session 数据，可能包含画像/事件细节；且抽样分桶条件不足（未按版本/模式/场景库版本隔离）。
+  影响：个性化漂移、不可解释来源、线上问题难复现；潜在数据混用风险。
+  建议：若要复用，抽象成独立“模板库”域（脱敏、版本化），禁止从真实用户 session 抽样克隆。
+
+- [Major] backend/api/routers/training.py:83-104
+  问题：回合提交中派发 media task 的逻辑缺少幂等与派发可观测性收口。
+  原因：真实提交存在重试与重复；仅靠 status 过滤不足以防止重复派发。
+  影响：重复执行、资源浪费、状态竞态；难定位派发次数与原因。
+  建议：在 executor/service 层做 taskId 级幂等；增加结构化日志（traceId/sessionId/taskId/roundNo）；补重复提交派发的集成测试。
+
+## Open Questions
+- story script 对外契约是否要包含 `status`（ready/pending/failed）与 `error_code`？若不包含，调用方如何做恢复与重试决策？
+- storyline seed 的单一事实源最终落点在哪里（training_sessions.session_meta / 专用字段 / snapshot）？
+- 多入口运行模式（story/training/electron）下静态资源契约如何统一，避免 `/static` 行为漂移？
+
+## 测试缺口
+- 前端：缺少针对“非同源/无代理环境”下 `/static` 资源拼接的回归测试与运行说明；缺少入口页资源 404 的 smoke。
+- 后端：缺少 story script 的幂等并发测试（同 session 并发 ensure 只写一次）；缺少缺表/存储不可用时的错误码契约测试；缺少 storyline seed 持久化与恢复一致性测试。
+
+## Review Summary
+- 当前工作区变更已触及训练主线的“恢复一致性、契约稳定性与热路径可靠性”，存在明确阻塞合并点。
+- 最严重问题是：storyline seed 的随机化与 story script 在 GET 热路径触发 LLM/写库并吞错，两者都会在恢复与并发下导致不可控故障。
+- 前端静态资源 origin 修复方向正确，但必须统一多入口契约并用测试固化，否则场景图“拿不到”的问题会周期性回归。

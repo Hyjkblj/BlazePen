@@ -1,0 +1,31 @@
+## 前端 Findings
+- [Blocker] frontend/src/services/assetUrl.ts:1-15
+  问题：静态资源 URL（`/static/...`）默认同源解析，在训练前端与训练后端非同源/非同端口运行时会导致“后端已生成图片但前端取不到”。
+  原因：`getStaticAssetUrl()` 对以 `/` 开头的路径直接返回原值，依赖浏览器当前 origin；当训练页面并非运行在带 `/static` 代理的 Vite 配置/端口，或静态资源服务不在同一 origin 时，请求会打到错误的服务器。
+  影响：训练场景图（以及其他静态资源，如角色图、小场景图）在部分运行形态下持续 404/空白，用户主路径被阻塞；同时该问题容易被“后端日志显示图片已保存”掩盖，排障成本高。
+  建议：
+  - 在 `assetUrl` 层提供显式的静态资源 origin 配置（例如 `VITE_STATIC_ASSET_ORIGIN`），当 URL 以 `/static/` 开头时拼接为 `origin + path`，从根上消除同源假设。
+  - 自测时明确使用 `npm run dev:training`（3001）或确保当前前端入口存在 `/static` 代理到训练后端（8010）；避免用 story 入口（3000）去跑 training 页面导致静态资源指向错误 origin。
+
+- [Major] frontend/src/hooks/useTrainingSceneImageFlow.ts:188-196,273-276
+  问题：前端依赖 `normalizeTrainingMediaTaskView().previewUrl` 驱动 UI，但如果后端返回的 URL 未被正确代理/未做 origin 归一，UI 层难以定位“是任务未完成”还是“URL 可用但请求打错 origin”。
+  原因：当前 flow 将“是否有 previewUrl”与“是否可访问该 URL”混在一起处理；当 URL 形态为相对路径时，实际可访问性取决于运行时代理与 origin 配置。
+  影响：失败时用户看到的是“没有图”或“failed”，但无法区分是媒体任务失败、轮询失败、还是静态资源路由/代理配置错误；恢复与重试策略容易误用。
+  建议：
+  - telemetry 中补充记录 `previewUrl` 的形态（absolute vs relative）以及静态资源 origin 配置（如存在），帮助定位“契约正确但路由不通”的问题。
+  - 对 `/static/...` 资源加载失败（图片 onError）应能触发一次可观测告警或提示“静态资源不可达”，避免被误判为生成失败。
+
+## 后端 Findings
+- 未发现阻塞性问题。
+
+## Open Questions
+- 训练前端在本地/生产的标准运行形态是否保证与训练后端同源？如果不保证，是否需要统一约定静态资源的对外 base（例如 `STATIC_ASSET_ORIGIN`）作为契约的一部分？
+
+## 测试缺口
+- 前端：缺少对“静态资源非同源运行”的集成/冒烟用例（例如在无 `/static` 代理的环境下，`getStaticAssetUrl('/static/...')` 是否会按配置拼接到正确 origin）。
+- 后端：缺少对“生成后返回的 `preview_url` 必须落在已挂载静态前缀集合（`/static/images/{characters|scenes|smallscenes|composite}`）”的契约测试（防止返回未暴露的路径如 `/static/images/training/...`）。
+
+## Review Summary
+- 本轮问题本质是“前端静态资源 URL 的同源假设”与“训练前端运行入口/代理配置不一致”叠加导致的可用性故障：后端生成与保存正常，但前端请求打到了错误 origin。
+- 建议将静态资源 origin 作为显式契约并在 `assetUrl` 层收口，避免把环境假设散落在页面与 flow 中。
+- 若不修复，该问题会在多端口/多服务部署形态中反复出现，属于训练主路径的高优先级可靠性缺陷。

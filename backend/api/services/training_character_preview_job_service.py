@@ -358,7 +358,7 @@ class TrainingCharacterPreviewJobService:
         idempotency_key: str,
         user_id: str | None = None,
         image_type: str | None = "portrait",
-        group_count: int = 3,
+        group_count: int = 2,
         generate_scene_groups: bool | None = None,
         scene_group_count: int | None = None,
         micro_scene_min: int | None = None,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import uuid4
 from threading import Lock
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Dict, List
@@ -15,6 +16,7 @@ from training.ending_policy import EndingPolicy
 from training.evaluator import TrainingRoundEvaluator
 from training.exceptions import (
     DuplicateRoundSubmissionError,
+    TrainingScenarioMismatchError,
     TrainingSessionCompletedError,
     TrainingSessionNotFoundError,
     TrainingSessionRecoveryStateError,
@@ -297,6 +299,7 @@ class TrainingService:
         *,
         training_mode: str,
         player_profile: Dict[str, Any] | None,
+        storyline_seed: str | None = None,
     ) -> List[Dict[str, Any]]:
         """Resolve init-time session sequence with optional storyline expansion."""
         base_sequence = self.scenario_policy.get_default_sequence()
@@ -305,6 +308,7 @@ class TrainingService:
                 training_mode=training_mode,
                 base_sequence=base_sequence,
                 player_profile=player_profile,
+                storyline_seed=storyline_seed,
             )
         except Exception as exc:
             logger.warning(
@@ -327,9 +331,20 @@ class TrainingService:
         normalized_mode = self.mode_catalog.normalize(training_mode, default="guided")
 
         with self._lock:
+            # Persist a deterministic storyline seed as a session fact source.
+            # Never derive from uuid4 during recovery paths.
+            resolved_seed = ""
+            if isinstance(player_profile, dict):
+                resolved_seed = str(
+                    (player_profile.get("script_seed") or player_profile.get("storyline_seed") or "")
+                ).strip()
+            if not resolved_seed:
+                resolved_seed = uuid4().hex
+
             session_sequence = self._build_init_session_sequence(
                 training_mode=normalized_mode,
                 player_profile=player_profile,
+                storyline_seed=resolved_seed,
             )
             # 在会话创建时同时冻结主线快照和可达分支目录，避免后续发版导致老会话内容漂移。
             snapshot_bundle = self.session_snapshot_policy.freeze_session_snapshots(
@@ -350,6 +365,8 @@ class TrainingService:
                 scenario_bank_version=self.scenario_repository.version,
                 player_profile=player_profile,
             )
+            session_meta["script_seed"] = resolved_seed
+            session_meta["storyline_seed"] = resolved_seed
             session_meta = self._merge_session_meta_runtime_flags(
                 session_meta=session_meta,
                 runtime_flags=self._build_default_runtime_flags(),
@@ -513,6 +530,8 @@ class TrainingService:
                 runtime_flags=runtime_flags,
                 current_scenario_id=getattr(session, "current_scenario_id", None),
             )
+        except TrainingScenarioMismatchError:
+            raise
         except ValueError as exc:
             raise TrainingSessionRecoveryStateError(
                 session_id=session_id,

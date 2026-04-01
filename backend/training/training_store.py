@@ -36,6 +36,33 @@ def _is_missing_training_media_tasks_table_error(exc: Exception) -> bool:
     )
 
 
+def _is_missing_training_story_scripts_table_error(exc: Exception) -> bool:
+    """Detect DB errors caused by missing `training_story_scripts` table."""
+    message = str(exc or "")
+    lowered = message.lower()
+    if "training_story_scripts" not in lowered:
+        return False
+    return any(
+        token in lowered
+        for token in (
+            "undefinedtable",
+            "does not exist",
+            "doesn't exist",
+            "no such table",
+            "unknown table",
+            "relation",
+        )
+    )
+
+
+def _warn_story_script_table_missing(operation: str, error: Exception) -> None:
+    logger.warning(
+        "training story script storage unavailable (missing table): operation=%s error=%s",
+        operation,
+        str(error),
+    )
+
+
 def _raise_media_task_storage_unavailable(
     *,
     operation: str,
@@ -50,6 +77,27 @@ def _raise_media_task_storage_unavailable(
     )
     raise TrainingStorageUnavailableError(
         message="training media task storage unavailable: training_media_tasks table is missing",
+        details={
+            "operation": operation,
+            **dict(details or {}),
+        },
+    ) from error
+
+
+def _raise_story_script_storage_unavailable(
+    *,
+    operation: str,
+    error: Exception,
+    details: dict | None = None,
+) -> None:
+    logger.error(
+        "training story script storage unavailable: operation=%s error=%s details=%s",
+        operation,
+        str(error),
+        dict(details or {}),
+    )
+    raise TrainingStorageUnavailableError(
+        message="training story script storage unavailable: training_story_scripts table is missing",
         details={
             "operation": operation,
             **dict(details or {}),
@@ -220,6 +268,34 @@ class TrainingStoreProtocol(Protocol):
         ...
 
     def update_training_session(self, session_id: str, updates: dict) -> TrainingSessionRecord | None:
+        ...
+
+    def get_story_script_by_session_id(self, session_id: str) -> Any:
+        ...
+
+    def count_story_scripts_excluding_session_id(self, session_id: str) -> int:
+        ...
+
+    def list_story_scripts_excluding_session_id(self, session_id: str, limit: int = 50) -> list[Any]:
+        ...
+
+    def create_story_script(
+        self,
+        *,
+        session_id: str,
+        payload: dict,
+        provider: str = "auto",
+        model: str = "auto",
+        major_scene_count: int = 6,
+        micro_scenes_per_gap: int = 2,
+        source_script_id: str | None = None,
+    ) -> Any:
+        ...
+
+    def update_story_script_by_session_id(self, session_id: str, updates: dict) -> Any:
+        ...
+
+    def claim_story_script_job(self, session_id: str, lease_seconds: int = 300) -> bool:
         ...
 
     def create_media_task(
@@ -422,6 +498,115 @@ class DatabaseTrainingStore:
         row = self.storage_backend.update_training_session(session_id, updates)
         return self._to_training_session_record(row)
 
+    def get_story_script_by_session_id(self, session_id: str):
+        if hasattr(self.storage_backend, "get_story_script_by_session_id"):
+            try:
+                return self.storage_backend.get_story_script_by_session_id(session_id)
+            except (ProgrammingError, OperationalError, DatabaseError) as exc:
+                if _is_missing_training_story_scripts_table_error(exc):
+                    _raise_story_script_storage_unavailable(
+                        operation="get_story_script_by_session_id",
+                        error=exc,
+                        details={"session_id": session_id},
+                    )
+                raise
+        return None
+
+    def count_story_scripts_excluding_session_id(self, session_id: str) -> int:
+        if hasattr(self.storage_backend, "count_story_scripts_excluding_session_id"):
+            try:
+                return int(self.storage_backend.count_story_scripts_excluding_session_id(session_id) or 0)
+            except (ProgrammingError, OperationalError, DatabaseError) as exc:
+                if _is_missing_training_story_scripts_table_error(exc):
+                    _warn_story_script_table_missing("count_story_scripts_excluding_session_id", exc)
+                    return 0
+                raise
+        return 0
+
+    def list_story_scripts_excluding_session_id(self, session_id: str, limit: int = 50):
+        if hasattr(self.storage_backend, "list_story_scripts_excluding_session_id"):
+            try:
+                return self.storage_backend.list_story_scripts_excluding_session_id(session_id, limit=limit)
+            except (ProgrammingError, OperationalError, DatabaseError) as exc:
+                if _is_missing_training_story_scripts_table_error(exc):
+                    _warn_story_script_table_missing("list_story_scripts_excluding_session_id", exc)
+                    return []
+                raise
+        return []
+
+    def create_story_script(
+        self,
+        *,
+        session_id: str,
+        payload: dict,
+        provider: str = "auto",
+        model: str = "auto",
+        major_scene_count: int = 6,
+        micro_scenes_per_gap: int = 2,
+        source_script_id: str | None = None,
+        status: str = "ready",
+        error_code: str | None = None,
+        error_message: str | None = None,
+        fallback_used: bool = False,
+    ):
+        if hasattr(self.storage_backend, "create_story_script"):
+            try:
+                return self.storage_backend.create_story_script(
+                    session_id=session_id,
+                    payload=payload,
+                    provider=provider,
+                    model=model,
+                    major_scene_count=major_scene_count,
+                    micro_scenes_per_gap=micro_scenes_per_gap,
+                    source_script_id=source_script_id,
+                    status=status,
+                    error_code=error_code,
+                    error_message=error_message,
+                    fallback_used=fallback_used,
+                )
+            except (ProgrammingError, OperationalError, DatabaseError) as exc:
+                if _is_missing_training_story_scripts_table_error(exc):
+                    _raise_story_script_storage_unavailable(
+                        operation="create_story_script",
+                        error=exc,
+                        details={"session_id": session_id},
+                    )
+                raise
+        raise NotImplementedError("storage backend does not support create_story_script")
+
+    def update_story_script_by_session_id(self, session_id: str, updates: dict):
+        if hasattr(self.storage_backend, "update_story_script_by_session_id"):
+            try:
+                return self.storage_backend.update_story_script_by_session_id(session_id, updates)
+            except (ProgrammingError, OperationalError, DatabaseError) as exc:
+                if _is_missing_training_story_scripts_table_error(exc):
+                    _raise_story_script_storage_unavailable(
+                        operation="update_story_script_by_session_id",
+                        error=exc,
+                        details={"session_id": session_id},
+                    )
+                raise
+        return None
+
+    def claim_story_script_job(self, session_id: str, lease_seconds: int = 300) -> bool:
+        if hasattr(self.storage_backend, "claim_story_script_job"):
+            try:
+                return bool(
+                    self.storage_backend.claim_story_script_job(
+                        session_id,
+                        lease_seconds=int(lease_seconds or 300),
+                    )
+                )
+            except (ProgrammingError, OperationalError, DatabaseError) as exc:
+                if _is_missing_training_story_scripts_table_error(exc):
+                    _raise_story_script_storage_unavailable(
+                        operation="claim_story_script_job",
+                        error=exc,
+                        details={"session_id": session_id, "lease_seconds": lease_seconds},
+                    )
+                raise
+        return False
+
     def create_media_task(
         self,
         *,
@@ -534,6 +719,8 @@ class DatabaseTrainingStore:
                     details={"task_id": task_id},
                 )
             raise
+        if row is None:
+            return None
         return self._to_training_media_task_record(row)
 
     def complete_media_task(

@@ -8,7 +8,7 @@ function TrainingLandingPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const explicitSessionId = normalizeTrainingSessionId(searchParams.get('sessionId'));
-  const flow = useTrainingMvpFlow(explicitSessionId);
+  const flow = useTrainingMvpFlow(explicitSessionId, { suppressAutoRestoreSessionView: true });
   const {
     bootstrapStatus,
     bootstrapErrorMessage,
@@ -48,6 +48,9 @@ function TrainingLandingPage() {
         if (started) {
           navigate(ROUTES.TRAINING);
         }
+      }}
+      onPrewarmAllSceneImages={(characterId) => {
+        void flow.prewarmAllSceneImages(characterId);
       }}
       updateFormDraft={updateFormDraft}
     />

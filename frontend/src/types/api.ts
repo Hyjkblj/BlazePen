@@ -90,7 +90,7 @@ export interface TrainingCharacterPreviewJobCreateRequest extends GenericApiReco
   idempotency_key: string;
   user_id?: string;
   image_type?: string;
-  group_count?: number;
+  group_count?: 1 | 2;
   generate_scene_groups?: boolean;
   scene_group_count?: number;
   micro_scene_min?: number;

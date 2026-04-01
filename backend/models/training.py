@@ -231,6 +231,38 @@ class TrainingMediaTask(Base):
     finished_at = Column(DateTime, nullable=True)
 
 
+class TrainingStoryScript(Base):
+    """训练剧本库：为每个 session 固化一份连续剧本（可复用/克隆）。"""
+
+    __tablename__ = "training_story_scripts"
+
+    script_id = Column(String(36), primary_key=True, default=_uuid_str)
+    session_id = Column(
+        String(36),
+        ForeignKey("training_sessions.session_id"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    source_script_id = Column(String(36), nullable=True, index=True)
+
+    provider = Column(String(64), nullable=False, default="auto")
+    model = Column(String(128), nullable=False, default="auto")
+
+    major_scene_count = Column(Integer, nullable=False, default=6)
+    micro_scenes_per_gap = Column(Integer, nullable=False, default=2)
+    # Contract: pending -> running -> ready|failed
+    # Backward compatibility: older rows may use `succeeded`.
+    status = Column(String(16), nullable=False, default="ready")  # pending/running/ready/failed(+succeeded legacy)
+    error_code = Column(String(64), nullable=True)
+    error_message = Column(Text, nullable=True)
+    fallback_used = Column(Boolean, nullable=False, default=False)
+    payload = Column(JSON, nullable=False, default=dict)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 class TrainingCharacterPreviewJob(Base):
     """Persisted async preview-job lifecycle for training character portraits."""
 

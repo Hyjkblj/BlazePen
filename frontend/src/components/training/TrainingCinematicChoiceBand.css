@@ -11,6 +11,13 @@
   outline: none;
 }
 
+:root {
+  /* Deeper crimson gradient palette */
+  --training-choice-red-strong: 124, 10, 8; /* #7C0A08 */
+  --training-choice-red: 84, 6, 6; /* #540606 */
+  --training-choice-rose: 255, 220, 210;
+}
+
 .training-cinematic-choice-band::before,
 .training-cinematic-choice-band::after {
   content: '';
@@ -33,8 +40,8 @@
 
 .training-cinematic-choice-band:focus-visible {
   box-shadow:
-    0 0 0 1px rgba(255, 210, 193, 0.44),
-    0 0 0 4px rgba(184, 46, 43, 0.16);
+    0 0 0 1px rgba(var(--training-choice-rose), 0.48),
+    0 0 0 4px rgba(var(--training-choice-red-strong), 0.22);
 }
 
 .training-cinematic-choice-band--disabled {
@@ -66,11 +73,11 @@
   background:
     linear-gradient(
       90deg,
-      rgba(255, 75, 68, 0) 0%,
-      rgba(255, 75, 68, 0.28) 16%,
-      rgba(255, 222, 210, 0.96) 50%,
-      rgba(255, 75, 68, 0.28) 84%,
-      rgba(255, 75, 68, 0) 100%
+      rgba(var(--training-choice-red), 0) 0%,
+      rgba(var(--training-choice-red-strong), 0.52) 16%,
+      rgba(var(--training-choice-rose), 0.98) 50%,
+      rgba(var(--training-choice-red-strong), 0.52) 84%,
+      rgba(var(--training-choice-red), 0) 100%
     );
   filter: blur(8px);
 }
@@ -81,11 +88,11 @@
   background:
     linear-gradient(
       90deg,
-      rgba(255, 75, 68, 0) 0%,
-      rgba(226, 57, 45, 0.26) 18%,
-      rgba(255, 234, 226, 0.96) 50%,
-      rgba(226, 57, 45, 0.26) 82%,
-      rgba(255, 75, 68, 0) 100%
+      rgba(var(--training-choice-red), 0) 0%,
+      rgba(var(--training-choice-red-strong), 0.44) 18%,
+      rgba(255, 244, 240, 0.98) 50%,
+      rgba(var(--training-choice-red-strong), 0.44) 82%,
+      rgba(var(--training-choice-red), 0) 100%
     );
 }
 
@@ -109,14 +116,14 @@
 .training-cinematic-choice-band__reticle-ring--outer {
   width: 124px;
   height: 124px;
-  border: 1px solid rgba(255, 160, 142, 0.12);
+  border: 1px solid rgba(var(--training-choice-red-strong), 0.16);
   border-radius: 50%;
 }
 
 .training-cinematic-choice-band__reticle-ring--inner {
   width: 54px;
   height: 54px;
-  border: 1px solid rgba(255, 214, 201, 0.18);
+  border: 1px solid rgba(var(--training-choice-rose), 0.22);
   border-radius: 50%;
 }
 
@@ -124,22 +131,28 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: radial-gradient(circle, #fff 0%, #fff5ee 36%, #ff8969 70%, rgba(255, 137, 105, 0) 100%);
+  background: radial-gradient(
+    circle,
+    #fff 0%,
+    #fff5ee 34%,
+    rgba(var(--training-choice-red-strong), 0.92) 70%,
+    rgba(var(--training-choice-red-strong), 0) 100%
+  );
   box-shadow:
     0 0 16px rgba(255, 236, 228, 0.92),
-    0 0 34px rgba(255, 96, 67, 0.64);
+    0 0 34px rgba(var(--training-choice-red-strong), 0.7);
 }
 
 .training-cinematic-choice-band__reticle-axis--horizontal {
   width: 172px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 196, 180, 0.32), transparent);
+  background: linear-gradient(90deg, transparent, rgba(var(--training-choice-rose), 0.4), transparent);
 }
 
 .training-cinematic-choice-band__reticle-axis--vertical {
   width: 1px;
   height: 172px;
-  background: linear-gradient(180deg, transparent, rgba(255, 196, 180, 0.16), transparent);
+  background: linear-gradient(180deg, transparent, rgba(var(--training-choice-rose), 0.22), transparent);
 }
 
 .training-cinematic-choice-band__option {
@@ -148,7 +161,7 @@
   border: 0;
   padding: 0;
   background: transparent;
-  color: #fff6f1;
+  color: rgba(0, 0, 0, 0.92);
   text-align: center;
   cursor: pointer;
   transform: translate(-50%, -50%);
@@ -180,11 +193,11 @@
   background:
     linear-gradient(
       90deg,
-      rgba(255, 74, 67, 0) 0%,
-      rgba(224, 58, 47, 0.2) 18%,
-      rgba(255, 212, 198, 0.92) 50%,
-      rgba(224, 58, 47, 0.2) 82%,
-      rgba(255, 74, 67, 0) 100%
+      rgba(var(--training-choice-red), 0) 0%,
+      rgba(var(--training-choice-red-strong), 0.28) 18%,
+      rgba(var(--training-choice-red-strong), 0.18) 50%,
+      rgba(var(--training-choice-red-strong), 0.28) 82%,
+      rgba(var(--training-choice-red), 0) 100%
     );
   opacity: 0.5;
 }
@@ -196,14 +209,21 @@
   background:
     linear-gradient(
       90deg,
-      rgba(255, 74, 67, 0) 0%,
-      rgba(211, 52, 45, 0.18) 22%,
-      rgba(255, 165, 144, 0.22) 50%,
-      rgba(211, 52, 45, 0.18) 78%,
-      rgba(255, 74, 67, 0) 100%
+      rgba(var(--training-choice-red), 0) 0%,
+      rgba(var(--training-choice-red-strong), 0.24) 22%,
+      rgba(var(--training-choice-red-strong), 0.28) 50%,
+      rgba(var(--training-choice-red-strong), 0.24) 78%,
+      rgba(var(--training-choice-red), 0) 100%
     );
   filter: blur(12px);
   opacity: 0.18;
+}
+
+.training-cinematic-choice-band__option.is-active,
+.training-cinematic-choice-band__option.is-selected {
+  filter:
+    saturate(1.08)
+    drop-shadow(0 10px 26px rgba(var(--training-choice-red-strong), 0.22));
 }
 
 .training-cinematic-choice-band__option[data-slot='left'] {
@@ -258,8 +278,8 @@
 .training-cinematic-choice-band__option-mark {
   display: block;
   margin-bottom: 8px;
-  color: rgba(255, 191, 175, 0.76);
-  font-size: 11px;
+  color: rgba(0, 0, 0, 0.68);
+  font-size: 10px;
   letter-spacing: 0.24em;
   text-transform: uppercase;
   opacity: 0;
@@ -280,24 +300,24 @@
 .training-cinematic-choice-band__option-label {
   display: block;
   font-family: 'STSong', 'SimSun', 'Songti SC', serif;
-  font-size: clamp(34px, 3vw, 58px);
+  font-size: clamp(22px, 2.1vw, 40px);
   font-weight: 700;
   line-height: 1.08;
   letter-spacing: 0.03em;
-  color: rgba(255, 244, 239, 0.94);
-  text-shadow: 0 0 12px rgba(0, 0, 0, 0.24);
+  color: rgba(0, 0, 0, 0.92);
+  text-shadow: none;
 }
 
 .training-cinematic-choice-band__option[data-slot='top'] .training-cinematic-choice-band__option-label {
-  font-size: clamp(42px, 4vw, 72px);
+  font-size: clamp(26px, 2.6vw, 46px);
 }
 
 .training-cinematic-choice-band__option-hint {
   display: block;
   max-width: 100%;
   margin-top: 12px;
-  color: rgba(255, 211, 198, 0.82);
-  font-size: 12px;
+  color: rgba(0, 0, 0, 0.68);
+  font-size: 11px;
   letter-spacing: 0.08em;
   opacity: 0;
   transform: translateY(6px);
@@ -316,9 +336,7 @@
 
 .training-cinematic-choice-band__option.is-active .training-cinematic-choice-band__option-label,
 .training-cinematic-choice-band__option.is-selected .training-cinematic-choice-band__option-label {
-  text-shadow:
-    0 0 16px rgba(255, 240, 236, 0.46),
-    0 0 40px rgba(255, 82, 70, 0.22);
+  text-shadow: none;
 }
 
 .training-cinematic-choice-band__option:disabled {

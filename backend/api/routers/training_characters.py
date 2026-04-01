@@ -1,4 +1,4 @@
-﻿"""Training-character API routes."""
+"""Training-character API routes."""
 
 from __future__ import annotations
 
@@ -400,18 +400,36 @@ async def remove_training_character_background(
                 )
             image_url = images[0]
 
-        transparent_path = image_service.remove_background_with_rembg(
-            image_path=image_url,
-            character_id=character_id_int,
-            rename_to_standard=False,
-        )
-        if not transparent_path:
-            return error_response(
-                code=500,
-                message="failed to remove background",
-                error_code=IMAGE_PROCESSING_FAILED,
-                details={"route": "training.characters.remove_background", "character_id": character_id_int},
+        # Background removal is an optional enhancement. If the server lacks rembg/Pillow runtime,
+        # fall back to a no-op result (transparent_url == selected_image_url) instead of 500.
+        try:
+            transparent_path = image_service.remove_background_with_rembg(
+                image_path=image_url,
+                character_id=character_id_int,
+                rename_to_standard=False,
             )
+        except RuntimeError as exc:
+            reason = str(exc)
+            if reason in {"rembg_unavailable", "pillow_unavailable", "rembg_session_unavailable"}:
+                transparent_path = None
+            else:
+                raise
+
+        if not transparent_path:
+            deleted_count = 0
+            if image_urls and selected_index is not None and len(image_urls) > 1:
+                deleted_count = image_service.delete_unselected_character_images(
+                    character_id=character_id_int,
+                    image_urls=image_urls,
+                    selected_index=selected_index,
+                )
+
+            response_payload = TrainingCharacterRemoveBackgroundResponse(
+                selected_image_url=image_url,
+                transparent_url=image_url,
+                deleted_count=deleted_count,
+            )
+            return success_response(data=response_payload.model_dump())
 
         import os
         from urllib.parse import quote

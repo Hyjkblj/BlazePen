@@ -1,0 +1,151 @@
+目标：将本次 Review 的阻塞问题与主要风险转化为可执行修复方案（前端/后端分开），并明确需要补齐的测试路径。
+
+假设与范围说明：
+- 本计划基于工作区未提交改动的 diff 以及已读到的关键文件内容生成；未读到的模块（例如部分 training_store 实现）不做主观脑补，仅提出需要补证的验证点。
+- “修复/优化”优先保证：契约稳定、单一事实源、可恢复、可测试、可观测；不以“能跑”为验收标准。
+
+============================================================
+一、前端修复与优化方案
+============================================================
+
+[P0 - Blocker] 修复 StaticAssetImage 在 imageUrl 变化时不刷新
+- 位置：frontend/src/components/StaticAssetImage.tsx
+- 问题复述：status 仅初始化一次，imageUrl 更新不会触发状态重置，导致新图可能不加载/占位与错误态卡死。
+- 修复方案（推荐）：
+  - 增加 useEffect 监听 imageUrl（或其 trim 后结果）变化：
+    - imageUrl 为空 -> status=idle
+    - imageUrl 非空 -> status=loading
+    - 同时清理上一轮 error 影响（至少让 <img> 重新渲染/触发 onLoad/onError）
+  - 或者：在 img 上使用 key={normalizedUrl} 作为兜底触发重新挂载（注意：这会丢失浏览器缓存相关状态，但换来确定性）。
+- 验收标准：
+  - 场景切换（sceneImageUrl 从 A->B）能稳定显示 B。
+  - retrySceneImage 触发后，若返回新 URL 或同 URL 重试，都能重新进入 loading->loaded。
+
+[P1 - Major] 收敛 hooks 层的后端 payload 兼容逻辑，避免把后端内部字段散落到 hook
+- 位置：frontend/src/hooks/useTrainingSceneImageFlow.ts（createTrainingMediaTask 调用处）
+- 问题复述：hook 内直接拼 snake_case payload 并硬编码 generate_storyline_series=true，契约/策略泄漏到 hook 热路径。
+- 修复方案（边界纠正）：
+  - 在 frontend/src/services/trainingApi.ts 中新增一个明确的构建函数/参数类型：
+    - buildTrainingSceneImageTaskRequest({sessionId, roundNo, scenario, ...}) -> {taskType,idempotencyKey,payload,maxRetries}
+  - hook 只传“领域输入”（sessionId、roundNo、scenario 对象）给 service；由 service 负责字段命名与契约版本化。
+  - 将 generate_storyline_series 的默认策略改为：
+    - 默认 false（轻任务路径），仅在明确用户动作/配置开关时启用；或
+    - 由后端根据 image_type=scene 自己决定是否 series（前端不应强制）。
+- 验收标准：
+  - 前端 hook 文件不再出现一坨 snake_case payload 字段集合。
+  - 未来后端字段调整，只需要修改 trainingApi 的 builder/normalizer，不需改 hooks/pages。
+
+[P1 - Major] 将 useTrainingMvpFlow 的恢复逻辑收敛为单一状态机，降低竞态与重复恢复
+- 位置：frontend/src/flows/useTrainingMvpFlow.ts（多段 useEffect + setTimeout(0)）
+- 问题复述：同一“物化 sessionView”目标被 3 个 effects 竞态触发，依赖 setTimeout(0) 规避，难以证明幂等与可测。
+- 修复方案：
+  - 引入一个 restoreKey（例如 `${source}:${sessionId}`）与 inFlightRef：
+    - 仅当 restoreKey 变化且不在 inFlight 中才触发 restore。
+  - 明确恢复优先级并单点实现：
+    - explicitSessionId > activeSession.sessionId > resumeTarget.sessionId（注意：Landing 可禁用 resumeTarget 自动恢复的策略保持不变）
+  - 去掉不必要的 setTimeout(0)；用明确状态（bootstrap.status、sessionIdHint）驱动。
+- 验收标准：
+  - 任何路由重挂载/StrictMode 重渲染下，不会发生多次 restoreSession 调用（除非 restoreKey 变化）。
+  - 恢复失败/重试路径可预测，测试可以稳定断言调用次数与最终 UI 状态。
+
+[P1 - Major] 修复预览任务恢复提示文案乱码
+- 位置：frontend/src/hooks/useTrainingCharacterPreviewFlow.ts（setPreviewError 的恢复提示分支）
+- 修复方案：
+  - 替换乱码字符串为可读中文（例如：“检测到未完成的形象图任务，正在恢复中...”）。
+  - 同时检查 git diff 是否存在编码混入（避免后续再次引入）。
+- 验收标准：
+  - 命中“恢复缓存 jobId”的路径时，UI 文案可读且与产品语义一致。
+
+------------------------------------------------------------
+前端测试补齐（必须落到具体路径）
+------------------------------------------------------------
+1) 单元测试：StaticAssetImage URL 变化刷新
+- 新增/更新：frontend/src/components/StaticAssetImage.test.tsx（或在现有测试文件中补）
+- 覆盖：
+  - 初次加载 imageUrl=A -> loaded
+  - rerender imageUrl=B -> status 回到 loading 并最终显示 B
+  - imageUrl 置空 -> 回到占位（idle）
+
+2) Flow/Hook 行为测试：Scene image 任务创建与幂等
+- 文件建议：frontend/src/hooks/useTrainingSceneImageFlow.test.tsx（已存在未读文件，可复用）
+- 覆盖：
+  - 同 sessionId+scenarioId 的 restore 不重复 create（已有类似测试思路，但应覆盖 imageUrl 变化与 polling 竞态）
+  - 409 CONFLICT adopt_existing_task 与 scope mismatch retry_new_attempt 两条路径
+
+3) 路由集成测试：Training 页面恢复/重试稳定性
+- 文件：frontend/src/pages/Training.integration.test.tsx（已存在）
+- 补强：
+  - sceneImageUrl 切换后 <img src> 必然更新（结合 StaticAssetImage 修复）
+  - retrySceneImage 后不会残留旧 error 占位
+
+============================================================
+二、后端修复与优化方案
+============================================================
+
+[P0 - Blocker] 恢复/补齐后端训练域关键测试覆盖（禁止“删测即合并”）
+- 位置：backend/test_*.py 大量被删除
+- 修复方案（两种选一，必须有 CI 执行）：
+  A) 恢复被删的关键测试文件（优先恢复训练域：路由契约、恢复模型、幂等与重复提交、media task 超时/恢复）。
+  B) 若已迁移到新测试框架/目录：
+     - 提供迁移说明（mapping：旧测试->新测试）；
+     - 确保新测试在 CI 默认执行；
+     - 覆盖率至少等价于旧关键测试（见下方“后端测试补齐路径”）。
+- 验收标准：
+  - PR 合并前，训练域核心路径在 CI 中有稳定回归测试（不是本地手跑）。
+
+[P1 - Major] 修正 media_task_executor 中 session_id 的错误兜底（禁止 user_id 充当 session_id）
+- 位置：backend/training/media_task_executor.py（_execute_scene_series_task 内 session_id 选择逻辑）
+- 问题复述：payload.session_id 不存在时用 payload.user_id 兜底，导致会话概念混用。
+- 修复方案：
+  - session_id 必须来自 payload.session_id 或 payload.training_session_id（二选一），否则抛出 TrainingMediaTaskExecutionFailedError（明确 reason=missing_session_id）。
+  - 同时在 TrainingMediaTaskPolicy（若存在）中对 image_type=scene-series 的 payload 做更严格校验：必须包含 session_id、round_no、scenario_id（按你们实际需要裁剪）。
+- 验收标准：
+  - 任意缺 session_id 的 scene-series 任务请求会得到稳定的 400/业务错误码（而不是生成“training_session”假 id）。
+  - 任务命名规则、静态资源 key、可观测日志中的 session_id 可追溯且一致。
+
+[P1 - Major] StoryScriptService 的并发控制从“进程内锁”迁移到“存储单一事实源”
+- 位置：backend/api/services/training_story_script_service.py
+- 问题复述：类级 _locks 只能在单进程内防并发；多实例下仍可能重复 ensure/create；且锁表可能无限增长。
+- 修复方案：
+  - 移除/弱化 _locks：把 ensure 的关键并发点下沉到 store：
+    - 使用唯一约束（session_id unique）+ 原子 upsert：若不存在则插入 pending，否则返回现有行；
+    - 状态机转移必须原子（例如：仅当 status!=running/ready 时才从 pending->running）。
+  - executor 的 claim_story_script_job 已存在（lease_seconds），应成为跨进程的主并发机制；service 不应再额外依赖内存锁。
+- 验收标准：
+  - 并发两次 ensure：返回同一 script_id（或同一 session_id 行），不重复创建，不 500。
+  - 多 worker 部署下不会出现重复生成或状态互相覆盖。
+
+[P1 - Major] 统一训练域错误映射，避免 endpoint 手写分支漂移
+- 位置：backend/api/routers/training.py（_build_training_domain_error_response 与 story-script endpoints）
+- 修复方案：
+  - 将 TrainingStorageUnavailableError、TrainingStoryScriptInvalid/NotFound 等纳入统一映射函数；
+  - endpoint 只捕获“训练域异常”并交给统一映射；减少散落的 error_response/not_found_response 分支。
+- 验收标准：
+  - 同一种错误（例如 storage unavailable）在不同 endpoint 返回一致的 HTTP code + error_code + details 结构。
+
+------------------------------------------------------------
+后端测试补齐（必须落到具体路径）
+------------------------------------------------------------
+1) Story script ensure 幂等与并发
+- 覆盖：
+  - 并发 ensure 两次：只产生 1 条脚本记录；第二次返回同一记录；若已有 pending/running，ensure 只触发 submit_session（最多一次）且不创建新行。
+  - GET /story-scripts/{session_id} 在不存在脚本时返回 TRAINING_STORY_SCRIPT_NOT_FOUND（read-only）。
+
+2) Media task scene-series 契约与一致性
+- 覆盖：
+  - 缺 session_id 的 scene-series 请求：稳定失败（400 + TRAINING_MEDIA_TASK_EXECUTION_FAILED 或等价错误码）。
+  - recover_pending_tasks：running 超过 recovery_timeout 进入 timeout；未超时的 running 回退 pending 并被重新调度。
+
+3) Round submit 重复提交/幂等保护（回归）
+- 覆盖：
+  - 同 session_id 同 round_no 重复提交：返回 TRAINING_ROUND_DUPLICATE（或恢复路径一致）。
+  - scenario mismatch：返回 TRAINING_SCENARIO_MISMATCH 并携带 expected/allowed ids（若实现有）。
+
+============================================================
+三、落地顺序建议（最小风险合并路径）
+============================================================
+1) 先修前端 StaticAssetImage（P0）+ 乱码提示（P1）+ 对应前端测试。
+2) 后端先恢复/补齐关键测试（P0），否则任何进一步改动都不可控。
+3) 修后端 session_id/user_id 混用（P1）+ story-script 并发控制（P1）。
+4) 最后再收敛前端 flow 恢复状态机与契约 builder（P1），保证可维护性与后续演进成本。
+

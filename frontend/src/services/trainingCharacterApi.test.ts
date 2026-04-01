@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import httpClient, { getErrorData, getErrorStatus, isTimeoutError } from '@/services/httpClient';
 import {
   createTrainingCharacterPreviewJob,
@@ -98,7 +98,7 @@ describe('trainingCharacterApi', () => {
         character_id: 12,
         idempotency_key: 'preview-obs-key',
         image_type: 'portrait',
-        group_count: 3,
+        group_count: 2,
       })
     ).resolves.toMatchObject({
       jobId: 'preview-job-obs-1',
@@ -127,7 +127,7 @@ describe('trainingCharacterApi', () => {
         character_id: 12,
         idempotency_key: 'preview-conflict-key',
         image_type: 'portrait',
-        group_count: 3,
+        group_count: 2,
       })
     ).rejects.toMatchObject({
       code: 'TRAINING_CHARACTER_PREVIEW_JOB_CONFLICT',
@@ -154,7 +154,7 @@ describe('trainingCharacterApi', () => {
         character_id: 12,
         idempotency_key: 'preview-timeout-key',
         image_type: 'portrait',
-        group_count: 3,
+        group_count: 2,
       })
     ).rejects.toMatchObject({
       code: 'REQUEST_TIMEOUT',

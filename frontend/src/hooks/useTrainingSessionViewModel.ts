@@ -252,6 +252,8 @@ export const resolveTrainingSessionWorkspaceSeed = ({
     explicitSessionId,
     activeSession,
     resumeTarget,
+    // Keep cached resume-target out of auto-restore by default.
+    // Landing page should offer an explicit restore action instead of auto-restoring on entry.
     allowResumeTargetFallback: false,
   });
 

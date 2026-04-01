@@ -1,0 +1,30 @@
+## 前端 Findings
+- [Minor] docs/runbooks/20260331_training_fix_plan.md:32-46
+  问题：静态资源方案 A/方案 B 写得清晰，但缺少“如何判定当前入口是否具备 /static 代理”的可执行判据与具体操作指令。
+  原因：多入口（story/training/electron）下，开发者很容易“跑错入口/端口”导致复现；如果没有明确检查项（端口、env、预期请求落点），runbook 仍会被误用。
+  影响：方案落地后仍可能出现“明明有方案但环境没配对”的故障与反复排障。
+  建议：补一段明确 checklist：当前页面运行端口、后端端口、是否存在 `/static` 代理、以及推荐的 `VITE_STATIC_ASSET_ORIGIN` 示例值（本地/生产各一）。
+
+- [Minor] docs/runbooks/20260331_training_fix_plan.md:41-46
+  问题：前端回归测试描述中提到“形成可请求 URL”，但未明确“以哪种方式验证”（单测 string 断言 / e2e 真请求 / 日志断言）。
+  原因：不同层级测试信号不同；若只做 string 断言可能漏掉代理配置问题，若强制真请求又易引入不稳定。
+  影响：测试落地不一致，导致回归覆盖虚化。
+  建议：明确分层：单测只断言拼接规则；smoke 用 `vite dev:training` 形态下对 `/static/...` 做一次 HEAD/GET（或用 mock server）验证代理链路。
+
+## 后端 Findings
+- [Minor] docs/runbooks/20260331_training_fix_plan.md:100-125
+  问题：story script Phase A/B 的契约方向正确，但建议在 runbook 里明确“Phase A 返回结构”与“Phase B 返回结构”的最小字段集合，避免实现时出现前后端各自脑补。
+  原因：当前用文字描述字段存在性（optional），但没有给出最小 DTO 示例（ready/pending/failed）。
+  影响：实现容易偏离，造成前后端联调返工。
+  建议：补 3 个最小 JSON 示例（ready/pending/failed），并明确 error_code 的命名规则（稳定常量集合）。
+
+## Open Questions
+- 无。
+
+## 测试缺口
+- 前端：runbook 未明确 electron/preview 形态下的 `/static` 策略与验证方式（是否必须走 origin，还是也能代理）。
+- 后端：runbook 未列出 story script 并发 ensure 的“锁粒度”（进程内锁/DB 乐观锁/唯一约束），建议明确以便实现与测试对齐。
+
+## Review Summary
+- 本文档总体可执行性强，且明确了“先扩展契约、后收敛行为”的不冲突策略。
+- 当前主要优化点是把关键契约进一步“示例化/可验证化”（如何检查代理、Phase A/B 最小 DTO 示例、测试分层），以减少落地过程中的理解偏差与返工。

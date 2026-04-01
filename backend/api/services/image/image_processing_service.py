@@ -75,16 +75,14 @@ class ImageProcessingService:
             处理后的图片路径（PNG格式，透明背景），如果失败返回None
         """
         if not REMBG_AVAILABLE:
-            logger.warning("rembg未安装，无法使用高质量背景去除")
-            return None
+            # 让上层能区分“功能不可用”和“处理失败”，避免直接 500。
+            raise RuntimeError("rembg_unavailable")
         
         if not PIL_AVAILABLE:
-            logger.warning("Pillow未安装，无法处理图片")
-            return None
+            raise RuntimeError("pillow_unavailable")
         
         if not self.rembg_session:
-            logger.warning("rembg会话未初始化，无法去除背景")
-            return None
+            raise RuntimeError("rembg_session_unavailable")
         
         try:
             from io import BytesIO

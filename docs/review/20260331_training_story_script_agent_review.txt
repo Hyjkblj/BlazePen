@@ -1,0 +1,72 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+
+## 后端 Findings
+- [Blocker] backend/api/services/training_story_script_service.py:20-83, backend/api/routers/training.py:330-353
+  问题：在 `GET /v1/training/story-scripts/{session_id}` 读接口内“惰性 ensure + 可能调用 LLM + 写库”，把重任务塞进同步热路径，且无超时/熔断/排队保护。
+  原因：LLM 生成与 JSON 校验是高延迟、高失败率操作；把它放进 GET 会让读取接口不稳定，同时把“读模型”变成“隐式写模型”，破坏边界与可观测性（接口成功但实际写入/生成失败会被吞掉）。
+  影响：训练主路径会出现长尾延迟、偶发 500/卡死；在并发恢复/重复刷新时会造成雪崩式外部依赖压力；排障困难（GET 看似成功但 payload 可能为空）。
+  建议：
+  - 将 ensure 改为异步任务流（create/ensure endpoint 或后台 job），GET 只读已生成脚本；或至少做“生成中”状态（pending/running/failed）并返回稳定 DTO。
+  - 对生成过程增加超时、并发保护（同 session 只允许一个生成在飞）、以及结构化日志/trace（session_id/script_id）。
+
+- [Blocker] backend/training/story_script_agent.py:8-12,161-196
+  问题：脚本“池化克隆”策略（池足够大就从其他 session 随机抽样并克隆进当前 session）引入跨会话数据混用，破坏“会话事实源”与个性化隔离，且存在合规/隐私与一致性风险。
+  原因：剧本 payload 可能包含玩家画像（name/identity）、时间线/事件细节等。跨 session 复用等价于把别人的生成结果作为当前会话事实源；而且抽样标准仅基于数量阈值，不基于训练模式/版本/风险标签等契约。
+  影响：用户会看到与其画像不一致的剧本；同一 session 的恢复虽然稳定（因为写入后固化），但“生成来源”不可解释；也会导致线上问题难复现（同版本不同机器 pool 内容不同）。
+  建议：
+  - 若确实要复用，必须在服务端明确“模板库/版本库”的领域概念（与 session 解耦），并做脱敏与版本标记；不要从真实用户 session 里抽样克隆。
+  - 抽样需按 `script_version/training_mode/scenario_bank_version` 等维度分桶，避免契约漂移。
+
+- [Major] backend/training/story_script_agent.py:223-360
+  问题：LLM 输出解析脆弱（直接 `json.loads(raw)`），对常见的“额外前后缀文本/代码块/截断”缺少提取与纠错策略；失败后降级到本地 fallback，但未把失败原因稳定上报为可消费错误码/状态。
+  原因：仅靠 system prompt 不能保证严格 JSON；当前只做两次尝试且把失败吞成 warning，最终仍返回 payload（fallback 或空），使上层难以判断质量与来源。
+  影响：线上会出现“看似成功但内容质量/结构不达标”的静默失败；前端/调用方无法区分“真实生成成功 vs fallback”，也无法决定是否重试/提示用户。
+  建议：
+  - 增加 JSON 提取器（例如定位首个 `{` 到最后一个 `}`）与结构化校验错误上报。
+  - 把生成结果状态写入表字段或 payload 元信息（`generation_status`, `fallback_used`, `error_code`），并在 API DTO 暴露稳定字段（不要靠 message 文本）。
+
+- [Major] backend/api/services/training_story_script_service.py:66-83, backend/training/training_store.py:474-534
+  问题：当数据库缺表/写入失败时，store 可能返回 `None` 或 service 返回“空 payload”来保持 GET 稳定，导致失败被静默吞掉，形成双事实源（“脚本存在/不存在”的判定漂移）。
+  原因：`create_story_script` 在缺表时返回 `None`，而 service catch-all 后返回空结构；调用方无法感知这是“系统配置问题”还是“脚本确实为空”。
+  影响：上线时若 migration 未执行，会出现长期隐性失败；同时前端可能把空 payload 当成有效数据继续推进，造成更难排障的后续错误。
+  建议：
+  - 缺表属于运维/部署阻塞错误，应该返回稳定错误码（例如 `TRAINING_STORAGE_UNAVAILABLE` / `TRAINING_STORY_SCRIPT_STORAGE_UNAVAILABLE`）而不是空 payload。
+  - 若必须返回占位，也应返回 `status=failed` + `error_code`，并在日志中打出一次性告警。
+
+- [Major] backend/training/story_script_agent.py:60-122
+  问题：`build_training_scenario_payload_sequence_from_story_script()` 用 title 作为 major scene lookup key，存在同名覆盖与不稳定映射；且 options 若不足 3 个不会被强制补齐，可能生成“无选项/少选项”的训练场景。
+  原因：title 非唯一标识；而训练场景选项数量属于强契约（前端/训练流假设存在可选项）。目前只是在 Pydantic 模型里“描述必须 3 个”，但未在 mapper 层强制校验/补齐策略。
+  影响：会导致训练流程在某些脚本下不可用（无法提交/无法渲染选项），属于恢复与主路径稳定性风险。
+  建议：
+  - 使用 `scene_id` 或输入摘要的 `id` 做映射键，避免 title 碰撞。
+  - 在 mapper 层显式校验 options 数量，失败时返回可诊断错误（不要静默少选项）。
+
+- [Minor] backend/run_story_script_agent.py:48-83
+  问题：CLI runner 直接引用 API service 组装依赖，容易把“调试入口”变成隐性生产依赖路径；且未明确环境变量/模型配置缺失时的行为。
+  原因：调试脚本若被误用，会绕过 API 入口的观测与权限控制；同时容易在不同环境里跑出与线上不一致的结果。
+  影响：排障与复现成本上升。
+  建议：将 CLI 明确标注为 dev-only，并在输出中打印关键配置（provider/model/是否 fallback），或放入 `tools/` 并在 README 说明。
+
+- [Minor] backend/alembic/versions/20260331_0006_training_story_scripts.py:36-81
+  问题：migration 将 `payload` 设为 `nullable=False` 但未给 server_default；与部分 DB/ORM 行为结合时，错误信息可能不够直观。
+  原因：不同数据库对 JSON 默认值处理差异较大。
+  影响：迁移或写入失败时排障成本略高。
+  建议：在 ORM 层已 default=dict 的情况下问题不大，但建议在 service/contract 层确保永不写入 None，并在失败时返回稳定错误码。
+
+## Open Questions
+- “剧本复用”到底是产品需求（模板库）还是工程降本？如果是模板库，为什么要从真实 session 抽样，而不是单独维护模板集合？
+- `GET /story-scripts/{session_id}` 的目标契约是什么：强一致（必须有脚本）还是弱一致（可能为空/生成中）？如果弱一致，是否需要返回 `status` 字段？
+
+## 测试缺口
+- 后端：缺少 story script 的契约测试与恢复测试：
+  - 同一 `session_id` 并发 GET 时只生成/写入一次（幂等/并发保护）。
+  - LLM 返回非纯 JSON 时的解析与错误码路径。
+  - options 数量不足/字段缺失时应返回什么错误结构。
+  - migration 未执行（缺表）时必须返回稳定错误码而非空 payload。
+- 前端：如果前端将消费 `TrainingStoryScriptResponse.payload`，需要补 UI 渲染与空态/失败态用例（当前未见相关消费路径）。
+
+## Review Summary
+- 当前“剧本 agent”把重生成任务放进 GET 热路径，并用“吞错+空 payload/本地 fallback”维持表面稳定，这是高风险的可靠性设计。
+- 跨 session 抽样克隆是明显的领域与会话事实源问题，建议立即收敛为“模板库”概念或直接移除该策略。
+- 在未明确契约（status/error_code）前，不建议让前端/训练主路径依赖该脚本能力。

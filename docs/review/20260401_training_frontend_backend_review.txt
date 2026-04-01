@@ -1,0 +1,134 @@
+## 前端 Findings
+- [Blocker] `frontend/src/flows/useTrainingMvpFlow.ts:542-581`
+  问题：在 landing 阶段自动调用 `bootstrap.startTrainingSession` 预热会话，会产生服务端有副作用的“隐式会话创建”。
+  原因：`flows` 应编排“用户显式动作驱动的业务流程”，但这里把“预热”实现成真正创建训练会话，破坏“契约优先 + 可恢复”的边界；同时引入“用户未进入训练页但后端已有 session”的隐式状态，形成双事实源（UI 认为未开始 vs 服务端已开始）。
+  影响：刷新/退出/反复进出 landing 会产生孤儿 session、重复计费/资源占用、恢复路径歧义（到底恢复哪个）；并发下还可能出现“已有 activeSession 但 sessionView 未物化”的边缘状态，后续靠多段 effect 兜底，复杂度继续上升。
+  建议：把预热改成无会话副作用的能力（例如“预编译/缓存提示词、Warmup 模型、或创建 media task 但不创建 session”）；若必须创建 session，必须把它升级为显式用户动作（按钮/确认），并在后端提供“预热 session（可回收/TTL/不计入正式训练）”的独立契约与状态机。
+
+- [Major] `frontend/src/flows/useTrainingMvpFlow.ts:589-653`
+  问题：`prewarmAllSceneImages` 在 flow 内直接拼装 media task payload（snake_case 字段、重复字段、prompt 生成）并调用 `createTrainingMediaTask`。
+  原因：这把“后端契约兼容与 payload 形状”散落在 flow 层，违反 `flows` 与 `services` 的职责边界；后端字段名/必填项变更会迫使 UI 编排层频繁改动，耦合上升。
+  影响：契约演进时容易出现“某处拼 payload、另一处拼 payload”导致不一致；测试也更难覆盖（需要在 flow 测试里断言低层契约细节）。
+  建议：把“scene image task 的 payload 生成 + 幂等键生成 + 调用”下沉到 `services`（例如 `trainingMediaTaskService.createSceneImageTask(...)`），flow 只传结构化领域输入（sessionId/roundNo/scenario）。
+
+- [Major] `frontend/src/hooks/useTrainingSceneImageFlow.ts:47-79`
+  问题：在 hook 内解析 `ServiceError.details` 时同时兼容 `task_id/taskId/existing_task_id/...` 等多套字段名。
+  原因：这是“页面/流程层兼容后端脏字段”的变体（虽然落在 hook 而不是 page），契约兼容逻辑扩散到 UI 域，违反“契约优先、单一事实源”。
+  影响：后端一旦继续演进字段，UI 会继续堆兼容分支；且错误恢复（adopt vs retry）依赖 details 形状，容易在 409 语义变动时误判，造成错误图片/错误任务被 adopt。
+  建议：把 details 规范化放到 `services`（例如 `trainingApi` 将 409 统一映射为稳定 DTO：`{ existingTaskId, scope:{sessionId,roundNo}, idempotencyKey }`）；hook 只消费稳定 DTO。
+
+- [Minor] `frontend/src/pages/Training.tsx:69-153`
+  问题：`Training.tsx` 同时依赖 `assetUrl.getStaticAssetUrl`（通过 `StaticAssetImage`）和页面内的 “/static + VITE_STATIC_ASSET_ORIGIN” 告警逻辑，出现对静态资源契约的重复定义。
+  原因：同一契约（相对静态路径如何补全）在 service 与 page 两处体现，内聚度下降。
+  影响：未来静态资源策略调整（例如改成 `/assets` 或签名 URL）时，需要同步改两处，否则告警与实际行为不一致。
+  建议：把 “是否需要 VITE_STATIC_ASSET_ORIGIN、如何判定契约风险、告警文案触发条件” 抽成 `services/assetUrl` 的判定函数或一个专用 hook（例如 `useStaticAssetContractHealth(url)`），page 只展示结果。
+
+## 后端 Findings
+- [Blocker] `backend/api/services/training_service.py:394-437`
+  问题：`init_training` 在同步热路径里调用 `StoryScriptAgent.ensure_script_for_session(...)` 并覆盖 session snapshots（将训练主线改为脚本驱动），且该更新不与 session 创建同事务提交。
+  原因：违反后端边界与恢复模型要求：
+  - `services`（训练会话初始化）直接依赖 `training.story_script_agent`，把“脚本生成域（LLM/模板/状态机）”穿透进核心训练服务，形成巨型 service 扩张。
+  - session 创建与脚本覆盖通过 `update_training_session` 在锁外执行，缺乏原子一致性；失败时会出现“客户端拿到的 init 响应序列”与“库里 session_meta/snapshots”不一致。
+  影响：会话恢复与回放可能出现同一 session 不同 snapshot 序列、round 提交校验（scenario mismatch）概率上升；线上出现部分写入时难以恢复，只能靠人工修库。
+  建议：把 story-script 生成改为异步任务（async-task）：init 只落库“脚本状态=Pending + seed + 版本”，并返回“脚本未就绪”的可观测状态；由 executor 生成后再通过受控的“snapshot override”事务更新（或在 repository-store 层提供事务封装）；同时把“训练 snapshot 的事实源切换”设计成显式版本化策略（dto 中返回 `snapshot_source: bank|script`）。
+
+- [Major] `backend/api/services/training_story_script_service.py:34-70`
+  问题：`GET /story-scripts/{session_id}` 在开关开启时允许触发 ensure（写入），并在缺失时返回一个“status=missing 的伪脚本”。
+  原因：GET 写入违反“契约稳定 + 可观测 + 可缓存”的基本原则；返回伪对象让客户端难以区分“确实不存在”与“存储不可用/生成失败”，并推动前端依赖 `status/message` 文本语义。
+  影响：中间缓存/重试会把 GET 变成非幂等写；排障时也会出现“200 + missing”掩盖真实故障（例如表缺失、执行器不可用）。
+  建议：彻底移除 GET 写入开关；GET 缺失应返回 404 + 稳定 error_code（或 200 但 `data=null`，由契约决定且保持一致）；“缺失/生成中/失败”应由明确状态机字段表达，并配套可查询的错误码与 traceId。
+
+- [Major] `backend/training/story_script_executor.py:16-98`
+  问题：executor 用进程内 `_scheduled_session_ids` 去重调度，`shutdown(wait=False,cancel_futures=True)` 也可能在进程退出/重启时丢任务且无重放。
+  原因：这把“任务调度幂等/去重/重放”依赖到进程内状态，不符合“可恢复、一致性、可运维”的 async-task 标准。
+  影响：多实例部署或进程重启会导致“pending 永久 pending / failed 误报”，需要人工介入；并且并发 ensure 下仍可能出现重复执行（跨进程无法去重）。
+  建议：把调度去重下沉到 store（例如基于 `session_id + status in (pending,running)` 的条件更新/租约锁），executor 只做 worker；引入可观测字段（`started_at/finished_at/attempt_no/last_error_at`）与超时重试策略。
+
+- [Major] `backend/training/training_store.py:36-110, 422-560`
+  问题：对 `training_story_scripts` 表缺失的错误被“吞掉”并返回 `None/[]/0`，仅打 warning。
+  原因：这会把“存储不可用”降级成“业务上不存在”，破坏单一事实源与故障可见性，且上层服务很容易继续执行并写入其他表，形成半成功状态。
+  影响：迁移未执行/库结构漂移时，系统表现为“功能偶发缺失”，而不是明确 503；会话可能进入不一致状态，恢复成本高。
+  建议：store 层应抛出 `TrainingStorageUnavailableError`（或明确的 repository 异常）让 router 返回 503 + error_code；如果要兼容灰度期，也应只在明确的 feature flag 下允许“读降级”，写操作必须失败。
+
+- [Minor] `backend/api/services/training_media_task_service.py:178-193`
+  问题：服务端在 `_to_task_response` 中为 `error_payload` 补 `message`（从 `reason/detail/error` 推断）。
+  原因：这会鼓励客户端继续依赖 message 文本承载语义，且不同来源字段的优先级不稳定。
+  影响：前端/日志对错误聚合会更混乱；一旦 error payload 结构演进，message 可能变成误导信息。
+  建议：统一错误输出为 `{ code, message, details }` 的稳定 DTO；`message` 仅做人类可读，业务判断只用 `code/details`，并在错误码层面保证覆盖。
+
+## Open Questions
+- `TrainingService.init_training` 里 `allow_llm=False` 目前等价于“同步生成 fallback 脚本并覆盖 snapshots”。这是临时降级还是产品决定？若未来切到 `allow_llm=True`，你们是否接受 init 热路径调用 LLM？
+- story-script 的“事实源切换”是否会影响 `threadId/sessionId` 边界？当前脚本与训练 session 绑定在 `session_id`，是否还有独立的脚本线程概念需要区分？
+- `training_story_scripts.status` 允许的状态集合是什么（pending/running/ready/failed/missing）？目前 migration 默认 `succeeded`、service 映射 `ready/pending/failed`，需要一份明确契约。
+
+## 测试缺口
+- 前端
+  - 缺少对 `useTrainingMvpFlow` landing 自动预热创建 session 的测试：验证不会在用户未点击开始时创建 session（或若必须创建，验证可回收/不会影响恢复选择）。
+  - 缺少对 `useTrainingSceneImageFlow` 409 冲突的 adopt_existing_task 分支测试（当前覆盖了 mismatch->retry，但 adopt 路径同样关键且高风险）。
+  - 缺少对“effect 取消后清理 requestKey 并允许重试”的并发/快速切场景测试（否则可能出现卡死不再发起 create/poll）。
+- 后端
+  - 缺少对 `init_training` “脚本生成/覆盖 snapshots” 的一致性测试：脚本生成失败/存储失败时，确保 session_meta/snapshots 与 init 响应不产生分裂（最好通过事务或明确状态返回）。
+  - 缺少对 `training_story_scripts` 表缺失/迁移未执行 时的契约测试：应返回 503 + `TRAINING_STORAGE_UNAVAILABLE`，而不是 200 missing/null（当前 store 有吞错倾向）。
+  - 缺少对 executor 的跨进程幂等与重放策略测试（至少需要 store 层条件更新/租约锁的单测或集成覆盖）。
+
+## Review Summary
+本次改动在前端引入了更强的恢复与场景图任务韧性（冲突处理、轮询、静态资源前缀与遥测），但也把“预热”做成了隐式会话创建，会显著恶化恢复与一致性，是前端最需要收敛的风险点。后端最大问题是把 story-script 生成与 snapshot 覆盖塞进 `init_training` 同步热路径且缺乏原子性，属于会话事实源层面的架构退化。当前实现还存在对存储缺失的降级吞错，会掩盖真实故障并制造半成功状态。若不解决上述 blocker，不建议合并到会话一致性要求较高的主分支。整体方向（脚本化训练）可以做，但必须先把状态机、事务边界、异步化与契约稳定性补齐。
+
+## 修复与优化方案（可执行）
+### 前端（按优先级）
+1) 去掉“隐式会话创建预热”（对应 Blocker）
+- 修改点：`frontend/src/flows/useTrainingMvpFlow.ts`（删除/替换 `useEffect` 中对 `bootstrap.startTrainingSession` 的自动调用）。
+- 目标行为：landing 仅做“无副作用准备”；只有用户点击“开始训练/确认进入”才创建 session。
+- 若必须预热：新增独立能力契约（建议后端提供）后，前端仅调用 `services` 的 `prewarm` 接口，不创建 training session。
+- 验收：在 landing 停留、刷新、离开路由时，后端 `initTraining` 不应被调用；不会产生多余 session。
+
+2) 统一 media task payload 生成位置（收敛契约耦合）
+- 修改点：把 scene image task 的 payload 与幂等键生成下沉到 `frontend/src/services/`（新建或扩展现有 trainingApi 封装）。
+- 调整：`useTrainingMvpFlow.ts` 与 `useTrainingSceneImageFlow.ts` 仅传领域输入（sessionId/roundNo/scenario），不再拼 snake_case payload。
+- 验收：payload 字段变更只需改 services 层；flow/hook 单测不再断言底层字段名。
+
+3) 409 冲突恢复的 details 规范化（避免 hook 兼容脏字段）
+- 修改点：`frontend/src/services/trainingApi`（或 httpClient 包装层）将 409 映射为稳定结构：`{ existingTaskId, scope:{sessionId,roundNo}, idempotencyKey }`。
+- 调整：`useTrainingSceneImageFlow.ts` 移除多字段名兼容分支，只消费稳定 DTO。
+- 验收：后端 details 字段名切换时，UI 不需要改 hook；adopt/retry 判定路径可单测覆盖。
+
+4) 静态资源契约告警逻辑单点化
+- 修改点：`frontend/src/services/assetUrl.ts` 增加判定函数（例如 `getStaticAssetContractStatus(url)` / `needsStaticAssetOrigin(url)`），`Training.tsx` 只展示结果。
+- 验收：`Training.tsx` 不再自行判断 `/static`；告警与 URL 归一化逻辑一致。
+
+### 后端（按优先级）
+1) 将 story-script 生成从 `init_training` 同步热路径移出（对应 Blocker）
+- 修改点：`backend/api/services/training_service.py` 删除/禁用 init 阶段的 `StoryScriptAgent.ensure_script_for_session` 与 snapshot override。
+- 设计：init 只落库 session（含 `storyline_seed/script_seed`）、并把 script 状态初始化为 `pending`（或不创建脚本行，由 ensure 触发创建）。
+- 执行：通过 `POST /training/story-scripts/{session_id}/ensure` 或提交 async-task 触发生成；由 executor 完成后再更新脚本行与（如需要） session_meta/snapshots。
+- 验收：init 响应与库中 session_meta/snapshots 在失败场景下保持一致；脚本生成失败不会影响 session 初始化与恢复。
+
+2) 明确并版本化“训练快照事实源切换”
+- 修改点：`backend/api/schemas.py`（或 DTO 输出）增加 `snapshot_source`/`script_status` 字段；前端按契约决定是否等待脚本就绪。
+- 建议：不要在同一个 session 内“静默替换”快照序列；若要替换，必须有版本号与可回滚/可观测字段。
+- 验收：同 session 的恢复路径可重放，不会因脚本覆盖导致 scenario mismatch。
+
+3) 禁止 GET 写入，缺失/失败语义用稳定错误码表达
+- 修改点：`backend/api/services/training_story_script_service.py` 移除 `TRAINING_STORY_SCRIPT_GET_LEGACY_ENSURE` 写入开关；GET 缺失返回 404（或 `data=null`，二选一但要稳定）。
+- 修改点：`backend/api/routers/training.py` 对缺失/存储不可用/脚本无效分别返回明确的 httpStatus + error_code（不要用 message 文本表达业务语义）。
+- 验收：GET 可缓存、无副作用；客户端能基于 code/state 做确定性逻辑。
+
+4) executor 去进程内幂等，改为 store 级租约/条件更新
+- 修改点：`backend/training/story_script_executor.py` 去掉 `_scheduled_session_ids` 作为唯一去重手段。
+- 修改点：repository-store 提供 `claim_story_script_job(session_id)`（基于 status 条件更新/租约过期）与 `complete/fail` 原子更新。
+- 验收：多进程/多实例下不会重复生成；进程重启后 pending 可被重新领取并最终收敛。
+
+5) 存储缺失不要“吞掉变成不存在”（提升可观测与一致性）
+- 修改点：`backend/training/training_store.py` 对 story_scripts 表缺失：读可选灰度降级（需 feature flag），写必须抛 `TrainingStorageUnavailableError`；router 返回 503 + `TRAINING_STORAGE_UNAVAILABLE`。
+- 验收：迁移缺失时系统明确报错而不是返回 missing/None；避免半成功写入。
+
+### 测试补齐（与方案绑定）
+- 前端新增：
+  - landing 不创建 session：覆盖“停留/刷新/路由切换”三条路径，断言 `initTraining` 调用次数为 0，且 `activeSession` 不出现。
+  - 409 adopt_existing_task：构造 409 details（稳定 DTO），断言 hook 进入 poll 现有 taskId，不会递增 attempt。
+  - effect 取消重试：快速切换 scenario（或卸载 hook）后再挂载，断言会重新发起 create/poll。
+- 后端新增：
+  - init 与脚本生成解耦一致性：脚本生成失败/存储不可用时，init 仍返回稳定结构；恢复不会出现 scenario mismatch。
+  - 表缺失契约：缺失 migration 时 ensure 返回 503 + `TRAINING_STORAGE_UNAVAILABLE`；GET 缺失返回 404（或 data=null，按最终契约）。
+  - 多实例幂等：同 session 并发 ensure 只会有一个 worker 领取；其余返回 pending/ready 且无重复写入。
+

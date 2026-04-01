@@ -1,0 +1,44 @@
+## 前端 Findings
+- [Blocker] frontend/src/services/assetUrl.ts:1-22
+  问题：通过 `VITE_STATIC_ASSET_ORIGIN` 修复“场景图取不到”是正确方向，但该配置属于新的运行时契约，目前缺少明确文档/默认值策略与回归测试覆盖，容易在不同入口（story/training/electron）下再次失效。
+  原因：静态资源 URL 的可达性不再是“同源默认成立”，而是依赖环境变量与路由入口；如果某个入口未注入该 env 或未配置 `/static` 代理，`/static/...` 仍会落到错误 origin。
+  影响：训练场景图属于主路径资产，一旦契约未被固化，会出现“后端已生成、前端偶发拿不到”的严重回归与排障成本。
+  建议：
+  - 增加最小契约文档：明确什么时候必须设置 `VITE_STATIC_ASSET_ORIGIN`（例如非同源部署/非训练端口），并给出本地与生产示例。
+  - 补齐回归用例（你已新增 `frontend/src/services/assetUrl.test.ts`，需确保覆盖：空配置/配置存在、`/static/...` 拼接、非 `/static` 绝对路径不拼接）。
+
+- [Major] frontend/src/assets/images/home-fenghuo-mainpage.jpg:1
+  问题：静态资源被删除（显示为 D），但未看到对应的替换资源或引用清理的证据。
+  原因：删除大图资产通常会影响 landing/背景图等 UI 主路径；如果引用仍存在，会导致构建/运行时 404 或页面视觉破损。
+  影响：训练/故事入口页面可能出现空白背景、布局异常或打包资源缺失。
+  建议：明确该图片的引用点并同步更新（替换为新资源或移除引用）；同时补一个最小 UI 冒烟（或 e2e）确保入口页加载无 404 资源错误。
+
+## 后端 Findings
+- [Blocker] backend/training/session_storyline_policy.py:744-760
+  问题：`_resolve_storyline_seed()` 在未显式提供 seed 时拼接 `uuid4()`，使同一玩家档案在恢复/重放时得到不同 seed，破坏“可恢复/一致性”。
+  原因：训练域的 storyline 属于会话事实的一部分（决定后续场景序列与叙事连续性），seed 非确定会导致：同 session 的后续扩展不可重现；如果 seed 未被持久化为单一事实源，任何重启/恢复都可能改变剧情序列。
+  影响：恢复路径会出现“同一 sessionId 恢复后场景序列漂移/不可复现”，这是训练主线一致性风险；同时会让测试与线上问题难以复现与排障。
+  建议：
+  - 只允许两种来源：① request 明确传入（`player_profile.script_seed/storyline_seed`）② 服务端为该 session 首次生成并持久化 seed（之后所有恢复都读取持久化 seed），严禁在恢复时再次引入随机源。
+  - 若必须引入随机性，也必须绑定到 sessionId（例如基于 sessionId 的 hash）从而保持可重复。
+
+- [Major] backend/api/routers/training.py:83-104
+  问题：提交回合时新增了从 `submitResult.media_tasks` 派发异步执行器的逻辑（`_dispatch_submit_round_media_tasks`），但缺少幂等/重复派发保护与可观测性（taskId 维度日志/trace）收口。
+  原因：回合提交在真实场景中可能重试/重复提交（网络抖动、前端重复点击、恢复重放）。仅凭 status in {pending,running} 的过滤不足以防止重复 submit_task；且当前失败只 warning，不产出可诊断的稳定信号。
+  影响：可能导致媒体任务重复执行、资源消耗上升、或任务状态被竞态覆盖；线上排障难（无法快速确认是否重复派发/派发次数）。
+  建议：
+  - 在 executor/service 层做 idempotency（taskId 派发记录或状态机约束），router 只做“尽力派发”且带上 traceId/sessionId/taskId 的结构化日志。
+  - 增加一个针对重复提交/恢复重放的集成测试：同一 taskId 多次触发 dispatch 仍只执行一次（或明确允许的次数）。
+
+## Open Questions
+- 训练 storyline 的 seed 计划放在哪里作为单一事实源？是落在训练 session 表字段（推荐）还是某个 snapshot/store 中？
+- `VITE_STATIC_ASSET_ORIGIN` 是否需要在 Electron / Story / Training 三个入口统一配置策略？（否则同一个 `/static/...` URL 在不同入口会行为不一致）
+
+## 测试缺口
+- 前端：缺少针对“在非 training dev server（无 `/static` 代理）环境”下的静态资源可达性测试/说明；建议至少用 `assetUrl` 单测固化 `/static` 拼接规则，并在训练主路径 smoke 测试里断言图片 URL 形态正确。
+- 后端：缺少“storyline seed 持久化 + 恢复一致性”的测试（同 sessionId 多次恢复得到同一 storyline_id/sequence）；缺少“submit round media dispatch 幂等”测试。
+
+## Review Summary
+- 当前工作区变更范围极大（前后端 + DB/migration + 训练剧情策略 + 媒体/静态资源），建议拆分为可审查的小提交，否则很难保证契约与恢复路径被完整验证。
+- 前端对静态资源 origin 的修复方向正确，但必须把新契约文档化并用测试固化，否则“场景图拿不到”会在不同入口反复出现。
+- 后端 storyline seed 引入 `uuid4()` 是本轮最严重的一致性/恢复风险，必须在合并前修正为“首次生成并持久化/或绑定 sessionId 的确定性 seed”。

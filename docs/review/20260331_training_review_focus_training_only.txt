@@ -1,0 +1,58 @@
+## 前端 Findings
+- [Blocker] frontend/src/services/assetUrl.ts:1-22
+  问题：训练场景图/小场景图依赖 `/static/...` 可达性，但当前通过 `VITE_STATIC_ASSET_ORIGIN` 修复属于新增运行契约；若 training 页面运行在“无 /static 代理、且未注入 origin”的入口（常见于多入口 dev/打包形态），仍会出现“后端已生成、前端取不到”。
+  原因：training 场景图返回的是相对路径（如 `/static/images/smallscenes/...`），是否可达取决于当前 origin 的 `/static` 路由与代理配置。单靠代码层拼接不足以覆盖所有训练入口形态，必须把契约固化。
+  影响：训练主路径资产加载失败，用户无法看到场景图，恢复/重试会被误判为“生成失败”而不是“资源路由错误”，严重影响训练体验。
+  建议：
+  - 训练入口必须明确一条统一规则：要么 training 的所有运行形态都保证 `/static` 代理到训练后端（8010），要么强制要求设置 `VITE_STATIC_ASSET_ORIGIN`（并在 training 启动/初始化时检测并提示）。
+  - 在训练主路径 smoke/集成用例里增加断言：拿到的 `sceneImageUrl` 为 `/static/...` 时能被 `getStaticAssetUrl()` 解析到正确 origin（至少覆盖 dev:training 3001 形态）。
+
+- [Major] frontend/src/hooks/useTrainingSceneImageFlow.ts:47-60,240-258
+  问题：对 `TRAINING_MEDIA_TASK_CONFLICT` 的恢复逻辑（从 error.details 读取既存 taskId 并直接进入 running）是必要兜底，但缺少“冲突 task 与当前场景身份一致”的二次校验。
+  原因：冲突可能来自 idempotency_key 误用、后端幂等策略变更、或恢复时刻的竞态；仅凭 taskId 继续轮询，可能把不属于当前 `sessionId/scenarioId/attempt` 的任务结果写回 UI。
+  影响：训练场景图出现“错图/串图”，且由于 UI 侧只看 previewUrl，会被当成正常成功，属于高隐蔽一致性问题。
+  建议：
+  - 后端冲突详情需返回更强的契约字段（至少包含 `idempotency_key/session_id/round_no`），前端在采用 recovered taskId 前做一致性校验；不一致则转入 retry attempt（attemptNo+1）。
+  - telemetry 已补充 `recoveredExistingTaskId` 是加分项，但建议同时上报 `sceneLifecycleKey` 与 `idempotencyKey`，方便定位串图来源。
+
+## 后端 Findings
+- [Blocker] backend/training/session_storyline_policy.py:744-760
+  问题：training storyline 的 seed 在未显式提供时引入 `uuid4()`，导致同一训练会话在恢复/重放时可能生成不同 storyline_id 与场景序列，破坏训练域“可恢复/一致性”。
+  原因：storyline seed 属于训练会话事实的一部分，必须可重复；若 seed 不被持久化为 session 的单一事实源，恢复路径会漂移。
+  影响：同 `sessionId` 恢复后剧情/场景序列变化，强用户感知且不可复现，是训练主线一致性阻塞问题。
+  建议：
+  - 只允许两种来源：① 客户端显式传入 `script_seed/storyline_seed`；② 服务端在 session 首次初始化时生成并持久化 seed（后续任何恢复只读该 seed）。
+  - 若必须自动生成，建议基于 `session_id` 的确定性 derivation（hash）替代 uuid。
+
+- [Blocker] backend/api/services/training_story_script_service.py:20-83, backend/api/routers/training.py:330-353
+  问题：训练域 `GET /v1/training/story-scripts/{session_id}` 在读接口内执行 ensure（可能触发 LLM 生成/校验）并写库，失败时吞错返回空 payload，把重任务塞进同步热路径且破坏读写边界。
+  原因：LLM 生成高延迟高失败；GET 语义被隐式变为写入与副作用；缺少并发保护/超时/状态机与稳定错误码。
+  影响：训练恢复/刷新/并发访问时长尾延迟与外部依赖放大；migration 未执行或写入失败时“假成功”扩散到下游（训练服务可能基于空脚本继续推进）。
+  建议：
+  - 训练域必须改为异步状态流：GET 只读 `status`（ready/pending/failed）+ `error_code`；ensure 走单独 endpoint 或后台 job。
+  - 缺表/存储不可用必须返回稳定 503 错误码（不能用空 payload 伪装成功），否则训练环境会长期隐性坏。
+
+- [Major] backend/training/story_script_agent.py:8-12,161-196
+  问题：training 剧本的“池化抽样克隆（从其他 session 抽样并写入当前 session）”是跨会话数据复用，破坏训练会话隔离与事实源边界。
+  原因：抽样源来自真实 session；且未按 `training_mode/script_version/scenario_bank_version` 等维度分桶。训练域应避免把别人的会话产物当成当前会话事实源。
+  影响：训练内容与玩家画像/进度不一致，来源不可解释；线上问题难复现；潜在数据混用风险。
+  建议：若要复用，抽象为独立的“training script 模板库”（脱敏+版本化+灰度），禁止从真实 session 抽样克隆。
+
+- [Major] backend/api/routers/training.py:83-104
+  问题：训练回合提交路径中派发 media task（`_dispatch_submit_round_media_tasks`）缺少幂等与派发可观测性收口。
+  原因：训练提交天然存在重试/重复提交；仅靠 status 过滤不足以防重复派发，且失败只 warning。
+  影响：训练媒体任务可能重复执行、资源消耗上升、任务结果竞态覆盖；难定位派发次数。
+  建议：在 executor/service 层做 taskId 级幂等；补结构化日志（session_id/task_id/round_no/traceId）与“重复提交不重复派发”的测试。
+
+## Open Questions
+- training storyline seed 的单一事实源准备落在何处（`training_sessions.session_meta` / 专用字段 / snapshot）？恢复时如何保证只读不再生成？
+- training story script 的对外契约是否会成为训练主路径依赖？若会，必须明确 `status/error_code` 与异步生成模型；若不会，为什么要在训练服务内引入 LLM 生成链路？
+- training media task 冲突时后端是否能返回更强的一致性字段（idempotency_key/session_id/round_no），供前端校验避免串图？
+
+## 测试缺口
+- 前端（training）：缺少“多入口/非同源”下训练场景图可达性验证；建议至少补 `assetUrl.test.ts` + training smoke 中对 `/static` 解析行为的断言。
+- 后端（training）：缺少 storyline seed 持久化与恢复一致性测试；缺 story script 并发 ensure 幂等与缺表错误码契约测试；缺 submit round media dispatch 幂等测试。
+
+## Review Summary
+- 本轮 training 相关改动触及训练主线的恢复一致性与热路径可靠性，存在明确阻塞点：storyline seed 随机化、story script GET 热路径生成/写库并吞错。
+- 场景图“前端取不到”问题已通过引入 origin 配置开始收敛，但必须把训练入口运行契约文档化并用测试固化，才能真正消除回归面。

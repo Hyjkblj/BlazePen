@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TrainingPortraitPreviewStatus } from '@/components/training/TrainingPortraitPreview';
 import { ServiceError } from '@/services/serviceError';
 import {
@@ -46,6 +46,7 @@ type ActivePreviewJobContext = PersistedPreviewJobSnapshot & {
 type UseTrainingCharacterPreviewFlowOptions = {
   formDraft: TrainingFormDraftValue;
   onStartTraining: () => void | Promise<void>;
+  onPrewarmAllSceneImages: (characterId: string) => void | Promise<void>;
   updateFormDraft: (field: keyof TrainingFormDraftValue, value: string) => void;
 };
 
@@ -178,7 +179,7 @@ const hashString = (input: string): string => {
 
 const buildPreviewIdempotencyKey = (characterId: string, attemptNo: number): string => {
   const normalizedAttemptNo = Math.max(1, Math.floor(attemptNo));
-  const canonicalPayload = `${characterId}|portrait|3|v2|attempt:${normalizedAttemptNo}`;
+  const canonicalPayload = `${characterId}|portrait|2|v3|attempt:${normalizedAttemptNo}`;
   return `training-preview-${characterId}-a${normalizedAttemptNo}-${hashString(canonicalPayload)}`;
 };
 
@@ -247,6 +248,7 @@ const clearPersistedPreviewSnapshot = () => {
 export const useTrainingCharacterPreviewFlow = ({
   formDraft,
   onStartTraining,
+  onPrewarmAllSceneImages,
   updateFormDraft,
 }: UseTrainingCharacterPreviewFlowOptions): UseTrainingCharacterPreviewFlowResult => {
   const [previewStatus, setPreviewStatus] = useState<TrainingPortraitPreviewStatus>('idle');
@@ -258,6 +260,7 @@ export const useTrainingCharacterPreviewFlow = ({
   const [identityPresetOptions, setIdentityPresetOptions] = useState<TrainingIdentityPresetOption[]>([]);
   const [isPersistingPortraitSelection, setIsPersistingPortraitSelection] = useState(false);
   const [isResumingCachedJob, setIsResumingCachedJob] = useState(false);
+  const lastPrewarmCharacterIdRef = useRef<string | null>(null);
 
   const activePreviewJobRef = useRef<ActivePreviewJobContext | null>(null);
   const shouldStartNewAttemptOnRetryRef = useRef(false);
@@ -403,7 +406,7 @@ export const useTrainingCharacterPreviewFlow = ({
 
     setIsResumingCachedJob(true);
     setPreviewStatus('loading');
-    setPreviewError('妫€娴嬪埌鏈畬鎴愮殑褰㈣薄鍥句换鍔★紝姝ｅ湪鎭㈠涓?..');
+    setPreviewError('检测到未完成的形象图任务，正在恢复中...');
 
     void (async () => {
       try {
@@ -495,6 +498,15 @@ export const useTrainingCharacterPreviewFlow = ({
         updateFormDraft('characterId', resolvedCharacterId);
       }
 
+      if (resolvedCharacterId && lastPrewarmCharacterIdRef.current !== resolvedCharacterId) {
+        lastPrewarmCharacterIdRef.current = resolvedCharacterId;
+        try {
+          void onPrewarmAllSceneImages(resolvedCharacterId);
+        } catch {
+          // ignore prewarm failures; portrait preview should remain functional
+        }
+      }
+
       const isRetryAfterError = previewStatus === 'error';
       const shouldStartNewAttempt =
         isRetryAfterError && shouldStartNewAttemptOnRetryRef.current;
@@ -536,7 +548,7 @@ export const useTrainingCharacterPreviewFlow = ({
         character_id: resolvedCharacterIdInt!,
         idempotency_key: idempotencyKey,
         image_type: 'portrait',
-        group_count: 3,
+        group_count: 2,
       });
       if (!previewJob.jobId) {
         throw new Error('创建预览任务失败：后端未返回任务 ID。');
@@ -623,6 +635,7 @@ export const useTrainingCharacterPreviewFlow = ({
     hasRequiredPortraitFields,
     identityPresetError,
     identityPresetStatus,
+    onPrewarmAllSceneImages,
     previewStatus,
     updateFormDraft,
   ]);

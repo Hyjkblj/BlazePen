@@ -4,6 +4,7 @@ import { useTrainingRoundRunner } from '@/hooks/useTrainingRoundRunner';
 import { useTrainingSceneImageFlow } from '@/hooks/useTrainingSceneImageFlow';
 import { useTrainingSessionBootstrap } from '@/hooks/useTrainingSessionBootstrap';
 import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
+import { getNextTrainingScenario } from '@/services/trainingApi';
 import {
   buildBlockedTrainingSessionView,
   buildCompletedTrainingSessionView,
@@ -101,7 +102,11 @@ const resolveSelectedOptionLabel = (
   return selectedOption?.label?.trim() || null;
 };
 
-export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
+export function useTrainingMvpFlow(
+  explicitSessionId: string | null = null,
+  options: { suppressAutoRestoreSessionView?: boolean } = {}
+) {
+  const suppressAutoRestoreSessionView = Boolean(options.suppressAutoRestoreSessionView);
   const bootstrap = useTrainingSessionBootstrap();
   const roundRunner = useTrainingRoundRunner({
     restoreSession: bootstrap.restoreSession,
@@ -151,7 +156,23 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
         return null;
       }
 
-      setSessionView(buildTrainingSessionViewFromSummary(summaryResult));
+      const summaryView = buildTrainingSessionViewFromSummary(summaryResult);
+
+      // Some summaries may not include a resumable scenario even though the session can continue.
+      // In that case, proactively fetch the next scenario so the training page can render and
+      // the scene-image flow has inputs to start.
+      if (!summaryView.currentScenario && summaryResult.canResume && !summaryResult.isCompleted) {
+        try {
+          const nextScenarioResult = await getNextTrainingScenario({ sessionId: summaryResult.sessionId });
+          const nextView = buildTrainingSessionViewFromNext(summaryView, nextScenarioResult);
+          setSessionView(nextView);
+        } catch {
+          setSessionView(summaryView);
+        }
+        return summaryResult;
+      }
+
+      setSessionView(summaryView);
       return summaryResult;
     },
     [bootstrap, sessionViewModel]
@@ -159,6 +180,10 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
 
   useEffect(() => {
     if (sessionView) {
+      return;
+    }
+
+    if (suppressAutoRestoreSessionView) {
       return;
     }
 
@@ -180,7 +205,89 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     return () => {
       window.clearTimeout(timerId);
     };
-  }, [restoreSessionView, sessionView, sessionViewModel.autoRestoreSessionId]);
+  }, [restoreSessionView, sessionView, sessionViewModel.autoRestoreSessionId, suppressAutoRestoreSessionView]);
+
+  useEffect(() => {
+    if (sessionView) {
+      return;
+    }
+
+    if (suppressAutoRestoreSessionView) {
+      return;
+    }
+
+    // Guard against cases where a new hook instance mounts (route transitions, dev-mode remounts)
+    // after bootstrap has already recovered an active session. Ensure we still materialize the
+    // full sessionView (including currentScenario) for the training page.
+    if (bootstrap.status !== 'ready') {
+      return;
+    }
+
+    const sessionIdHint = sessionViewModel.currentSessionId ?? null;
+    if (!sessionIdHint) {
+      return;
+    }
+
+    if (autoRestoreSessionIdRef.current === sessionIdHint) {
+      return;
+    }
+
+    autoRestoreSessionIdRef.current = sessionIdHint;
+    const timerId = window.setTimeout(() => {
+      void restoreSessionView(sessionIdHint);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [
+    bootstrap.status,
+    restoreSessionView,
+    sessionView,
+    sessionViewModel.currentSessionId,
+    suppressAutoRestoreSessionView,
+  ]);
+
+  useEffect(() => {
+    if (sessionView) {
+      return;
+    }
+
+    if (suppressAutoRestoreSessionView) {
+      return;
+    }
+
+    // If bootstrap already has an active session (e.g. init succeeded), but this hook instance
+    // (re)mounted without a materialized sessionView, force a summary restore so the UI and
+    // scene-image flow can proceed.
+    if (bootstrap.status !== 'ready') {
+      return;
+    }
+
+    const activeSessionId = bootstrap.activeSession?.sessionId ?? null;
+    if (!activeSessionId) {
+      return;
+    }
+
+    if (autoRestoreSessionIdRef.current === activeSessionId) {
+      return;
+    }
+
+    autoRestoreSessionIdRef.current = activeSessionId;
+    const timerId = window.setTimeout(() => {
+      void restoreSessionView(activeSessionId);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [
+    bootstrap.activeSession?.sessionId,
+    bootstrap.status,
+    restoreSessionView,
+    sessionView,
+    suppressAutoRestoreSessionView,
+  ]);
 
   useEffect(() => {
     if (sessionView) {
@@ -281,10 +388,30 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     autoRestoreSessionIdRef.current = null;
   }, [bootstrap, resetCompletionReportFlow, resetSceneImageFlow, roundRunner]);
 
+  const prewarmAllSceneImages = useCallback(
+    async (characterId: string) => {
+      void characterId;
+      // Intentionally a no-op for now.
+      // Landing阶段不允许通过“预热”隐式创建训练会话；避免产生服务端副作用与恢复歧义。
+    },
+    []
+  );
+
   const startTraining = useCallback(async () => {
     roundRunner.dismissError();
     bootstrap.dismissError();
     setNoticeMessage(null);
+
+    if (sessionView && bootstrap.activeSession?.sessionId === sessionView.sessionId) {
+      return true;
+    }
+
+    if (bootstrap.activeSession?.sessionId) {
+      // A prewarmed session may already exist (e.g. started while generating portraits).
+      // Don't force an immediate restore here (which can double-consume summary mocks in tests);
+      // the training route will materialize sessionView via its own restoration effects.
+      return true;
+    }
 
     const normalizedCharacterId = normalizeCharacterIdInput(formDraft.characterId);
     if (!normalizedCharacterId) {
@@ -435,6 +562,7 @@ export function useTrainingMvpFlow(explicitSessionId: string | null = null) {
     formDraft,
     updateFormDraft,
     startTraining,
+    prewarmAllSceneImages,
     retryRestore,
     retrySceneImage,
     clearWorkspace,

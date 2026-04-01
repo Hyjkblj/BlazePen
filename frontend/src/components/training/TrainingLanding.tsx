@@ -24,6 +24,7 @@ type TrainingLandingProps = {
   onManualRestore: () => void;
   onRetryRestore: () => void;
   onStartTraining: () => void | Promise<void>;
+  onPrewarmAllSceneImages: (characterId: string) => void | Promise<void>;
   updateFormDraft: (field: keyof TrainingFormDraftValue, value: string) => void;
 };
 
@@ -37,11 +38,13 @@ function TrainingLanding({
   onManualRestore,
   onRetryRestore,
   onStartTraining,
+  onPrewarmAllSceneImages,
   updateFormDraft,
 }: TrainingLandingProps) {
   const previewFlow = useTrainingCharacterPreviewFlow({
     formDraft,
     onStartTraining,
+    onPrewarmAllSceneImages,
     updateFormDraft,
   });
 

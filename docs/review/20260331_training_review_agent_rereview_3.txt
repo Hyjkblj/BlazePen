@@ -1,0 +1,44 @@
+## 前端 Findings
+- [Blocker] frontend/src/services/assetUrl.ts:1-22
+  问题：`VITE_STATIC_ASSET_ORIGIN` 属于新增对外运行契约，但目前仍缺少“统一入口策略 + 强制校验 + 回归测试”三件套，导致训练场景图可达性在多入口环境下不稳定。
+  原因：`/static/...` 在 story/training/electron 三入口的网络拓扑不同；一旦某入口漏配 proxy/origin，该路径将落错 origin。
+  影响：场景图/小场景图/角色图主路径资产可能偶发 404，且“后端已生成”会掩盖根因，排障成本高。
+  建议：统一规则（全入口 proxy 或全入口 origin 配置），并在启动时做一次显式告警（例如检测到运行于非同源但未配置 origin）；用 `assetUrl.test.ts` 固化 `/static` 拼接与回退行为。
+
+- [Major] frontend/src/assets/images/home-fenghuo-mainpage.jpg:1
+  问题：资源被删除但未证明所有引用已同步更新。
+  原因：入口背景图类资源通常被 CSS/组件直接引用，删除后容易出现打包缺失或运行期 404。
+  影响：入口页视觉/可用性风险。
+  建议：全局定位引用并替换；补入口页 smoke（构建产物或 dev 运行）确保无资源 404。
+
+## 后端 Findings
+- [Blocker] backend/training/session_storyline_policy.py:744-760
+  问题：storyline seed 在未显式提供时引入 `uuid4()`，破坏恢复一致性（同 session 恢复可能产生不同 storyline/序列）。
+  原因：seed 属于会话事实源的一部分；随机值若不持久化会导致恢复漂移。
+  影响：同 `sessionId` 恢复后场景序列变化，强用户感知且不可复现，阻塞合并。
+  建议：seed 必须首次生成并持久化（或基于 sessionId 的确定性 derivation），恢复只读，不得再随机。
+
+- [Blocker] backend/api/services/training_story_script_service.py:20-83, backend/api/routers/training.py:330-353
+  问题：`GET /v1/training/story-scripts/{session_id}` 在读接口内执行 ensure（可能触发 LLM 生成）并写库，且失败时吞错返回空 payload，属于高风险热路径设计。
+  原因：LLM/写库操作高延迟高失败；读接口被隐式变为写接口；缺少超时/并发保护/状态机与稳定错误码。
+  影响：并发刷新/恢复场景下长尾延迟与外部依赖放大；migration 缺失时“假成功”导致故障扩散。
+  建议：拆为异步状态流（GET 只读 ready/pending/failed + error_code；ensure 走单独 endpoint/后台任务）；缺表/存储不可用必须返回稳定 503 错误码。
+
+- [Major] backend/training/story_script_agent.py:8-12,161-196
+  问题：从其他 session 抽样克隆剧本作为当前会话事实源，属于跨会话数据混用，存在隔离/合规/一致性风险。
+  原因：抽样源来自真实 session；且未按版本/模式/场景库版本分桶。
+  影响：个性化漂移、来源不可解释、问题难复现；潜在数据混用风险。
+  建议：若要复用，应抽象为独立模板库（脱敏 + 版本化），禁止从真实用户 session 抽样克隆。
+
+## Open Questions
+- story script 的对外契约是否要加入 `status`（ready/pending/failed）与 `error_code`？否则调用方无法做恢复/重试决策。
+- storyline seed 的单一事实源落点在哪里（session_meta / 专用字段 / snapshot）？
+- 多入口下静态资源契约是否统一为“全入口 proxy”或“全入口 origin 配置”？
+
+## 测试缺口
+- 前端：缺少多入口（尤其 electron）下 `/static` 资源可达性回归；缺入口页资源 404 smoke。
+- 后端：缺 seed 持久化与恢复一致性测试；缺 story script 并发 ensure 幂等与缺表错误码契约测试。
+
+## Review Summary
+- 当前工作区仍存在明确阻塞合并问题：storyline seed 随机化破坏恢复一致性；story script 在 GET 热路径触发生成/写库并吞错。
+- 前端静态资源 origin 修复方向正确，但需要用统一策略 + 测试固化，才能真正关闭“后端生成前端拿不到”的故障面。

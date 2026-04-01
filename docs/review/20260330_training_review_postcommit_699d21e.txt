@@ -1,0 +1,39 @@
+## 前端 Findings
+- [Major] frontend/src/flows/useTrainingMvpFlow.test.tsx:136-153
+  问题：测试内自建的 `makeTrainingMediaTask()` 在文件内重塑了接口 DTO 的“单一事实源”，存在与真实契约漂移的长期风险。
+  原因：虽然引入 `TrainingMediaTaskResult` 类型降低了 `any` 风险，但该 factory 仍把字段与默认值硬编码在测试文件里；一旦真实 DTO 增删字段或语义变动，这里可能会用“过时默认值”让测试继续通过（或引入大量无意义的测试修复成本）。
+  影响：契约漂移时的测试信号可能变差（要么漏报，要么噪音型红）；长期会形成“测试 DTO 版本”和“真实 DTO 版本”并行演化。
+  建议：将 `makeTrainingMediaTask()` 下沉到一个集中位置（例如 `frontend/src/test/factories/training.ts` 或现有测试工厂目录），并尽量复用 service/normalizer 的输出 shape（如果已有），保证 DTO 变更只需在单点同步。
+
+- [Minor] frontend/src/flows/useTrainingMvpFlow.test.tsx:303-489
+  问题：用例通过 fake timers 强化了稳定性，但对“轮询被取消”的行为仍主要用“调用次数不再增长”间接验证，缺少对取消条件的显式契约断言。
+  原因：`advanceTimersByTimeAsync(10_000)` + 次数不变只能证明“在这段时间窗口内没再调用”，无法证明“取消逻辑一定存在且正确绑定到 session/scene/task 身份”。
+  影响：未来若轮询间隔调整、或取消逻辑条件变化，仍可能出现后台泄漏/重复轮询，但在某些时间窗下测试不报警。
+  建议：若实现中存在“基于 taskId/sessionId/roundNo/scenarioId 的 guard/cancel”，建议在测试中通过可观测信号固化（例如：验证不会再次调用 `getTrainingMediaTask('scene-task-stale')`，你已在另一个用例里做了加强；这里也可补对 poll key 的更精确断言）。
+
+- [Minor] frontend/src/flows/useTrainingMvpFlow.test.tsx:491-645
+  问题：`does not let stale scene polling overwrite restored scenario image` 用例构造了“悬挂 promise + 后续 resolve”的竞态场景，方向正确；但它依赖 `vi.runOnlyPendingTimersAsync()` 驱动内部流程，对内部实现的定时器/调度方式仍有一定耦合。
+  原因：如果内部改为基于 microtask/queueMicrotask/不同计时策略，`runOnlyPendingTimersAsync()` 的推进边界可能变化，导致用例需要频繁调参。
+  影响：用例维护成本上升，且可能出现“实现改动并未破坏契约，但测试推进方式失效”的假红。
+  建议：把推进点尽量收敛到业务可观测事件（例如：等待 `sceneImageUrl` 变为 restored 值、等待 `createTrainingMediaTask` 第二次被调用等），减少对“具体推进手段”的假设；必要时把 `runOnlyPendingTimersAsync()` 封装成测试 helper。
+
+## 后端 Findings
+- [Major] backend/test_training_standalone_app.py:373-397
+  问题：用例对 readiness/runtime_state 的“错误脱敏策略”做了更强约束（不含 `Traceback`、不含换行），但这是测试层新增的“对外契约”，尚不清楚是否与实际产品/运维需求一致，且目前仅覆盖 media_warmup。
+  原因：这类约束一旦被测试固化，就等于把“readiness 的错误字段必须是单行、无 traceback”定义成了稳定契约；如果未来运维希望更丰富的诊断信息（例如错误分类、组件上下文、可选堆栈摘要），测试会成为阻碍。
+  影响：可能出现“为了让测试过而削弱可观测性/排障信息”的反向激励；同时 preview_warmup 等其他组件仍可能泄漏多行错误，但没有同等约束，策略不一致。
+  建议：
+  - 若目标确实是对外隐藏细节：建议在实现侧引入结构化字段（例如 `error_type`/`error_code` + `message`），并在测试中断言结构而非纯文本规则；同时补齐对 preview_warmup 的一致策略覆盖。
+  - 若目标是保留诊断能力：建议把“不得包含 Traceback”保留，但不要用“不得含换行”做硬约束，改为“长度上限/字段白名单/可选 debug 开关”的策略，并据此更新测试。
+
+## Open Questions
+- readiness/runtime_state 的 `components.*.error` 期望对外暴露的稳定契约是什么？（单行 message？错误码+message？是否允许包含堆栈摘要？）
+
+## 测试缺口
+- 前端：仍缺“轮询取消发生时的直接可观测信号”测试（例如取消 token 被触发、或 poll key 变化导致旧 poll 主动停止），目前主要通过次数与最终 UI 状态间接证明。
+- 后端：目前只对 `media_warmup.error` 做了更严格的泄漏约束；建议补对 `preview_warmup.error` 的一致策略测试，避免对外契约不一致。
+
+## Review Summary
+- 本次提交主要增强训练媒体任务与恢复竞态的回归测试，未触及生产主路径逻辑，整体风险低。
+- 前端测试相较之前显著更稳（引入 typed factory、fake timers、竞态覆盖），但要警惕测试内部再造 DTO 事实源与推进方式耦合带来的长期维护成本。
+- 后端测试把错误泄漏策略“推到了台前”，这是好事，但需要尽快把它上升为明确的对外契约（结构化而非纯文本规则），并在各 warmup 组件间保持一致。

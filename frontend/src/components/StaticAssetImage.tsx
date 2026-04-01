@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getStaticAssetUrl } from '@/services/assetUrl';
 
 type AssetLoadState = 'idle' | 'loading' | 'loaded' | 'error';
@@ -20,19 +20,25 @@ export default function StaticAssetImage({
   placeholder,
   onError,
 }: StaticAssetImageProps) {
-  const [status, setStatus] = useState<AssetLoadState>(imageUrl ? 'loading' : 'idle');
-  const hasSource = Boolean(imageUrl);
+  const normalizedUrl = useMemo(() => String(imageUrl ?? '').trim(), [imageUrl]);
+  const resolvedSrc = useMemo(() => (normalizedUrl ? getStaticAssetUrl(normalizedUrl) : ''), [normalizedUrl]);
+  const [status, setStatus] = useState<AssetLoadState>(normalizedUrl ? 'loading' : 'idle');
+  const hasSource = Boolean(normalizedUrl);
   const showImage = hasSource && status !== 'error';
   const showPlaceholder = !hasSource || status !== 'loaded';
 
+  useEffect(() => {
+    setStatus(normalizedUrl ? 'loading' : 'idle');
+  }, [normalizedUrl]);
+
   return (
     <>
-      {showImage && imageUrl ? (
+      {showImage && resolvedSrc ? (
         <img
-          src={getStaticAssetUrl(imageUrl)}
+          key={resolvedSrc}
+          src={resolvedSrc}
           alt={alt}
           className={imageClassName}
-          style={status === 'loaded' ? undefined : { visibility: 'hidden' }}
           onLoad={() => {
             setStatus('loaded');
           }}

@@ -1,0 +1,61 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+
+## 后端 Findings
+- [Blocker] backend/api/services/training_story_script_service.py:20-83, backend/api/routers/training.py:330-353
+  问题：`GET /v1/training/story-scripts/{session_id}` 在读接口内执行 ensure（可能触发 LLM 生成 + JSON 校验 + 写库），并在异常时吞错返回空 payload，属于同步热路径重任务 + 读写边界混乱 + 假成功。
+  原因：LLM 与写库是高延迟/高失败操作，不应被 GET 隐式触发；吞错返回 `{payload:{}}` 让调用方无法区分“生成中/失败/缺表/系统故障”。
+  影响：训练恢复/刷新/并发访问时出现长尾延迟与外部依赖放大；migration 缺失或存储不可用会长期隐性坏，故障扩散到下游训练流程。
+  建议：改为异步状态流（GET 只读 `status/error_code`；ensure 走 POST/后台任务）；缺表/存储不可用必须返回稳定 503 错误码，禁止空 payload 伪装成功。
+
+- [Blocker] backend/training/story_script_agent.py:8-12,161-196
+  问题：脚本“池化抽样克隆”（从其他 session 随机抽样并克隆到当前 session）引入跨会话数据混用，破坏训练会话事实源与隔离边界。
+  原因：抽样源来自真实 session 的产物，而不是独立模板库；抽样维度只按数量阈值，不按 `training_mode/script_version/scenario_bank_version` 分桶；且脚本生成 prompt 会绑定玩家画像（name/identity）。
+  影响：训练内容与玩家画像不一致、来源不可解释、线上问题难复现；潜在合规/隐私与数据混用风险。
+  建议：立即禁用从真实 session 抽样克隆；若要复用，抽象成独立“模板库”（脱敏+版本化+分桶）并明确溯源字段。
+
+- [Major] backend/api/services/training_story_script_service.py:29-83
+  问题：剧情 agent 在链路中形成依赖方向错误：story script service 为了 ensure，直接依赖 `training_service` 的内部策略对象（session_snapshot_policy/scenario_policy）。
+  原因：这是训练服务的私有实现细节，被外部服务穿透依赖会导致 TrainingService 继续膨胀为 God service，同时任何训练策略重构都会破坏脚本能力。
+  影响：耦合迅速放大，改动风险增大；难以隔离测试（脚本服务必须拉起训练服务内部编排）。
+  建议：将脚本 ensure 需要的输入（快照序列/玩家画像）抽象为只读 query/reader 接口或 repository 读取，禁止直接引用 TrainingService 内部 policy 实例。
+
+- [Major] backend/training/story_script_agent.py:223-360
+  问题：LLM 输出解析策略脆弱（直接 `json.loads(raw)`，仅两次尝试），失败后 fallback 但缺少稳定的结构化状态输出（调用方无法判断是 LLM 成功、fallback、还是存储失败）。
+  原因：system prompt 无法保证严格 JSON；当前只 warning 并回退，且 API 层可能继续返回 200。
+  影响：出现“静默失败/质量漂移”：看似成功但内容质量与结构不达标；调用方无法做正确的重试/提示/降级决策。
+  建议：引入 JSON 提取/修复策略（定位首个 `{` 到最后 `}`）；把生成状态结构化输出（`status/error_code/fallback_used/provider/model/debug_id`），禁止 message 文本承载业务语义。
+
+- [Major] backend/training/story_script_agent.py:60-122
+  问题：脚本映射为训练场景序列时，使用 title 作为 major 场景 lookup key，且未在 mapper 层硬化“必须 3 个 options”的强契约。
+  原因：title 非唯一且易漂移（LLM 生成标题变体/空格/同名），会导致错配覆盖；options 数量目前主要依赖 prompt/模型遵守，而不是代码强校验。
+  影响：可能生成“少选项/无选项/错配摘要”的训练场景，导致训练 UI 无法提交或渲染异常，属于主路径稳定性风险。
+  建议：映射键改用 `scene_id` 或输入摘要的 `id`；在 mapper 层显式校验 options 数量，不满足则返回 `status=failed + error_code`（或明确补齐策略）。
+
+- [Major] backend/training/training_store.py:474-534
+  问题：缺表/写入失败时 store 可能返回 `None`，上层 service 又可能吞错返回空 payload，形成“双事实源”（脚本到底存在还是失败）与不可观测故障。
+  原因：为保持 GET 稳定而选择“吞错 + 占位返回”，但这会把部署/存储故障隐藏起来。
+  影响：migration 未执行时系统长期隐性坏；调用方误以为脚本为空继续推进，后续链路在更远处爆炸。
+  建议：缺表/存储不可用应当被视为阻塞性错误：返回稳定 503 + 错误码；如果必须返回占位，也要返回 `status=failed` 并带 error_code。
+
+- [Minor] backend/run_story_script_agent.py:48-83
+  问题：CLI runner 复用 API service 组装依赖，容易把调试入口变成隐性生产依赖路径，且未明确模型/环境配置缺失时的输出策略。
+  原因：调试脚本若被误用会绕过 API 入口的观测/权限；不同环境下结果不可比。
+  影响：排障/复现成本上升。
+  建议：明确标注 dev-only，并在输出中打印关键配置与生成状态（provider/model/fallback/status）。
+
+## Open Questions
+- story script 能力是否会成为训练主路径依赖？如果会，必须把对外契约升级为 `status/error_code` + 异步生成模型；如果不会，为什么要在训练运行链路内引入 ensure/LLM 逻辑？
+- “脚本复用”是产品需求（模板库）还是工程降本？如果是模板库，为什么来源是其他真实 session，而不是独立模板集合？
+
+## 测试缺口
+- 后端：
+  - 并发 GET/ensure 的幂等测试：同一 session_id 并发 ensure 只写入一次（锁粒度明确）。
+  - 缺表/存储不可用必须返回 503 + 错误码的契约测试（禁止 200 + 空 payload）。
+  - LLM 返回非纯 JSON（带前后缀/代码块/截断）的解析与错误码路径测试。
+  - mapper 强契约测试：options 不足 3 个时必须失败并返回稳定错误结构。
+- 前端：若未来消费 story script payload，需要补 ready/pending/failed 的 UI 空态与恢复路径用例。
+
+## Review Summary
+- 当前剧情 agent 在训练链路中的主要问题是：把重任务放进 GET 热路径、吞错导致假成功，以及跨会话抽样克隆破坏会话事实源与隔离。
+- 在未引入结构化状态机（status/error_code）与异步生成模型前，不建议让训练主路径依赖该能力。

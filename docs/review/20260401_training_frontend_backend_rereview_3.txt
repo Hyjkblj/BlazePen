@@ -1,0 +1,35 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+- [Major] frontend/src/hooks/useTrainingSceneImageFlow.ts
+  问题：409 冲突恢复（adopt_existing_task）属于高风险分支，若缺少单测，后续重构极易回归成“重复 create / attempt 递增 / 轮询不触发”。
+  原因：该分支依赖 `ServiceError.details` 的解析与“采用既有 taskId”状态机转移，属于契约边界 + 并发恢复路径。
+  影响：会导致用户恢复/刷新时场景图永远 pending、重复生成任务、或因错用 taskId 产生错图。
+  建议：补齐 adopt_existing_task 的单测：构造 409 details（同 sessionId+roundNo），断言 hook 不会二次 create，且会对既有 taskId 发起轮询并最终产出 previewUrl。（已落地：新增 `frontend/src/hooks/useTrainingSceneImageFlow.test.tsx` 并通过）
+
+## 后端 Findings
+- 未发现阻塞性问题。
+- [Major] backend/training/training_repository.py + backend/training/story_script_executor.py
+  问题：story-script executor 的去重若仍依赖进程内状态会在多实例/重启下重复生成或丢任务。
+  原因：进程内 set 不是事实源，无法跨进程协调。
+  影响：重复生成与成本浪费；或 running 卡死、无法恢复。
+  建议：使用 store 级 claim（pending->running 条件更新）并提供 lease 回收；executor 仅在 claim 成功后调度线程池。（已落地：新增 `claim_story_script_job` 与 `test_training_story_script_claim_job.py` 覆盖 pending 只领一次 + stale running 可回收）
+
+- [Major] backend/training/training_store.py
+  问题：story_scripts 表缺失时不能吞错返回 None（否则会被误判为业务缺失）。
+  原因：吞错破坏可观测性与契约稳定性。
+  影响：客户端与运维都会误判状态，形成半成功与错误恢复。
+  建议：缺表统一抛 `TrainingStorageUnavailableError`，由 router 映射 503 + `TRAINING_STORAGE_UNAVAILABLE`。（已落地：get/create/update/claim 统一 raise；并修订相关 contract test）
+
+## Open Questions
+- `claim_story_script_job` 的 lease（当前 300s）是否需要配置化/可观测（例如记录 claim 次数、running 超时回收次数）？
+- `training_story_scripts.status` 是否要对外严格枚举（pending/running/ready/failed），以及 legacy `succeeded` 的迁移策略是什么？
+
+## 测试缺口
+- 前端
+  - 仍建议补一个“effect 取消后允许重试”的并发切场景用例（快速切换 scenario/unmount 再 mount，确保不会卡死在 requestKey）。
+- 后端
+  - 仍建议补一个“缺表时 ensure/claim 的路由层契约测试”（503 + error_code），确保 API 端到端不走 404。
+
+## Review Summary
+本轮把前端 409 adopt_existing_task 的关键恢复路径用单测固定下来，降低了后续回归风险；后端则把 story-script 的幂等从进程内迁移到 store 级 claim+lease，并用单测覆盖了 pending 单次领取与 stale running 回收。整体上，训练链路的“并发一致性与可恢复性”明显增强，剩余主要工作集中在端到端契约测试与状态枚举的进一步收敛。
+

@@ -74,6 +74,7 @@ class TrainingMediaTaskExecutorConfig:
     max_workers: int = 2
     retry_backoff_seconds: float = 0.2
     task_timeout_seconds: float = 30.0
+    scene_task_timeout_seconds: float = 120.0
     recovery_timeout_seconds: float = 300.0
 
     @classmethod
@@ -87,6 +88,10 @@ class TrainingMediaTaskExecutorConfig:
             task_timeout_seconds=max(
                 1.0,
                 float(os.getenv("TRAINING_MEDIA_TASK_TIMEOUT_SECONDS", "30")),
+            ),
+            scene_task_timeout_seconds=max(
+                1.0,
+                float(os.getenv("TRAINING_MEDIA_SCENE_TASK_TIMEOUT_SECONDS", "120")),
             ),
             recovery_timeout_seconds=max(
                 1.0,
@@ -172,12 +177,14 @@ class TrainingMediaTaskProviderDispatcher:
         if self.image_service is None:
             raise TrainingMediaProviderUnavailableError(task_type="image", provider="ImageService")
 
-        session_id = (
-            self._optional_str(payload.get("session_id"))
-            or self._optional_str(payload.get("training_session_id"))
-            or self._optional_str(payload.get("user_id"))
-            or "training_session"
+        session_id = self._optional_str(payload.get("session_id")) or self._optional_str(
+            payload.get("training_session_id")
         )
+        if not session_id:
+            raise TrainingMediaTaskExecutionFailedError(
+                task_type="image",
+                reason="missing_session_id",
+            )
         round_no = max(self._optional_int(payload.get("round_no")) or 0, 0)
         scenario_id = self._optional_str(payload.get("scenario_id")) or ""
         major_scene_title = (
@@ -488,13 +495,16 @@ class TrainingMediaTaskExecutor:
     def submit_task(self, task_id: str) -> bool:
         normalized_task_id = str(task_id or "").strip()
         if not normalized_task_id:
+            logger.info("training media submit rejected: reason=empty_task_id")
             return False
 
         with self._scheduled_lock:
             if normalized_task_id in self._scheduled_task_ids:
+                logger.info("training media submit rejected: reason=already_scheduled task_id=%s", normalized_task_id)
                 return False
             self._scheduled_task_ids.add(normalized_task_id)
 
+        logger.info("training media submit accepted: task_id=%s", normalized_task_id)
         self._pool.submit(self._run_task, normalized_task_id)
         return True
 
@@ -517,6 +527,7 @@ class TrainingMediaTaskExecutor:
                         result_payload=None,
                         error_payload={
                             "type": "timeout",
+                            "message": "recovery timeout exceeded",
                             "reason": "recovery timeout exceeded",
                             "timeout_seconds": self.config.recovery_timeout_seconds,
                         },
@@ -617,18 +628,19 @@ class TrainingMediaTaskExecutor:
                 return
 
     def _execute_task_once(self, task: TrainingMediaTaskRecord) -> dict[str, Any]:
+        timeout_seconds = self._resolve_task_timeout_seconds(task)
         future = self._provider_pool.submit(
             self.provider_dispatcher.execute_task,
             task_type=task.task_type,
             payload=dict(task.request_payload or {}),
         )
         try:
-            result = future.result(timeout=self.config.task_timeout_seconds)
+            result = future.result(timeout=timeout_seconds)
         except FuturesTimeoutError as exc:
             future.cancel()
             raise TrainingMediaTaskTimeoutError(
                 task_type=task.task_type,
-                timeout_seconds=self.config.task_timeout_seconds,
+                timeout_seconds=timeout_seconds,
             ) from exc
 
         if not isinstance(result, dict):
@@ -637,3 +649,16 @@ class TrainingMediaTaskExecutor:
                 reason="provider result must be a json object",
             )
         return result
+
+    def _resolve_task_timeout_seconds(self, task: TrainingMediaTaskRecord) -> float:
+        if str(task.task_type or "").strip().lower() != "image":
+            return float(self.config.task_timeout_seconds)
+
+        payload = dict(task.request_payload or {})
+        image_type = str(payload.get("image_type") or "").strip().lower()
+        generate_series = bool(payload.get("generate_storyline_series"))
+        is_scene_series = generate_series and image_type in {"scene", "smallscene", "small_scene", "storyline_scene"}
+        if is_scene_series:
+            return float(self.config.scene_task_timeout_seconds)
+
+        return float(self.config.task_timeout_seconds)

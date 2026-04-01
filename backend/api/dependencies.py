@@ -38,6 +38,8 @@ _training_media_task_service: Optional[TrainingMediaTaskService] = None
 _training_media_task_executor: Optional[TrainingMediaTaskExecutor] = None
 _training_media_task_executor_warmed_up: bool = False
 _training_query_service: Optional[TrainingQueryService] = None
+_training_story_script_service = None
+_training_story_script_executor = None
 _story_image_executor: Optional[Executor] = None
 _story_session_query_policy: Optional[StorySessionQueryPolicy] = None
 _story_service_bundle: Optional[StoryServiceBundle] = None
@@ -207,3 +209,28 @@ def get_training_query_service() -> TrainingQueryService:
 
         _training_query_service = TrainingQueryService.from_runtime(get_training_service())
     return _training_query_service
+
+
+def get_training_story_script_service():
+    global _training_story_script_service
+    if _training_story_script_service is None:
+        from api.services.training_story_script_service import TrainingStoryScriptService
+
+        _training_story_script_service = TrainingStoryScriptService(
+            training_store=get_training_service().training_store,
+            training_service=get_training_service(),
+            story_script_executor=get_training_story_script_executor(),
+        )
+    return _training_story_script_service
+
+
+def get_training_story_script_executor():
+    global _training_story_script_executor
+    if _training_story_script_executor is None:
+        from training.story_script_executor import TrainingStoryScriptExecutor
+
+        _training_story_script_executor = TrainingStoryScriptExecutor(
+            training_store=get_training_service().training_store,
+            training_service=get_training_service(),
+        )
+    return _training_story_script_executor

@@ -3,7 +3,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTrainingMvpFlow } from './useTrainingMvpFlow';
-import type { TrainingMediaTaskResult } from '@/types/training';
+import { makeTrainingMediaTask } from '@/test/factories/training';
 
 const hookMocks = vi.hoisted(() => ({
   bootstrap: {
@@ -128,21 +128,6 @@ const createSessionView = (scenarioId: string, scenarioTitle: string) => ({
   createdAt: null,
   updatedAt: null,
   endTime: null,
-});
-
-const makeTrainingMediaTask = (overrides: Partial<TrainingMediaTaskResult> = {}): TrainingMediaTaskResult => ({
-  taskId: 'task-1',
-  sessionId: 'training-session-1',
-  roundNo: 1,
-  taskType: 'image',
-  status: 'pending',
-  result: null,
-  error: null,
-  createdAt: '2026-03-29T00:00:00Z',
-  updatedAt: '2026-03-29T00:00:00Z',
-  startedAt: null,
-  finishedAt: null,
-  ...overrides,
 });
 
 describe('useTrainingMvpFlow', () => {

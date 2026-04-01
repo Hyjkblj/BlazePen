@@ -8,8 +8,9 @@ import { buildBackendRedirectUrl, isAllowedWindowNavigation } from './navigation
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-const FRONTEND_DEV_ORIGIN = 'http://localhost:3000';
-const DEFAULT_LOCAL_BACKEND_ORIGIN = 'http://localhost:8000';
+const FRONTEND_DEV_ORIGIN = (process.env.NO_END_STORY_FRONTEND_ORIGIN || 'http://localhost:3000').replace(/\/+$/, '');
+const DEFAULT_LOCAL_BACKEND_ORIGIN =
+  FRONTEND_DEV_ORIGIN.includes(':3001') ? 'http://localhost:8010' : 'http://localhost:8000';
 const DEFAULT_REMOTE_BACKEND_ORIGIN = 'http://8.166.138.219';
 const BACKEND_ORIGIN = (
   process.env.NO_END_STORY_BACKEND_ORIGIN ||

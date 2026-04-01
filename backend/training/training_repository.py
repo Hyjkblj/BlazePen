@@ -7,6 +7,7 @@ from datetime import datetime
 
 from sqlalchemy import case
 from sqlalchemy.exc import IntegrityError
+from datetime import timedelta
 from sqlalchemy.orm import Session
 
 from database.integrity import is_unique_constraint_conflict
@@ -22,6 +23,7 @@ from models.training import (
     TrainingMediaTask,
     TrainingRound,
     TrainingSession,
+    TrainingStoryScript,
 )
 from training.constants import DEFAULT_EVAL_MODEL, SKILL_SNAPSHOT_FIELDS, S_STATE_SNAPSHOT_FIELDS, TRAINING_ENDING_TYPE_FAIL
 from training.contracts import KtObservationPayload, RoundEvaluationPayload, ScenarioRecommendationLogPayload, TrainingAuditEventPayload
@@ -140,6 +142,145 @@ class SqlAlchemyTrainingRepository:
                     setattr(row, key, value)
             session.flush()
             return row
+
+    def get_story_script_by_session_id(self, session_id: str) -> TrainingStoryScript | None:
+        with self.get_session() as session:
+            return (
+                session.query(TrainingStoryScript)
+                .filter(TrainingStoryScript.session_id == str(session_id))
+                .first()
+            )
+
+    def count_story_scripts_excluding_session_id(self, session_id: str) -> int:
+        with self.get_session() as session:
+            return (
+                session.query(TrainingStoryScript)
+                .filter(TrainingStoryScript.session_id != str(session_id))
+                .count()
+            )
+
+    def list_story_scripts_excluding_session_id(self, session_id: str, limit: int = 50) -> list[TrainingStoryScript]:
+        normalized_limit = max(1, min(int(limit or 50), 200))
+        with self.get_session() as session:
+            return (
+                session.query(TrainingStoryScript)
+                .filter(TrainingStoryScript.session_id != str(session_id))
+                .order_by(TrainingStoryScript.created_at.desc())
+                .limit(normalized_limit)
+                .all()
+            )
+
+    def create_story_script(
+        self,
+        *,
+        session_id: str,
+        payload: dict,
+        provider: str = "auto",
+        model: str = "auto",
+        major_scene_count: int = 6,
+        micro_scenes_per_gap: int = 2,
+        source_script_id: str | None = None,
+        status: str = "ready",
+        error_code: str | None = None,
+        error_message: str | None = None,
+        fallback_used: bool = False,
+    ) -> TrainingStoryScript:
+        with self.get_session() as session:
+            row = TrainingStoryScript(
+                session_id=str(session_id),
+                source_script_id=str(source_script_id).strip() if source_script_id else None,
+                provider=str(provider or "auto"),
+                model=str(model or "auto"),
+                major_scene_count=int(major_scene_count or 6),
+                micro_scenes_per_gap=int(micro_scenes_per_gap or 2),
+                status=str(status or "ready").strip() or "ready",
+                error_code=str(error_code).strip() if error_code else None,
+                error_message=str(error_message).strip() if error_message else None,
+                fallback_used=bool(fallback_used),
+                payload=payload or {},
+            )
+            session.add(row)
+            try:
+                session.flush()
+                return row
+            except IntegrityError:
+                session.rollback()
+                existing = (
+                    session.query(TrainingStoryScript)
+                    .filter(TrainingStoryScript.session_id == str(session_id))
+                    .first()
+                )
+                if existing is not None:
+                    return existing
+                raise
+
+    def update_story_script_by_session_id(self, session_id: str, updates: dict) -> TrainingStoryScript | None:
+        with self.get_session() as session:
+            row = (
+                session.query(TrainingStoryScript)
+                .filter(TrainingStoryScript.session_id == str(session_id))
+                .first()
+            )
+            if row is None:
+                return None
+            for key, value in (updates or {}).items():
+                if hasattr(row, key):
+                    setattr(row, key, value)
+            session.flush()
+            return row
+
+    def claim_story_script_job(self, session_id: str, *, lease_seconds: int = 300) -> bool:
+        """Try to claim a story-script generation job at store level (cross-process safe).
+
+        Claim rules:
+        - pending -> running (claim)
+        - running can be reclaimed if lease expired (updated_at too old)
+        - ready/succeeded/failed are terminal
+        """
+        normalized_session_id = str(session_id or "").strip()
+        if not normalized_session_id:
+            return False
+        lease_seconds = max(30, int(lease_seconds or 300))
+        lease_deadline = datetime.utcnow() - timedelta(seconds=lease_seconds)
+        with self.get_session() as session:
+            updated = (
+                session.query(TrainingStoryScript)
+                .filter(
+                    TrainingStoryScript.session_id == normalized_session_id,
+                    TrainingStoryScript.status == "pending",
+                )
+                .update(
+                    {
+                        "status": "running",
+                        "updated_at": datetime.utcnow(),
+                    },
+                    synchronize_session=False,
+                )
+            )
+            if updated:
+                session.flush()
+                return True
+
+            # Reclaim stale running rows (best-effort lease).
+            updated = (
+                session.query(TrainingStoryScript)
+                .filter(
+                    TrainingStoryScript.session_id == normalized_session_id,
+                    TrainingStoryScript.status == "running",
+                    TrainingStoryScript.updated_at < lease_deadline,
+                )
+                .update(
+                    {
+                        "status": "running",
+                        "updated_at": datetime.utcnow(),
+                    },
+                    synchronize_session=False,
+                )
+            )
+            if updated:
+                session.flush()
+                return True
+            return False
 
     def create_media_task(
         self,

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from api.dependencies import get_training_media_task_executor, get_training_query_service, get_training_service
+from api.dependencies import (
+    get_training_media_task_executor,
+    get_training_query_service,
+    get_training_service,
+    get_training_story_script_service,
+)
 from api.error_codes import (
     INTERNAL_ERROR,
     TRAINING_MODE_UNSUPPORTED,
@@ -15,6 +20,9 @@ from api.error_codes import (
     TRAINING_SESSION_COMPLETED,
     TRAINING_SESSION_NOT_FOUND,
     TRAINING_SESSION_RECOVERY_STATE_CORRUPTED,
+    TRAINING_STORAGE_UNAVAILABLE,
+    TRAINING_STORY_SCRIPT_INVALID,
+    TRAINING_STORY_SCRIPT_NOT_FOUND,
 )
 from api.response import build_success_payload, error_response, not_found_response
 from api.schemas import (
@@ -29,8 +37,10 @@ from api.schemas import (
     TrainingScenarioNextApiResponse,
     TrainingScenarioNextRequest,
     TrainingSessionSummaryApiResponse,
+    TrainingStoryScriptApiResponse,
 )
 from api.services.training_service import TrainingService
+from api.services.training_story_script_service import TrainingStoryScriptService
 from training.training_query_service import TrainingQueryService
 from training.exceptions import (
     DuplicateRoundSubmissionError,
@@ -41,6 +51,9 @@ from training.exceptions import (
     TrainingSessionCompletedError,
     TrainingSessionNotFoundError,
     TrainingSessionRecoveryStateError,
+    TrainingStorageUnavailableError,
+    TrainingStoryScriptInvalidError,
+    TrainingStoryScriptNotFoundError,
 )
 from utils.logger import get_logger
 
@@ -91,7 +104,15 @@ def _dispatch_submit_round_media_tasks(result: dict) -> None:
         if not task_id or status not in {"pending", "running"}:
             continue
         try:
-            executor.submit_task(task_id)
+            submitted = executor.submit_task(task_id)
+            logger.info(
+                "training media task dispatch: submitted=%s task_id=%s session_id=%s round_no=%s status=%s",
+                bool(submitted),
+                task_id,
+                str(task_payload.get("session_id") or "").strip() or None,
+                task_payload.get("round_no"),
+                status,
+            )
         except Exception as exc:
             logger.warning("failed to dispatch training media task from submit: task_id=%s error=%s", task_id, str(exc))
 
@@ -317,6 +338,85 @@ async def get_session_summary(
             message="failed to get training session summary",
             error_code=INTERNAL_ERROR,
             details={"route": "training.session_summary", "session_id": session_id},
+        )
+
+
+@router.get("/story-scripts/{session_id}", response_model=TrainingStoryScriptApiResponse)
+async def get_story_script(
+    session_id: str,
+    story_script_service: TrainingStoryScriptService = Depends(get_training_story_script_service),
+):
+    """Get training story script for one session (read-only)."""
+
+    try:
+        result = story_script_service.get_story_script(session_id)
+        return build_success_payload(data=result)
+    except TrainingSessionNotFoundError as exc:
+        return _build_training_domain_error_response(
+            exc,
+            route_name="training.story_script",
+            session_id=session_id,
+        )
+    except TrainingStoryScriptNotFoundError:
+        return not_found_response(
+            message="training story script not found",
+            error_code=TRAINING_STORY_SCRIPT_NOT_FOUND,
+            details={"route": "training.story_script", "session_id": session_id},
+        )
+    except TrainingStorageUnavailableError as exc:
+        return error_response(
+            code=503,
+            message=str(exc),
+            error_code=TRAINING_STORAGE_UNAVAILABLE,
+            details={"route": "training.story_script", "session_id": session_id, **dict(exc.details or {})},
+        )
+    except Exception as exc:
+        logger.error("failed to get training story script: %s", str(exc), exc_info=True)
+        return error_response(
+            code=500,
+            message="failed to get training story script",
+            error_code=INTERNAL_ERROR,
+            details={"route": "training.story_script", "session_id": session_id},
+        )
+
+
+@router.post("/story-scripts/{session_id}/ensure", response_model=TrainingStoryScriptApiResponse)
+async def ensure_story_script(
+    session_id: str,
+    story_script_service: TrainingStoryScriptService = Depends(get_training_story_script_service),
+):
+    """Explicitly ensure (generate) the training story script for one session."""
+
+    try:
+        result = story_script_service.ensure_story_script(session_id)
+        return build_success_payload(data=result)
+    except TrainingSessionNotFoundError as exc:
+        return _build_training_domain_error_response(
+            exc,
+            route_name="training.story_script.ensure",
+            session_id=session_id,
+        )
+    except TrainingStorageUnavailableError as exc:
+        return error_response(
+            code=503,
+            message=str(exc),
+            error_code=TRAINING_STORAGE_UNAVAILABLE,
+            details={"route": "training.story_script.ensure", "session_id": session_id, **dict(exc.details or {})},
+        )
+    except TrainingStoryScriptInvalidError as exc:
+        return error_response(
+            code=400,
+            message=str(exc),
+            error_code=TRAINING_STORY_SCRIPT_INVALID,
+            details={"route": "training.story_script.ensure", "session_id": session_id, **dict(getattr(exc, "details", {}) or {})},
+        )
+    except Exception as exc:
+        logger.error("failed to ensure training story script: %s", str(exc), exc_info=True)
+        return error_response(
+            code=500,
+            message="failed to ensure training story script",
+            error_code=INTERNAL_ERROR,
+            details={"route": "training.story_script.ensure", "session_id": session_id},
         )
 
 

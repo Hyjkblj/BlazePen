@@ -1,4 +1,4 @@
-﻿"""API数据模型（Pydantic Schemas）"""
+"""API数据模型（Pydantic Schemas）"""
 from typing import Optional, Dict, Any, List, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -147,7 +147,7 @@ class TrainingCharacterPreviewJobCreateRequest(_StrictTrainingRequestModel):
     idempotency_key: str = Field(..., min_length=8, max_length=128, description="幂等键")
     user_id: Optional[str] = Field(None, description="玩家ID（可选）")
     image_type: Optional[str] = Field("portrait", description="图片类型（默认 portrait）")
-    group_count: int = Field(3, ge=1, le=3, description="生成组图数量（1-3）")
+    group_count: int = Field(2, ge=1, le=2, description="生成预览图数量（1-2）")
     generate_scene_groups: bool = Field(False, description="是否异步生成场景组图（大场景+小场景）")
     scene_group_count: int = Field(6, ge=1, le=6, description="场景组数量（默认 6 组）")
     micro_scene_min: int = Field(2, ge=1, le=3, description="每组小场景最小数量")
@@ -606,6 +606,25 @@ class TrainingSessionSummaryResponse(BaseModel):
     end_time: Optional[str] = None
 
 
+class TrainingStoryScriptResponse(BaseModel):
+    """Training story script payload keyed by session."""
+
+    session_id: str
+    script_id: str
+    source_script_id: Optional[str] = None
+    provider: str
+    model: str
+    major_scene_count: int
+    micro_scenes_per_gap: int
+    status: str = "succeeded"
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    fallback_used: bool = False
+    payload: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
 class TrainingReportHistoryItemResponse(BaseModel):
     """训练报告中的单回合历史项"""
     round_no: int
@@ -791,6 +810,12 @@ class TrainingSessionSummaryApiResponse(ApiResponse):
     """Training session summary API response envelope."""
 
     data: Optional[TrainingSessionSummaryResponse] = None
+
+
+class TrainingStoryScriptApiResponse(ApiResponse):
+    """Training story script API response envelope."""
+
+    data: Optional[TrainingStoryScriptResponse] = None
 
 
 class TrainingHistoryApiResponse(ApiResponse):

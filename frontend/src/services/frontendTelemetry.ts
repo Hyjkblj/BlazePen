@@ -11,7 +11,10 @@ export type FrontendTelemetryEvent =
   | 'training.init'
   | 'training.restore'
   | 'training.form.hydration'
-  | 'training.round.submit';
+  | 'training.round.submit'
+  | 'training.scene_image.create'
+  | 'training.scene_image.poll'
+  | 'training.scene_image.asset_error';
 
 export interface FrontendTelemetryErrorContext {
   name?: string;
@@ -159,13 +162,31 @@ export const trackFrontendTelemetry = ({
   metadata,
   cause,
 }: TrackFrontendTelemetryOptions): FrontendTelemetryPayload => {
+  const normalizedMetadata: Record<string, unknown> | undefined = (() => {
+    const base = metadata ? { ...metadata } : undefined;
+    const errorContext = cause ? toTelemetryErrorContext(cause) : undefined;
+    if (!base || !errorContext) {
+      return base;
+    }
+    if (base.traceId === undefined && errorContext.traceId !== undefined) {
+      base.traceId = errorContext.traceId;
+    }
+    if (base.errorCode === undefined && errorContext.code) {
+      base.errorCode = errorContext.code;
+    }
+    if (base.httpStatus === undefined && typeof errorContext.status === 'number') {
+      base.httpStatus = errorContext.status;
+    }
+    return base;
+  })();
+
   const payload: FrontendTelemetryPayload = {
     type: 'frontend_telemetry',
     domain,
     event,
     status,
     occurredAt: new Date().toISOString(),
-    metadata,
+    metadata: normalizedMetadata,
     error: cause ? toTelemetryErrorContext(cause) : undefined,
   };
 

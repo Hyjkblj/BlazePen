@@ -12,6 +12,7 @@ import uvicorn
 from fastapi import status
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from uuid import uuid4
 
 from api.app_factory import create_api_app
 from api.dependencies import (
@@ -140,6 +141,31 @@ def _new_training_media_runtime_state() -> dict:
 
 app.state.training_media_runtime_state = _new_training_media_runtime_state()
 
+def _single_line(text: str) -> str:
+    return " ".join(str(text or "").split()).strip()
+
+
+def _build_runtime_error(exc: Exception, *, component: str) -> dict:
+    debug_enabled = str(os.getenv("TRAINING_READINESS_DEBUG", "")).strip().lower() in {"1", "true", "yes", "on"}
+    error_type = type(exc).__name__
+    message = _single_line(str(exc) or error_type or "unknown error")
+
+    error_code = "TRAINING_WARMUP_FAILED"
+    if component == "media_warmup":
+        error_code = "TRAINING_MEDIA_WARMUP_FAILED"
+    if component == "preview_warmup":
+        error_code = "TRAINING_PREVIEW_WARMUP_FAILED"
+
+    payload = {
+        "error_code": error_code,
+        "error_type": error_type,
+        "message": message,
+        "retryable": False,
+    }
+    if debug_enabled:
+        payload["debug_id"] = uuid4().hex
+    return payload
+
 
 async def warmup_training_media_runtime() -> None:
     """Warm up training media executor outside request hot paths."""
@@ -164,7 +190,7 @@ async def warmup_training_media_runtime() -> None:
             "status": "degraded",
             "recovered": 0,
             "timed_out": 0,
-            "error": str(exc),
+            "error": _build_runtime_error(exc, component="preview_warmup"),
         }
         logger.warning(
             "training preview executor warmup degraded: %s",
@@ -177,7 +203,7 @@ async def warmup_training_media_runtime() -> None:
             "status": "degraded",
             "recovered": 0,
             "timed_out": 0,
-            "error": str(exc),
+            "error": _build_runtime_error(exc, component="preview_warmup"),
         }
         logger.warning(
             "training preview executor warmup degraded: %s",
@@ -204,7 +230,7 @@ async def warmup_training_media_runtime() -> None:
             "status": "degraded",
             "recovered": 0,
             "timed_out": 0,
-            "error": str(exc),
+            "error": _build_runtime_error(exc, component="media_warmup"),
         }
         logger.warning(
             "training media executor warmup degraded: %s",
@@ -217,7 +243,7 @@ async def warmup_training_media_runtime() -> None:
             "status": "degraded",
             "recovered": 0,
             "timed_out": 0,
-            "error": str(exc),
+            "error": _build_runtime_error(exc, component="media_warmup"),
         }
         logger.warning(
             "training media executor warmup degraded: %s",

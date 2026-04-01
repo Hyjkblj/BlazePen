@@ -29,6 +29,8 @@ class ScenarioOption(BaseModel):
     id: str
     label: str
     impact_hint: str = ""
+    label_variants: List[str] = Field(default_factory=list)
+    impact_hint_variants: List[str] = Field(default_factory=list)
 
 
 class ScenarioNextRule(BaseModel):
@@ -52,8 +54,10 @@ class ScenarioDefinition(BaseModel):
     era_date: str = ""
     location: str = ""
     brief: str = ""
+    brief_variants: List[str] = Field(default_factory=list)
     mission: str = ""
     decision_focus: str = ""
+    decision_focus_variants: List[str] = Field(default_factory=list)
     # 场景阶段标签用于推荐策略感知“开场/中段/高潮/收束”等剧情节奏。
     phase_tags: List[str] = Field(default_factory=list)
     # 分支标签用于区分主线、失败分支、补救分支等角色。

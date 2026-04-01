@@ -109,6 +109,64 @@ const readStructuredTraceId = (errorData: ApiErrorData | undefined): string | nu
   return normalizeOptionalString(traceId);
 };
 
+type TrainingMediaTaskConflictDetails = {
+  existingTaskId: string;
+  scope: {
+    sessionId: string | null;
+    roundNo: number | null;
+  };
+  idempotencyKey: string | null;
+};
+
+const normalizeTrainingMediaTaskConflictDetails = (
+  details: unknown
+): TrainingMediaTaskConflictDetails | null => {
+  if (!details || typeof details !== 'object' || Array.isArray(details)) {
+    return null;
+  }
+  const record = details as Record<string, unknown>;
+  const existingTaskId =
+    normalizeOptionalString(
+      record.existingTaskId ??
+        record.existing_task_id ??
+        record.taskId ??
+        record.task_id
+    ) ?? '';
+  if (!existingTaskId) {
+    return null;
+  }
+
+  const sessionId = normalizeOptionalString(record.sessionId ?? record.session_id) ?? null;
+  const scopeRecord =
+    (record.scope ?? record.existing_scope ?? record.existingScope ?? record.existing) as
+      | Record<string, unknown>
+      | null
+      | undefined;
+  const roundNoValue =
+    scopeRecord?.roundNo ??
+    scopeRecord?.round_no ??
+    record.roundNo ??
+    record.round_no;
+  const roundNo =
+    typeof roundNoValue === 'number' && Number.isFinite(roundNoValue)
+      ? roundNoValue
+      : typeof roundNoValue === 'string' && roundNoValue.trim() !== ''
+        ? Number(roundNoValue)
+        : null;
+
+  const idempotencyKey =
+    normalizeOptionalString(record.idempotencyKey ?? record.idempotency_key) ?? null;
+
+  return {
+    existingTaskId,
+    scope: {
+      sessionId,
+      roundNo: Number.isFinite(roundNo as number) ? (roundNo as number) : null,
+    },
+    idempotencyKey,
+  };
+};
+
 const mapTrainingErrorCode = (backendErrorCode: string | null): ServiceErrorCode | null => {
   if (!backendErrorCode || !TRAINING_ERROR_CODES.has(backendErrorCode as ServiceErrorCode)) {
     return null;
@@ -132,11 +190,16 @@ const toTrainingServiceError = (
   const mappedErrorCode = mapTrainingErrorCode(backendErrorCode);
 
   if (mappedErrorCode) {
+    const rawDetails = readStructuredErrorDetails(errorData);
+    const normalizedDetails =
+      mappedErrorCode === 'TRAINING_MEDIA_TASK_CONFLICT'
+        ? normalizeTrainingMediaTaskConflictDetails(rawDetails) ?? rawDetails
+        : rawDetails;
     return new ServiceError({
       code: mappedErrorCode,
       status,
       message: rawMessage,
-      details: readStructuredErrorDetails(errorData),
+      details: normalizedDetails,
       traceId: readStructuredTraceId(errorData),
       cause: error,
     });

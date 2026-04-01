@@ -90,6 +90,9 @@ describe('frontendTelemetry', () => {
       metadata: {
         sessionId: 'session-1',
         failureStage: 'submit',
+        traceId: 'trace-404',
+        errorCode: 'TRAINING_SESSION_NOT_FOUND',
+        httpStatus: 404,
       },
       error: {
         code: 'TRAINING_SESSION_NOT_FOUND',

@@ -1,0 +1,47 @@
+## 前端 Findings
+- 未发现阻塞性问题。
+- [Major] frontend/src/hooks/useTrainingSceneImageFlow.ts
+  问题：scene image task 的创建/轮询生命周期此前会因“taskId 与 lifecycleKey 未绑定”导致重复 create 或在切场景后短路不创建。
+  原因：hook 内部用 `sceneLifecycleKey` 作为生命周期事实源，但 `sceneImageTaskId` 没有与其强绑定，导致“旧 taskId 影响新生命周期”的隐式耦合。
+  影响：产生重复任务（幂等键冲突/不必要负载）或恢复时展示错图/卡住不再请求。
+  建议：将 `sceneImageTaskId` 与 `sceneLifecycleKey` 绑定（记录 task 的 lifecycleKey，并在生命周期变更时统一清空状态）；同生命周期已有 task 时只做轮询，不再重复 create。（已落地，并通过 `useTrainingMvpFlow.test.tsx` 全量用例验证）
+
+## 后端 Findings
+- [Major] backend/api/services/training_story_script_service.py
+  问题：GET 缺失脚本的语义必须稳定且只读，不能返回“missing 伪数据”或在 GET 中触发 ensure/写入。
+  原因：GET 侧写入会破坏可缓存与可重放；“missing 伪数据”会把存储故障/迁移缺失伪装成正常缺失，导致错误恢复路径。
+  影响：客户端无法区分“确实没有”与“存储不可用/迁移缺失”；会产生半成功状态与难以排障的问题。
+  建议：GET 缺失直接 404 + 稳定 error_code；存储缺失直接 503 + `TRAINING_STORAGE_UNAVAILABLE`；ensure 只能走显式 POST。（已落地：缺失抛 `TrainingStoryScriptNotFoundError`，router 返回 404 + `TRAINING_STORY_SCRIPT_NOT_FOUND`）
+
+- [Major] backend/training/story_script_executor.py + backend/training/training_repository.py + backend/training/training_store.py
+  问题：executor 去重不能依赖进程内 `_scheduled_session_ids`；多实例/重启下会重复生成或丢任务。
+  原因：进程内 set 不是事实源，无法跨进程协调；一旦崩溃可能遗留 running/pending 状态无法收敛。
+  影响：重复生成导致成本与一致性问题；或 running 卡死无法恢复。
+  建议：改为 store 级“条件更新领取任务”（pending->running，running 可基于 lease 回收），executor 只在 claim 成功后再提交线程池。（已落地：新增 `claim_story_script_job`，executor 先 claim 再调度）
+
+- [Blocker] backend/training/training_store.py
+  问题：story_scripts 表缺失/迁移未执行时，不能被吞掉当作“脚本不存在”。
+  原因：吞错会把真实存储故障伪装成业务缺失，违背契约稳定性与可观测性。
+  影响：GET/ensure 行为不稳定，线上排障困难，恢复路径会走错分支。
+  建议：对 story_scripts 的 get/create/update/claim 一律抛 `TrainingStorageUnavailableError`，由 router 统一映射为 503 + `TRAINING_STORAGE_UNAVAILABLE`。（已落地：missing table 统一 raise，不再 warn+None）
+
+- [Minor] backend/models/training.py
+  问题：`training_story_scripts.status` 默认值与注释/服务映射不一致（历史 `succeeded` vs 当前 `ready`）。
+  原因：状态契约未统一，导致 Open Questions 中“允许状态集合”无法落地。
+  影响：后续扩展/排障时产生误判。
+  建议：明确契约：pending/running/ready/failed（兼容 succeeded legacy）；并在 service 输出与 executor 更新中保持一致。（已落地：模型默认 ready，service 兼容 succeeded->ready）
+
+## Open Questions
+- `training_story_scripts.status` 的对外契约最终是否要暴露 `running`（目前 GET/ensure 会透传 running/pending/ready/failed）？前端是否需要基于 running 做 UX（例如显示“生成中”）？
+- `claim_story_script_job` 的 lease 秒数（当前 300s）是否需要配置化？是否有“脚本生成通常耗时”的监控数据支撑？
+
+## 测试缺口
+- 前端
+  - 需要补 `useTrainingSceneImageFlow` 的 409 adopt_existing_task 分支测试：验证会 adopt 已存在 task 并进入 polling，而不是递增 attempt 或重复 create。
+- 后端
+  - 需要补 `claim_story_script_job` 的并发/租约回收测试：同 session 并发 claim 只有一个成功；running 超过 lease 可被重新 claim。
+  - 需要补 story_scripts 表缺失的契约测试：GET/ensure/claim 在缺表时应稳定返回 503 + `TRAINING_STORAGE_UNAVAILABLE`（不允许 404 或 200）。
+
+## Review Summary
+本轮改动把前端“场景图任务生命周期”从隐式耦合修正为显式绑定，并用单测回归验证，降低了重复创建与恢复错乱风险。后端把 story-script GET 彻底收敛为只读并用 404+稳定 error_code 表达缺失，避免了吞错与副作用。executor 的幂等从进程内 set 迁移到 store 级 claim，为多实例运行打下基础。当前剩余风险主要在：claim 的 lease 需要测试与可观测支撑，以及 409 adopt_existing_task 的前端用例仍需补齐。整体质量较上一轮显著提升，阻塞项已基本收敛到“测试补齐与契约确认”层面。
+

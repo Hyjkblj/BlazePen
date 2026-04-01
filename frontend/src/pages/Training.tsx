@@ -5,6 +5,7 @@ import TrainingCinematicChoiceBand from '@/components/training/TrainingCinematic
 import { ROUTES } from '@/config/routes';
 import { useTrainingMvpFlow } from '@/flows/useTrainingMvpFlow';
 import { normalizeTrainingSessionId } from '@/hooks/useTrainingSessionReadTarget';
+import { getStaticAssetContractWarning } from '@/services/assetUrl';
 import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
 import './Training.css';
 
@@ -41,6 +42,8 @@ function Training() {
     noticeMessage,
     dismissNotice,
     retryRestore,
+    restoreNextScenarioFailed,
+    retryRestoreNextScenario,
     retrySceneImage,
     sessionView,
     hasResumeTarget,
@@ -66,11 +69,13 @@ function Training() {
   const placeholderText = buildScenePlaceholderText({ hasSession, bootstrapStatus, sceneImageStatus });
   const hasSceneImageWarning = !sceneImageUrl && sceneImageStatus === 'failed';
   const [sceneAssetFailed, setSceneAssetFailed] = useState(false);
-  const staticAssetOrigin = (import.meta.env.VITE_STATIC_ASSET_ORIGIN ?? '').trim();
   const normalizedSceneImageUrl = useMemo(() => (sceneImageUrl ? String(sceneImageUrl).trim() : ''), [sceneImageUrl]);
   const isRelativeStaticUrl = normalizedSceneImageUrl.startsWith('/static/');
   const showStaticAssetWarning = Boolean(sceneAssetFailed) && Boolean(normalizedSceneImageUrl);
-  const showStaticAssetContractWarning = Boolean(isRelativeStaticUrl) && !staticAssetOrigin;
+  const staticAssetContractWarning = useMemo(
+    () => getStaticAssetContractWarning(normalizedSceneImageUrl),
+    [normalizedSceneImageUrl]
+  );
   const showChoiceBand = !showCompletionNotice && options.length > 0;
 
   return (
@@ -92,7 +97,7 @@ function Training() {
                 metadata: {
                   url: sceneImageUrl,
                   isRelativeStaticUrl,
-                  staticAssetOrigin: staticAssetOrigin || null,
+                  staticAssetOrigin: (import.meta.env.VITE_STATIC_ASSET_ORIGIN ?? '').trim() || null,
                 },
               });
             }}
@@ -121,6 +126,14 @@ function Training() {
               </button>
             </div>
           ) : null}
+          {restoreNextScenarioFailed && !currentScenario ? (
+            <div className="training-simplified__feedback training-simplified__feedback--warning">
+              <span>会话已恢复，但加载下一场景失败。你可以重试加载场景。</span>
+              <button type="button" onClick={() => void retryRestoreNextScenario()}>
+                重试加载场景
+              </button>
+            </div>
+          ) : null}
           {roundErrorMessage ? (
             <div className="training-simplified__feedback training-simplified__feedback--error">
               <span>{roundErrorMessage}</span>
@@ -142,13 +155,9 @@ function Training() {
               </span>
             </div>
           ) : null}
-          {showStaticAssetContractWarning ? (
+          {staticAssetContractWarning ? (
             <div className="training-simplified__feedback training-simplified__feedback--warning">
-              <span>
-                当前场景图返回的是 `/static/...` 路径，但未配置 `VITE_STATIC_ASSET_ORIGIN`。若当前入口没有 `/static`
-                代理到训练后端，将出现“后端已生成但前端取不到”。建议配置 `VITE_STATIC_ASSET_ORIGIN`（例如
-                `http://localhost:8010`）或为该入口补 `/static` 代理。
-              </span>
+              <span>{staticAssetContractWarning}</span>
             </div>
           ) : null}
           {noticeMessage ? (

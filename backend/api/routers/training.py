@@ -86,35 +86,9 @@ def _serialize_submit_round_media_tasks_request(request: TrainingRoundSubmitRequ
     return serialized_items
 
 
-def _dispatch_submit_round_media_tasks(result: dict) -> None:
-    media_tasks = result.get("media_tasks")
-    if not isinstance(media_tasks, list) or not media_tasks:
-        return
-
-    try:
-        executor = get_training_media_task_executor()
-    except Exception as exc:
-        logger.warning("failed to resolve training media executor during submit dispatch: %s", str(exc))
-        return
-
-    for task in media_tasks:
-        task_payload = task if isinstance(task, dict) else {}
-        task_id = str(task_payload.get("task_id") or "").strip()
-        status = str(task_payload.get("status") or "").strip().lower()
-        if not task_id or status not in {"pending", "running"}:
-            continue
-        try:
-            submitted = executor.submit_task(task_id)
-            logger.info(
-                "training media task dispatch: submitted=%s task_id=%s session_id=%s round_no=%s status=%s",
-                bool(submitted),
-                task_id,
-                str(task_payload.get("session_id") or "").strip() or None,
-                task_payload.get("round_no"),
-                status,
-            )
-        except Exception as exc:
-            logger.warning("failed to dispatch training media task from submit: task_id=%s error=%s", task_id, str(exc))
+def _dispatch_submit_round_media_tasks(_result: dict) -> None:
+    # Legacy no-op: dispatch is performed inside TrainingService.submit_round now.
+    return
 
 
 def _build_training_domain_error_response(
@@ -210,6 +184,31 @@ def _build_training_domain_error_response(
             details=details,
         )
 
+    if isinstance(exc, TrainingStorageUnavailableError):
+        if getattr(exc, "details", None):
+            details.update(dict(exc.details))
+        return error_response(
+            code=503,
+            message=str(exc),
+            error_code=TRAINING_STORAGE_UNAVAILABLE,
+            details=details,
+        )
+
+    if isinstance(exc, TrainingStoryScriptInvalidError):
+        return error_response(
+            code=400,
+            message=str(exc),
+            error_code=TRAINING_STORY_SCRIPT_INVALID,
+            details=details,
+        )
+
+    if isinstance(exc, TrainingStoryScriptNotFoundError):
+        return not_found_response(
+            message="training story script not found",
+            error_code=TRAINING_STORY_SCRIPT_NOT_FOUND,
+            details=details,
+        )
+
     raise TypeError(f"unsupported training domain exception: {type(exc)!r}")
 
 
@@ -284,7 +283,6 @@ async def submit_round(
             selected_option=request.selected_option,
             media_tasks=_serialize_submit_round_media_tasks_request(request),
         )
-        _dispatch_submit_round_media_tasks(result)
         return build_success_payload(data=result)
     except (
         DuplicateRoundSubmissionError,
@@ -351,24 +349,11 @@ async def get_story_script(
     try:
         result = story_script_service.get_story_script(session_id)
         return build_success_payload(data=result)
-    except TrainingSessionNotFoundError as exc:
+    except (TrainingSessionNotFoundError, TrainingStoryScriptNotFoundError, TrainingStorageUnavailableError) as exc:
         return _build_training_domain_error_response(
             exc,
             route_name="training.story_script",
             session_id=session_id,
-        )
-    except TrainingStoryScriptNotFoundError:
-        return not_found_response(
-            message="training story script not found",
-            error_code=TRAINING_STORY_SCRIPT_NOT_FOUND,
-            details={"route": "training.story_script", "session_id": session_id},
-        )
-    except TrainingStorageUnavailableError as exc:
-        return error_response(
-            code=503,
-            message=str(exc),
-            error_code=TRAINING_STORAGE_UNAVAILABLE,
-            details={"route": "training.story_script", "session_id": session_id, **dict(exc.details or {})},
         )
     except Exception as exc:
         logger.error("failed to get training story script: %s", str(exc), exc_info=True)
@@ -390,25 +375,16 @@ async def ensure_story_script(
     try:
         result = story_script_service.ensure_story_script(session_id)
         return build_success_payload(data=result)
-    except TrainingSessionNotFoundError as exc:
+    except (
+        TrainingSessionNotFoundError,
+        TrainingStorageUnavailableError,
+        TrainingStoryScriptInvalidError,
+        TrainingStoryScriptNotFoundError,
+    ) as exc:
         return _build_training_domain_error_response(
             exc,
             route_name="training.story_script.ensure",
             session_id=session_id,
-        )
-    except TrainingStorageUnavailableError as exc:
-        return error_response(
-            code=503,
-            message=str(exc),
-            error_code=TRAINING_STORAGE_UNAVAILABLE,
-            details={"route": "training.story_script.ensure", "session_id": session_id, **dict(exc.details or {})},
-        )
-    except TrainingStoryScriptInvalidError as exc:
-        return error_response(
-            code=400,
-            message=str(exc),
-            error_code=TRAINING_STORY_SCRIPT_INVALID,
-            details={"route": "training.story_script.ensure", "session_id": session_id, **dict(getattr(exc, "details", {}) or {})},
         )
     except Exception as exc:
         logger.error("failed to ensure training story script: %s", str(exc), exc_info=True)

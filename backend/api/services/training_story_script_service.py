@@ -51,7 +51,9 @@ class TrainingStoryScriptService:
             "pending",
             "running",
         }:
-            if self.story_script_executor is not None:
+            # Only schedule on state boundary: pending can be scheduled; running should not be resubmitted.
+            raw_status = str(getattr(existing, "status", "") or "").strip().lower()
+            if self.story_script_executor is not None and raw_status == "pending":
                 self.story_script_executor.submit_session(session_id)
             return self._to_response(existing)
 

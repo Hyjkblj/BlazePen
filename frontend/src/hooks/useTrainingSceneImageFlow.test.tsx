@@ -9,6 +9,17 @@ import { useTrainingSceneImageFlow } from './useTrainingSceneImageFlow';
 vi.mock('@/services/trainingApi', () => ({
   createTrainingMediaTask: vi.fn(),
   getTrainingMediaTask: vi.fn(),
+  buildTrainingSceneImageMediaTaskCreateParams: vi.fn((params: any) => ({
+    sessionId: params.sessionId,
+    roundNo: params.roundNo,
+    taskType: 'image',
+    idempotencyKey: `training-scene-image:${params.sessionId}:${params.scenario?.id}:attempt:${Math.max(
+      0,
+      Math.floor(params.attemptNo ?? 0)
+    )}`,
+    maxRetries: 1,
+    payload: {},
+  })),
 }));
 
 const createScenario = (id: string, title: string) => ({

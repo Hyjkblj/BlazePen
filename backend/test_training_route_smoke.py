@@ -22,7 +22,7 @@ from api.dependencies import get_training_query_service, get_training_service
 from api.middleware.error_handler import install_common_exception_handlers
 from api.routers import training
 from api.services.training_service import TrainingService
-from backend.test_training_service import _FakeEvaluator
+from test_training_service import _FakeEvaluator
 from models.character import Base
 from training.training_repository import SqlAlchemyTrainingRepository
 from training.training_store import DatabaseTrainingStore

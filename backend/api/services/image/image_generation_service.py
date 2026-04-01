@@ -1,12 +1,5 @@
 """图片生成服务（负责调用AI模型生成图片）"""
 from typing import Dict, Any, Optional, List
-import sys
-import os
-
-# 添加backend目录到路径
-backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-if backend_dir not in sys.path:
-    sys.path.insert(0, backend_dir)
 
 import config
 from utils.logger import get_logger

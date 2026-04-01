@@ -131,6 +131,8 @@ def get_training_service() -> TrainingService:
         from api.services.training_service import TrainingService
 
         _training_service = TrainingService()
+        # Inject optional media executor for service-level dispatch without creating import cycles.
+        _training_service.media_task_executor = get_training_media_task_executor()
     return _training_service
 
 

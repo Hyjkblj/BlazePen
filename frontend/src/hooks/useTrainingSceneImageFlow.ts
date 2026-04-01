@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TrainingSessionViewState } from '@/hooks/useTrainingSessionViewModel';
 import { getServiceErrorMessage, ServiceError } from '@/services/serviceError';
 import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
-import { createTrainingMediaTask, getTrainingMediaTask } from '@/services/trainingApi';
+import {
+  buildTrainingSceneImageMediaTaskCreateParams,
+  createTrainingMediaTask,
+  getTrainingMediaTask,
+} from '@/services/trainingApi';
 import type { TrainingMediaTaskStatus, TrainingScenario } from '@/types/training';
 import { normalizeTrainingMediaTaskView } from '@/utils/trainingSession';
 
@@ -25,16 +29,6 @@ const buildSceneImageAttemptIdempotencyKey = (
   scenarioId: string,
   attemptNo: number
 ): string => `${buildSceneImageIdempotencyKey(sessionId, scenarioId)}:attempt:${Math.max(0, attemptNo)}`;
-
-const buildSceneImagePrompt = (scenario: TrainingScenario): string =>
-  [
-    `Scene title: ${scenario.title || 'Untitled scene'}`,
-    `Era: ${scenario.eraDate || 'Unknown era'}`,
-    `Location: ${scenario.location || 'Unknown location'}`,
-    `Brief: ${scenario.brief || 'N/A'}`,
-    `Mission: ${scenario.mission || 'N/A'}`,
-    `Decision focus: ${scenario.decisionFocus || 'N/A'}`,
-  ].join('\n');
 
 const normalizeUrlKind = (value: string | null | undefined): 'empty' | 'absolute' | 'relative' | 'other' => {
   const url = String(value ?? '').trim();
@@ -107,10 +101,7 @@ export function useTrainingSceneImageFlow(
       scenarioId: currentScenario.id,
       scenarioTitle: currentScenario.title,
       roundNo: Math.max((sessionView?.roundNo ?? 0) + 1, 1),
-      prompt: buildSceneImagePrompt(currentScenario),
-      brief: currentScenario.brief,
-      mission: currentScenario.mission,
-      decisionFocus: currentScenario.decisionFocus,
+      scenario: currentScenario,
       characterId: sessionView?.characterId ?? null,
       isCompleted: Boolean(sessionView?.isCompleted),
     };
@@ -208,27 +199,16 @@ export function useTrainingSceneImageFlow(
             idempotencyKey,
           },
         });
-        const createdTask = await createTrainingMediaTask({
-          sessionId: sceneImageContext.sessionId,
-          roundNo: sceneImageContext.roundNo,
-          taskType: 'image',
-          idempotencyKey,
-          maxRetries: 1,
-          payload: {
-            session_id: sceneImageContext.sessionId,
-            round_no: sceneImageContext.roundNo,
-            scenario_id: sceneImageContext.scenarioId,
-            scenario_title: sceneImageContext.scenarioTitle,
-            major_scene_title: sceneImageContext.scenarioTitle,
-            prompt: sceneImageContext.prompt,
-            scenario_prompt: sceneImageContext.prompt,
-            brief: sceneImageContext.brief,
-            mission: sceneImageContext.mission,
-            decision_focus: sceneImageContext.decisionFocus,
-            image_type: 'scene',
-            generate_storyline_series: true,
-          },
-        });
+        const createdTask = await createTrainingMediaTask(
+          buildTrainingSceneImageMediaTaskCreateParams({
+            sessionId: sceneImageContext.sessionId,
+            roundNo: sceneImageContext.roundNo,
+            scenario: sceneImageContext.scenario,
+            attemptNo: sceneImageAttemptNo,
+            // Default: do not force storyline-series generation from the hook.
+            generateStorylineSeries: false,
+          })
+        );
 
         if (cancelled) {
           return;

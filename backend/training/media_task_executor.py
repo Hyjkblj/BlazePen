@@ -166,6 +166,16 @@ class TrainingMediaTaskProviderDispatcher:
         return {"image_urls": list(image_urls)}
 
     def _should_generate_scene_series(self, payload: dict[str, Any]) -> bool:
+        # Gate heavy "scene-series" generation behind a server-side switch.
+        # Default: disabled (client payload cannot force it).
+        series_enabled = str(os.getenv("TRAINING_ENABLE_SCENE_SERIES", "")).strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if not series_enabled:
+            return False
         image_type = str(payload.get("image_type") or "").strip().lower()
         should_generate_series = bool(payload.get("generate_storyline_series"))
         if not should_generate_series:
@@ -604,6 +614,8 @@ class TrainingMediaTaskExecutor:
                     "message": str(exc),
                     "error_class": type(exc).__name__,
                 }
+                if isinstance(exc, TrainingMediaTaskExecutionFailedError):
+                    error_payload["reason"] = exc.reason
 
                 if retries_used < max_retries:
                     retries_used += 1

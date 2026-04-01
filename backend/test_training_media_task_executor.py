@@ -301,22 +301,32 @@ class TrainingMediaTaskExecutorTestCase(unittest.TestCase):
         image_service = _FakeImageService()
         dispatcher = TrainingMediaTaskProviderDispatcher(image_service=image_service)
 
-        result = dispatcher.execute_task(
-            task_type="image",
-            payload={
-                "prompt": "draw newsroom scene",
-                "image_type": "scene",
-                "generate_storyline_series": True,
-                "session_id": "session-1",
-                "round_no": 1,
-                "scenario_id": "S1",
-                "major_scene_title": "Newsroom",
-                "micro_scene_prompts": [
-                    "newsroom micro scene 1",
-                    "newsroom micro scene 2",
-                ],
-            },
-        )
+        import os
+
+        previous = os.environ.get("TRAINING_ENABLE_SCENE_SERIES")
+        os.environ["TRAINING_ENABLE_SCENE_SERIES"] = "1"
+        try:
+            result = dispatcher.execute_task(
+                task_type="image",
+                payload={
+                    "prompt": "draw newsroom scene",
+                    "image_type": "scene",
+                    "generate_storyline_series": True,
+                    "session_id": "session-1",
+                    "round_no": 1,
+                    "scenario_id": "S1",
+                    "major_scene_title": "Newsroom",
+                    "micro_scene_prompts": [
+                        "newsroom micro scene 1",
+                        "newsroom micro scene 2",
+                    ],
+                },
+            )
+        finally:
+            if previous is None:
+                os.environ.pop("TRAINING_ENABLE_SCENE_SERIES", None)
+            else:
+                os.environ["TRAINING_ENABLE_SCENE_SERIES"] = previous
 
         self.assertIn("preview_url", result)
         self.assertIn("small_scene_urls", result)

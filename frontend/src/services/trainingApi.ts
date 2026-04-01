@@ -34,6 +34,7 @@ import type {
   TrainingScenarioNextResult,
   TrainingSessionInitParams,
 } from '@/types/training';
+import type { TrainingScenario } from '@/types/training';
 import {
   normalizeTrainingDiagnosticsPayload,
   normalizeTrainingInitPayload,
@@ -301,6 +302,56 @@ const normalizeTrainingMediaTaskRoundNo = (value: unknown): number | undefined =
     code: 'VALIDATION_ERROR',
     message: 'media task roundNo must be a non-negative integer.',
   });
+};
+
+const buildTrainingSceneImagePrompt = (scenario: TrainingScenario): string =>
+  [
+    `Scene title: ${scenario.title || 'Untitled scene'}`,
+    `Era: ${scenario.eraDate || 'Unknown era'}`,
+    `Location: ${scenario.location || 'Unknown location'}`,
+    `Brief: ${scenario.brief || 'N/A'}`,
+    `Mission: ${scenario.mission || 'N/A'}`,
+    `Decision focus: ${scenario.decisionFocus || 'N/A'}`,
+  ].join('\n');
+
+export const buildTrainingSceneImageMediaTaskCreateParams = (options: {
+  sessionId: string;
+  roundNo: number;
+  scenario: TrainingScenario;
+  attemptNo?: number;
+  generateStorylineSeries?: boolean;
+}): TrainingMediaTaskCreateParams => {
+  const attemptNo = Math.max(0, Math.floor(options.attemptNo ?? 0));
+  const idempotencyKey = `training-scene-image:${options.sessionId}:${options.scenario.id}:attempt:${attemptNo}`;
+  const prompt = buildTrainingSceneImagePrompt(options.scenario);
+
+  const payload: Record<string, unknown> = {
+    session_id: options.sessionId,
+    round_no: options.roundNo,
+    scenario_id: options.scenario.id,
+    scenario_title: options.scenario.title,
+    major_scene_title: options.scenario.title,
+    prompt,
+    scenario_prompt: prompt,
+    brief: options.scenario.brief,
+    mission: options.scenario.mission,
+    decision_focus: options.scenario.decisionFocus,
+    image_type: 'scene',
+  };
+
+  // Default: do NOT force storyline-series generation from frontend hot path.
+  if (options.generateStorylineSeries === true) {
+    payload.generate_storyline_series = true;
+  }
+
+  return {
+    sessionId: options.sessionId,
+    roundNo: options.roundNo,
+    taskType: 'image',
+    idempotencyKey,
+    maxRetries: 1,
+    payload,
+  };
 };
 
 const normalizeTrainingRoundSubmitMediaTasks = (

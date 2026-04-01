@@ -33,6 +33,17 @@ const trainingApiMocks = vi.hoisted(() => ({
   getTrainingProgress: vi.fn(),
   getTrainingReport: vi.fn(),
   getTrainingDiagnostics: vi.fn(),
+  buildTrainingSceneImageMediaTaskCreateParams: vi.fn((params: any) => ({
+    sessionId: params.sessionId,
+    roundNo: params.roundNo,
+    taskType: 'image',
+    idempotencyKey: `training-scene-image:${params.sessionId}:${params.scenario?.id}:attempt:${Math.max(
+      0,
+      Math.floor(params.attemptNo ?? 0)
+    )}`,
+    maxRetries: 1,
+    payload: {},
+  })),
 }));
 
 const trainingCharacterApiMocks = vi.hoisted(() => ({

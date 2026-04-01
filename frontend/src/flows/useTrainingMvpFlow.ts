@@ -122,6 +122,7 @@ export function useTrainingMvpFlow(
     playerAge: '',
   });
   const [sessionView, setSessionView] = useState<TrainingSessionViewState | null>(null);
+  const [restoreNextScenarioFailed, setRestoreNextScenarioFailed] = useState(false);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [latestOutcome, setLatestOutcome] = useState<TrainingRoundOutcomeView | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
@@ -165,129 +166,109 @@ export function useTrainingMvpFlow(
         try {
           const nextScenarioResult = await getNextTrainingScenario({ sessionId: summaryResult.sessionId });
           const nextView = buildTrainingSessionViewFromNext(summaryView, nextScenarioResult);
+          setRestoreNextScenarioFailed(false);
           setSessionView(nextView);
         } catch {
+          setRestoreNextScenarioFailed(true);
           setSessionView(summaryView);
         }
         return summaryResult;
       }
 
+      setRestoreNextScenarioFailed(false);
       setSessionView(summaryView);
       return summaryResult;
     },
     [bootstrap, sessionViewModel]
   );
 
-  useEffect(() => {
-    if (sessionView) {
+  const retryRestoreNextScenario = useCallback(async () => {
+    const sessionId = sessionView?.sessionId ?? bootstrap.activeSession?.sessionId ?? null;
+    if (!sessionId) return;
+    if (sessionView?.currentScenario) {
+      setRestoreNextScenarioFailed(false);
       return;
     }
+    try {
+      const nextScenarioResult = await getNextTrainingScenario({ sessionId });
+      setSessionView((current) =>
+        current ? buildTrainingSessionViewFromNext(current, nextScenarioResult) : current
+      );
+      setRestoreNextScenarioFailed(false);
+    } catch {
+      setRestoreNextScenarioFailed(true);
+    }
+  }, [bootstrap.activeSession?.sessionId, sessionView, setSessionView]);
 
+  const restoreCandidate = useMemo(() => {
     if (suppressAutoRestoreSessionView) {
-      return;
+      return null;
     }
-
-    const resumableSessionId = sessionViewModel.autoRestoreSessionId;
-    if (!resumableSessionId) {
-      autoRestoreSessionIdRef.current = null;
-      return;
-    }
-
-    if (autoRestoreSessionIdRef.current === resumableSessionId) {
-      return;
-    }
-
-    autoRestoreSessionIdRef.current = resumableSessionId;
-    const timerId = window.setTimeout(() => {
-      void restoreSessionView(resumableSessionId);
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timerId);
-    };
-  }, [restoreSessionView, sessionView, sessionViewModel.autoRestoreSessionId, suppressAutoRestoreSessionView]);
-
-  useEffect(() => {
     if (sessionView) {
-      return;
+      return null;
     }
 
-    if (suppressAutoRestoreSessionView) {
-      return;
+    // Priority: explicit(autoRestore) > activeSession > resumeTarget (only when explicitly provided by bootstrap).
+    const explicitSessionId = sessionViewModel.autoRestoreSessionId ?? null;
+    if (explicitSessionId) {
+      return { source: 'explicit', sessionId: explicitSessionId };
     }
 
-    // Guard against cases where a new hook instance mounts (route transitions, dev-mode remounts)
-    // after bootstrap has already recovered an active session. Ensure we still materialize the
-    // full sessionView (including currentScenario) for the training page.
     if (bootstrap.status !== 'ready') {
-      return;
+      return null;
+    }
+
+    const activeSessionId = bootstrap.activeSession?.sessionId ?? null;
+    if (activeSessionId) {
+      return { source: 'active', sessionId: activeSessionId };
+    }
+
+    const resumeTargetSessionId = bootstrap.resumeTarget?.sessionId ?? null;
+    if (resumeTargetSessionId) {
+      return { source: 'resumeTarget', sessionId: resumeTargetSessionId };
     }
 
     const sessionIdHint = sessionViewModel.currentSessionId ?? null;
-    if (!sessionIdHint) {
-      return;
+    if (sessionIdHint) {
+      return { source: 'hint', sessionId: sessionIdHint };
     }
 
-    if (autoRestoreSessionIdRef.current === sessionIdHint) {
-      return;
-    }
-
-    autoRestoreSessionIdRef.current = sessionIdHint;
-    const timerId = window.setTimeout(() => {
-      void restoreSessionView(sessionIdHint);
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timerId);
-    };
+    return null;
   }, [
+    bootstrap.activeSession?.sessionId,
+    bootstrap.resumeTarget?.sessionId,
     bootstrap.status,
-    restoreSessionView,
     sessionView,
+    sessionViewModel.autoRestoreSessionId,
     sessionViewModel.currentSessionId,
     suppressAutoRestoreSessionView,
   ]);
 
+  const restoreInFlightRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (sessionView) {
+    if (!restoreCandidate) {
+      autoRestoreSessionIdRef.current = null;
+      restoreInFlightRef.current = null;
       return;
     }
 
-    if (suppressAutoRestoreSessionView) {
+    const restoreKey = `${restoreCandidate.source}:${restoreCandidate.sessionId}`;
+    if (autoRestoreSessionIdRef.current === restoreKey) {
+      return;
+    }
+    if (restoreInFlightRef.current === restoreKey) {
       return;
     }
 
-    // If bootstrap already has an active session (e.g. init succeeded), but this hook instance
-    // (re)mounted without a materialized sessionView, force a summary restore so the UI and
-    // scene-image flow can proceed.
-    if (bootstrap.status !== 'ready') {
-      return;
-    }
-
-    const activeSessionId = bootstrap.activeSession?.sessionId ?? null;
-    if (!activeSessionId) {
-      return;
-    }
-
-    if (autoRestoreSessionIdRef.current === activeSessionId) {
-      return;
-    }
-
-    autoRestoreSessionIdRef.current = activeSessionId;
-    const timerId = window.setTimeout(() => {
-      void restoreSessionView(activeSessionId);
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timerId);
-    };
-  }, [
-    bootstrap.activeSession?.sessionId,
-    bootstrap.status,
-    restoreSessionView,
-    sessionView,
-    suppressAutoRestoreSessionView,
-  ]);
+    autoRestoreSessionIdRef.current = restoreKey;
+    restoreInFlightRef.current = restoreKey;
+    void restoreSessionView(restoreCandidate.sessionId).finally(() => {
+      if (restoreInFlightRef.current === restoreKey) {
+        restoreInFlightRef.current = null;
+      }
+    });
+  }, [restoreCandidate, restoreSessionView]);
 
   useEffect(() => {
     if (sessionView) {
@@ -564,6 +545,8 @@ export function useTrainingMvpFlow(
     startTraining,
     prewarmAllSceneImages,
     retryRestore,
+    restoreNextScenarioFailed,
+    retryRestoreNextScenario,
     retrySceneImage,
     clearWorkspace,
     sessionView,

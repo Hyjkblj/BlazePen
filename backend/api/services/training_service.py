@@ -192,6 +192,9 @@ class TrainingService:
         self.telemetry_policy = telemetry_policy or TrainingTelemetryPolicy(phase_policy=self.phase_policy)
         # 运行时后果由独立引擎负责，服务层只做编排与持久化。
         self.consequence_engine = consequence_engine or ConsequenceEngine()
+        # Optional async dispatch hook (injected by API wiring).
+        # Kept as a runtime attribute to avoid hard dependency cycles.
+        self.media_task_executor = None
 
         default_scenario_sequence = self._build_default_scenario_sequence(self.runtime_config)
         self._scenario_sequence = list(scenario_sequence or default_scenario_sequence)
@@ -677,6 +680,23 @@ class TrainingService:
             if normalized_media_task_specs
             else []
         )
+
+        if round_media_tasks and self.media_task_executor is not None:
+            for task in round_media_tasks:
+                task_id = str(getattr(task, "task_id", "") or "").strip()
+                status = str(getattr(task, "status", "") or "").strip().lower()
+                if not task_id or status not in {"pending", "running"}:
+                    continue
+                try:
+                    self.media_task_executor.submit_task(task_id)
+                except Exception as exc:
+                    logger.warning(
+                        "training media task dispatch failed in service: task_id=%s session_id=%s round_no=%s error=%s",
+                        task_id,
+                        session_id,
+                        round_no,
+                        str(exc),
+                    )
         return TrainingRoundSubmitOutput(
             session_id=session_id,
             round_no=round_no,

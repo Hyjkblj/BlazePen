@@ -18,6 +18,9 @@ from api.app_factory import create_api_app
 from api.dependencies import (
     warmup_training_character_preview_job_service,
     warmup_training_media_task_executor,
+    get_training_media_task_executor,
+    get_training_story_script_executor,
+    get_story_image_executor,
 )
 from api.routers import training, training_characters, training_media, tts
 import config
@@ -140,6 +143,30 @@ def _new_training_media_runtime_state() -> dict:
 
 
 app.state.training_media_runtime_state = _new_training_media_runtime_state()
+
+
+@app.on_event("shutdown")
+async def _shutdown_executors() -> None:
+    try:
+        executor = get_training_media_task_executor()
+        if executor is not None and hasattr(executor, "shutdown"):
+            executor.shutdown()
+    except Exception as exc:
+        logger.warning("failed to shutdown training media executor: %s", str(exc))
+
+    try:
+        story_script_executor = get_training_story_script_executor()
+        if story_script_executor is not None and hasattr(story_script_executor, "shutdown"):
+            story_script_executor.shutdown()
+    except Exception as exc:
+        logger.warning("failed to shutdown training story-script executor: %s", str(exc))
+
+    try:
+        story_image_executor = get_story_image_executor()
+        if story_image_executor is not None and hasattr(story_image_executor, "shutdown"):
+            story_image_executor.shutdown(wait=False, cancel_futures=True)  # type: ignore[arg-type]
+    except Exception as exc:
+        logger.warning("failed to shutdown story image executor: %s", str(exc))
 
 def _single_line(text: str) -> str:
     return " ".join(str(text or "").split()).strip()

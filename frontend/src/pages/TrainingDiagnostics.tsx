@@ -1,4 +1,8 @@
 import { useSearchParams } from 'react-router-dom';
+import {
+  pickDisplayableEndingPayload,
+  TrainingInsightEndingBadge,
+} from '@/components/training/TrainingInsightEndingBadge';
 import TrainingInsightShell from '@/components/training/TrainingInsightShell';
 import { useTrainingDiagnostics } from '@/hooks/useTrainingDiagnostics';
 import { normalizeTrainingSessionId } from '@/hooks/useTrainingSessionReadTarget';
@@ -141,22 +145,24 @@ function TrainingDiagnostics() {
 
   return (
     <TrainingInsightShell
-      title="Training Diagnostics"
-      description="训练诊断页聚焦推荐日志、风险分布和可解释观测，不让页面层回扫 history 推导这些统计。"
+      title="学情诊断"
+      description="本页用图表和列表帮你看到：系统在哪些环节给了推荐、出现过哪些风险标签等，便于对照课堂要求自查。数据全部由服务器汇总，前端不做「猜结论」。下方可展开查看会话编号。"
       activeView="diagnostics"
       sessionId={sessionTarget.sessionId}
-      sessionSource={sessionTarget.source}
+      sessionEnding={data?.ending ?? null}
+      sessionIdentity={data?.playerProfile?.identity ?? data?.runtimeState?.playerProfile?.identity ?? null}
+      sessionDisplayName={data?.playerProfile?.name ?? data?.runtimeState?.playerProfile?.name ?? null}
       navigationSessionId={querySessionId}
       sessionStatus={data?.status ?? sessionTarget.status}
-      loadingMessage={status === 'loading' ? '正在读取训练诊断...' : null}
+      loadingMessage={status === 'loading' ? '正在加载学情诊断…' : null}
       errorMessage={errorMessage}
       hasStaleData={hasStaleData}
       emptyState={
         !data && !sessionTarget.sessionId
           ? {
-              title: '暂无训练诊断',
+              title: '暂时看不到学情诊断',
               description:
-                '当前没有可读取的训练 sessionId。请先开始训练，或从训练主页恢复训练会话后再查看诊断。',
+                '当前没有可用的学习会话。请先开始实训，或从训练主页恢复后再打开本页。',
             }
           : null
       }
@@ -164,23 +170,36 @@ function TrainingDiagnostics() {
     >
       {data ? (
         <>
-          <section className="training-insight-section">
+          {(data.status ?? '').toLowerCase() === 'completed' ? (
+            <section className="training-insight-section">
+              <h2>归档结局</h2>
+              {pickDisplayableEndingPayload(data.ending) ? (
+                <TrainingInsightEndingBadge ending={data.ending} variant="inline" showExplanation />
+              ) : (
+                <p className="training-insight-empty">
+                  暂未从服务器读到终局分类。可点「刷新读取」，或打开「学习总结」查看是否已写入。
+                </p>
+              )}
+            </section>
+          ) : null}
+
+          <section className="training-insight-section training-insight-section--diagnostics-summary">
             <h2>诊断摘要</h2>
             <div className="training-insight-grid">
               <dl className="training-insight-stat-card">
-                <dt>recommendationLogs</dt>
+                <dt>推荐日志</dt>
                 <dd>{data.summary?.totalRecommendationLogs ?? 0}</dd>
               </dl>
               <dl className="training-insight-stat-card">
-                <dt>auditEvents</dt>
+                <dt>审计事件</dt>
                 <dd>{data.summary?.totalAuditEvents ?? 0}</dd>
               </dl>
               <dl className="training-insight-stat-card">
-                <dt>ktObservations</dt>
+                <dt>KT 观测</dt>
                 <dd>{data.summary?.totalKtObservations ?? 0}</dd>
               </dl>
               <dl className="training-insight-stat-card">
-                <dt>recommended/selected mismatch</dt>
+                <dt>推荐与作答不一致</dt>
                 <dd>{data.summary?.recommendedVsSelectedMismatchCount ?? 0}</dd>
               </dl>
             </div>

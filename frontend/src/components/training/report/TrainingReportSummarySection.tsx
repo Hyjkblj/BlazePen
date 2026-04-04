@@ -26,51 +26,51 @@ function TrainingReportSummarySection({
 }: TrainingReportSummarySectionProps) {
   return (
     <section className="training-insight-section">
-      <h2>报告摘要</h2>
+      <h2>学习小结</h2>
       <div className="training-insight-grid">
         <dl className="training-insight-stat-card">
-          <dt>已完成回合</dt>
+          <dt>完成练习回合</dt>
           <dd>{rounds}</dd>
         </dl>
         <dl className="training-insight-stat-card">
-          <dt>综合提升</dt>
+          <dt>能力综合变化</dt>
           <dd>{formatSignedMetric(improvement)}</dd>
         </dl>
         <dl className="training-insight-stat-card">
-          <dt>最终综合分</dt>
+          <dt>总成绩（加权）</dt>
           <dd>{summary ? formatMetricValue(summary.weightedScoreFinal) : '未提供'}</dd>
         </dl>
         <dl className="training-insight-stat-card">
-          <dt>高风险回合</dt>
+          <dt>需重点回看回合</dt>
           <dd>{summary?.highRiskRoundCount ?? 0}</dd>
         </dl>
       </div>
 
       <div className="training-insight-subgrid training-insight-stack-gap">
         <div className="training-insight-detail-card">
-          <h3>关键结论</h3>
+          <h3>本次要点</h3>
           <dl className="training-insight-detail-list">
             <div>
-              <dt>最大提升能力</dt>
+              <dt>进步最明显的维度</dt>
               <dd>{summary?.strongestImprovedSkillCode ?? '未提供'}</dd>
             </div>
             <div>
-              <dt>最低能力</dt>
+              <dt>仍待加强的维度</dt>
               <dd>{summary?.weakestSkillCode ?? '未提供'}</dd>
             </div>
             <div>
-              <dt>主导风险</dt>
+              <dt>出现较多的风险点</dt>
               <dd>{summary?.dominantRiskFlag ?? '未提供'}</dd>
             </div>
             <div>
-              <dt>结局结果</dt>
-              <dd>{ending ? '已生成' : '未生成'}</dd>
+              <dt>终局评定</dt>
+              <dd>{ending ? '已有记录' : '暂无记录'}</dd>
             </div>
           </dl>
         </div>
 
         <div className="training-insight-detail-card">
-          <h3>复盘建议</h3>
+          <h3>延伸练习建议</h3>
           {summary?.reviewSuggestions.length ? (
             <ul className="training-insight-code-list">
               {summary.reviewSuggestions.map((item) => (
@@ -78,7 +78,7 @@ function TrainingReportSummarySection({
               ))}
             </ul>
           ) : (
-            <p className="training-insight-empty">当前没有复盘建议。</p>
+            <p className="training-insight-empty">暂无系统生成的练习建议，可稍后再试刷新，或结合课堂讲义自行安排复习。</p>
           )}
         </div>
       </div>

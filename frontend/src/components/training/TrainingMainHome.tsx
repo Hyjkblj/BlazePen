@@ -3,10 +3,11 @@ import TrainingTitleFire from '@/components/training/TrainingTitleFire';
 import './TrainingMainHome.css';
 
 type TrainingMainHomeProps = {
-  onEnter: () => void;
+  onEnter: () => void | Promise<void>;
+  enterDisabled?: boolean;
 };
 
-function TrainingMainHome({ onEnter }: TrainingMainHomeProps) {
+function TrainingMainHome({ onEnter, enterDisabled = false }: TrainingMainHomeProps) {
   return (
     <div className="training-mainhome">
       <h1 className="training-mainhome__title">
@@ -15,7 +16,16 @@ function TrainingMainHome({ onEnter }: TrainingMainHomeProps) {
       </h1>
 
       <div className="training-mainhome__action">
-        <Button className="training-mainhome__start" type="primary" size="large" onClick={onEnter}>
+        <Button
+          className="training-mainhome__start"
+          type="primary"
+          size="large"
+          loading={enterDisabled}
+          disabled={enterDisabled}
+          onClick={() => {
+            void onEnter();
+          }}
+        >
           开 始
         </Button>
       </div>

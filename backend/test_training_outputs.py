@@ -140,6 +140,7 @@ class TrainingOutputsTestCase(unittest.TestCase):
         self.assertEqual(payload["state_radar"][0]["code"], "credibility")
         self.assertEqual(payload["growth_curve"][0]["round_no"], 0)
         self.assertEqual(payload["growth_curve"][1]["scenario_id"], "S1")
+        self.assertEqual(payload.get("round_snapshots"), [])
 
     def test_scenario_output_should_serialize_options_recommendation_and_extra_fields(self):
         """场景 DTO 应保留推荐信息、选项和扩展字段。"""

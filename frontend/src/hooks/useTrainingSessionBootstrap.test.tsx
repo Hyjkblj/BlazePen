@@ -15,6 +15,7 @@ import { useTrainingSessionBootstrap } from './useTrainingSessionBootstrap';
 const trainingApiMocks = vi.hoisted(() => ({
   initTraining: vi.fn(),
   getTrainingSessionSummary: vi.fn(),
+  bindTrainingSessionCharacter: vi.fn(),
 }));
 
 const telemetrySpy = vi.hoisted(() => vi.fn());
@@ -200,6 +201,7 @@ describe('useTrainingSessionBootstrap', () => {
       runtimeState: createRuntimeState(),
       nextScenario: null,
       scenarioCandidates: [],
+      scenarioSequence: [],
     });
 
     const { result } = renderHook(() => useTrainingSessionBootstrap(), { wrapper });
@@ -232,6 +234,53 @@ describe('useTrainingSessionBootstrap', () => {
     );
   });
 
+  it('single-flights concurrent start requests with the same session init key', async () => {
+    let resolveInit: ((value: unknown) => void) | null = null;
+    trainingApiMocks.initTraining.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveInit = resolve;
+        })
+    );
+
+    const { result } = renderHook(() => useTrainingSessionBootstrap(), { wrapper });
+
+    const params = {
+      userId: 'frontend-training-user',
+      trainingMode: 'guided' as const,
+      characterId: '12',
+      playerProfile: null,
+    };
+
+    const firstPromise = result.current.startTrainingSession(params);
+    const secondPromise = result.current.startTrainingSession(params);
+
+    expect(trainingApiMocks.initTraining).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      resolveInit?.({
+        sessionId: 'training-session-singleflight',
+        characterId: '12',
+        trainingMode: 'guided',
+        status: 'initialized',
+        roundNo: 0,
+        runtimeState: createRuntimeState(),
+        nextScenario: null,
+        scenarioCandidates: [],
+        scenarioSequence: [],
+      });
+    });
+
+    await act(async () => {
+      await Promise.all([firstPromise, secondPromise]);
+    });
+
+    expect(result.current.activeSession).toMatchObject({
+      sessionId: 'training-session-singleflight',
+      characterId: '12',
+    });
+  });
+
   it('prefers backend characterId when start response and local input conflict', async () => {
     trainingApiMocks.initTraining.mockResolvedValueOnce({
       sessionId: 'training-session-start',
@@ -242,6 +291,7 @@ describe('useTrainingSessionBootstrap', () => {
       runtimeState: createRuntimeState(),
       nextScenario: null,
       scenarioCandidates: [],
+      scenarioSequence: [],
     });
 
     const { result } = renderHook(() => useTrainingSessionBootstrap(), { wrapper });
@@ -337,6 +387,96 @@ describe('useTrainingSessionBootstrap', () => {
         }),
       })
     );
+  });
+
+  it('persists scenario prewarm plan after early init when persistScenarioPrewarmPlan is set', async () => {
+    trainingApiMocks.initTraining.mockResolvedValueOnce({
+      sessionId: 'training-session-early',
+      characterId: null,
+      trainingMode: 'guided',
+      status: 'initialized',
+      roundNo: 0,
+      runtimeState: createRuntimeState(),
+      nextScenario: null,
+      scenarioCandidates: [],
+      scenarioSequence: [{ id: 'S1', title: 'Scene 1' }],
+    });
+
+    const { result } = renderHook(() => useTrainingSessionBootstrap(), { wrapper });
+
+    await act(async () => {
+      await result.current.startTrainingSession({
+        userId: 'frontend-training-user',
+        trainingMode: 'guided',
+        persistScenarioPrewarmPlan: true,
+      });
+    });
+
+    const raw = sessionStorage.getItem('trainingPrewarmPlan');
+    expect(raw).toBeTruthy();
+    expect(JSON.parse(raw!)).toEqual({
+      sessionId: 'training-session-early',
+      scenarios: [{ id: 'S1', title: 'Scene 1' }],
+    });
+  });
+
+  it('clears prewarm plan in sessionStorage when clearing training session', () => {
+    sessionStorage.setItem(
+      'trainingPrewarmPlan',
+      JSON.stringify({ sessionId: 'x', scenarios: [{ id: 'a', title: 'a' }] })
+    );
+    const { result } = renderHook(() => useTrainingSessionBootstrap(), { wrapper });
+    act(() => {
+      result.current.clearTrainingSession();
+    });
+    expect(sessionStorage.getItem('trainingPrewarmPlan')).toBeNull();
+  });
+
+  it('finalizes pending session by binding character then loading summary', async () => {
+    trainingApiMocks.bindTrainingSessionCharacter.mockResolvedValueOnce({
+      sessionId: 'training-session-bind',
+      characterId: 42,
+    });
+    trainingApiMocks.getTrainingSessionSummary.mockResolvedValueOnce(
+      createSummaryResult({
+        sessionId: 'training-session-bind',
+        characterId: '42',
+        trainingMode: 'guided',
+      })
+    );
+
+    const { result } = renderHook(
+      () => ({
+        bootstrap: useTrainingSessionBootstrap(),
+        trainingFlow: useTrainingFlow(),
+      }),
+      { wrapper }
+    );
+
+    act(() => {
+      result.current.trainingFlow.setActiveSession({
+        sessionId: 'training-session-bind',
+        trainingMode: 'guided',
+        characterId: null,
+        status: 'initialized',
+        roundNo: 0,
+        totalRounds: null,
+        runtimeState: createRuntimeState(),
+      });
+    });
+
+    await act(async () => {
+      await result.current.bootstrap.finalizePendingTrainingSession('42');
+    });
+
+    expect(trainingApiMocks.bindTrainingSessionCharacter).toHaveBeenCalledWith(
+      'training-session-bind',
+      42
+    );
+    expect(result.current.bootstrap.activeSession).toMatchObject({
+      sessionId: 'training-session-bind',
+      characterId: '42',
+    });
   });
 
   it('emits failed telemetry when explicit training session restore is rejected', async () => {

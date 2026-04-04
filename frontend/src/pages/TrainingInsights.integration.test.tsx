@@ -124,6 +124,7 @@ describe('Training insight routes', () => {
           payload: {},
         },
       ],
+      ending: null,
     });
 
     renderInsightRoute(ROUTES.TRAINING_PROGRESS, {
@@ -144,7 +145,9 @@ describe('Training insight routes', () => {
       );
     });
 
-    expect(await screen.findByText('Training Progress')).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: '学习进度' })
+    ).toBeTruthy();
     expect(screen.getByText('33.3%')).toBeTruthy();
     expect(screen.getAllByText('scenario-active').length).toBeGreaterThan(0);
     expect(screen.getByText('candidate_pool')).toBeTruthy();
@@ -293,7 +296,9 @@ describe('Training insight routes', () => {
       );
     });
 
-    expect(await screen.findByText('Training Report')).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: '学习总结' })
+    ).toBeTruthy();
     expect(screen.getByText('优先补练来源保护')).toBeTruthy();
     expect(screen.getByText('source_exposure_risk: 1')).toBeTruthy();
   });
@@ -322,11 +327,13 @@ describe('Training insight routes', () => {
 
     renderInsightRoute(`${ROUTES.TRAINING_REPORT}?sessionId=training-session-in-progress`);
 
-    expect(await screen.findByText('Training Report')).toBeTruthy();
-    expect(await screen.findByText('报告仍在生成中')).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: '学习总结' })
+    ).toBeTruthy();
+    expect(await screen.findByText('学习总结还在更新')).toBeTruthy();
     expect(
       screen.getByText(
-        '当前训练会话状态为',
+        '当前学习会话状态为',
         {
           exact: false,
         }
@@ -374,15 +381,17 @@ describe('Training insight routes', () => {
       );
     });
 
-    expect(await screen.findByText('Training Report')).toBeTruthy();
-    expect(screen.getByText('摘要暂未就绪')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '训练进度' }).getAttribute('href')).toBe(
+    expect(
+      await screen.findByRole('heading', { level: 1, name: '学习总结' })
+    ).toBeTruthy();
+    expect(screen.getByText('小结字段暂未齐')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '学习进度' }).getAttribute('href')).toBe(
       ROUTES.TRAINING_PROGRESS
     );
-    expect(screen.getByRole('link', { name: '训练报告' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: '学习总结' }).getAttribute('href')).toBe(
       ROUTES.TRAINING_REPORT
     );
-    expect(screen.getByRole('link', { name: '训练诊断' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: '学情诊断' }).getAttribute('href')).toBe(
       ROUTES.TRAINING_DIAGNOSTICS
     );
   });
@@ -440,7 +449,9 @@ describe('Training insight routes', () => {
 
     renderInsightRoute(`${ROUTES.TRAINING_REPORT}?sessionId=training-session-report`);
 
-    expect(await screen.findByText('Training Report')).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: '学习总结' })
+    ).toBeTruthy();
     expect(screen.getByText('优先补练来源保护')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '刷新读取' }));
@@ -462,14 +473,14 @@ describe('Training insight routes', () => {
 
     renderInsightRoute(ROUTES.TRAINING_DIAGNOSTICS);
 
-    expect(await screen.findByText('暂无训练诊断')).toBeTruthy();
+    expect(await screen.findByText('暂时看不到学情诊断')).toBeTruthy();
     expect(trainingApiMocks.getTrainingDiagnostics).not.toHaveBeenCalled();
   });
 
   it('shows an empty state when there is no readable session target', async () => {
     renderInsightRoute(ROUTES.TRAINING_DIAGNOSTICS);
 
-    expect(await screen.findByText('暂无训练诊断')).toBeTruthy();
+    expect(await screen.findByText('暂时看不到学情诊断')).toBeTruthy();
     expect(trainingApiMocks.getTrainingDiagnostics).not.toHaveBeenCalled();
   });
 
@@ -523,7 +534,7 @@ describe('Training insight routes', () => {
 
     renderInsightRoute(ROUTES.TRAINING_DIAGNOSTICS);
 
-    expect(await screen.findByText('暂无训练诊断')).toBeTruthy();
+    expect(await screen.findByText('暂时看不到学情诊断')).toBeTruthy();
     expect(trainingApiMocks.getTrainingDiagnostics).toHaveBeenCalledTimes(1);
   });
 });

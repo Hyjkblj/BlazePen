@@ -1,0 +1,43 @@
+## 前端 Findings
+- [Blocker] frontend/src/pages/Training.tsx:68
+  问题：`useState/useMemo` 在条件 `return <Navigate />` 之后调用，Hook 调用顺序不稳定。
+  原因：组件在 `!sessionView && !hasInsightEntry` 时提前返回（第55-57行），导致第68行及之后 Hook 仅在部分渲染路径执行，违反 Hook 规则。
+  影响：在会话状态切换（恢复成功/清理会话/路由回跳）场景下可能触发 “Rendered more/fewer hooks than expected” 运行时崩溃，训练页不可用。
+  建议：将 `sceneAssetFailed`、`normalizedSceneImageUrl` 等 Hook 提升到所有条件分支之前，或拆分 `Navigate` 分支为外层守卫组件，确保 Hook 顺序恒定。
+
+- [Blocker] frontend/src/flows/useTrainingMvpFlow.ts:392
+  问题：落地页预热 effect 与手动预热函数都能触发 `startTrainingSession`，缺少“单飞”互斥。
+  原因：第392-417行 effect 通过 `setTimeout` 触发会话创建；第458-463行 `prewarmAllSceneImages` 也直接创建会话；而 `startTrainingSession` 本身无幂等锁。`useTrainingCharacterPreviewFlow.ts` 第501-505行在生成形象后会主动调用后者，和 effect 并发窗口重叠。
+  影响：可能创建重复训练会话（双 session），导致恢复目标漂移、后端资源浪费、用户进入的不是最新会话，破坏 `sessionId` 单一事实源。
+  建议：在 `useTrainingSessionBootstrap` 增加 init in-flight 单飞（按 characterId+mode 或 explicit key），并让 prewarm effect/`prewarmAllSceneImages` 统一走同一幂等入口。
+
+## 后端 Findings
+- [Blocker] backend/api/services/training_story_script_service.py:93
+  问题：`ensure_story_script` 对已有 failed 记录无法重新触发生成，恢复路径失效。
+  原因：当记录存在且状态不是 pending/running 时，第93行调用 `create_story_script`；仓储在唯一键冲突时直接返回旧行（`backend/training/training_repository.py` 第203-212行）而不改状态；执行器仅处理 pending/running（`backend/training/story_script_executor.py` 第52-58行），导致提交后不执行。
+  影响：脚本生成一旦失败会“卡死”为 failed，POST ensure 形同虚设，无法自愈，破坏可恢复性。
+  建议：在 ensure 检测到 failed/missing-payload 时先 `update_story_script_by_session_id(status='pending', error_code/error_message 清空)` 再 submit；并补一条 failed->pending->ready 的契约测试。
+
+- [Blocker] backend/requirements.txt:11
+  问题：依赖约束不封闭，导致运行时版本组合不兼容，服务无法启动。
+  原因：`fastapi>=0.104.0`/`pydantic>=2.0.0` 无上界且未锁 `starlette/anyio`，当前环境出现 `fastapi=0.104.1 + starlette=1.0.0 + anyio=4.x`，启动时抛 `Router.__init__() got an unexpected keyword argument 'on_startup'`。
+  影响：训练后端进程直接启动失败，属于合并阻塞问题。
+  建议：使用约束文件或锁文件固定兼容组合（例如 fastapi 与 starlette/anyio 成对锁定），CI 增加 `pip check` 与最小启动烟测（import app + uvicorn dry-run）。
+
+- [Major] backend/api/services/training_story_script_service.py:38
+  问题：GET `/story-scripts/{session_id}` 可通过环境开关触发 ensure 写入，读接口语义不纯。
+  原因：第38-47行允许 `TRAINING_STORY_SCRIPT_GET_LEGACY_ENSURE` 使 GET 调用写路径，违背“契约优先/读写分离”。
+  影响：生产误配置时会把生成任务藏入读请求，带来不可预期负载与缓存语义错误，增加排障成本。
+  建议：移除该开关或限制为测试环境专用；线上仅允许 POST ensure 触发写操作，并在路由层显式拒绝 GET 触发生成。
+
+## Open Questions
+- 训练会话初始化时（`TrainingService.init_training`）同步生成 fallback 脚本是否为既定产品要求？如果不是，应统一改为异步 ensure 流程，避免初始化链路承担脚本生成职责。
+
+## 测试缺口
+- 前端：缺少“预热并发幂等”测试。应在 `frontend/src/flows/useTrainingMvpFlow.test.tsx` 增加用例，覆盖 effect 预热与 `prewarmAllSceneImages` 同时触发时 `startTrainingSession` 仅调用一次。
+- 前端：缺少“Training 页面 Hook 顺序稳定性”回归测试。应在 `frontend/src/pages/Training.integration.test.tsx` 增加从无会话跳转到有会话再清理会话的往返路径，验证不触发 Hook 顺序错误。
+- 后端：缺少“failed 脚本可重试”测试。应在 `backend/test_training_story_script_service_contract.py` 增加已有 failed 行时 ensure 能重置为 pending 并触发 executor 的断言。
+- 后端：缺少“依赖组合可启动”测试。应新增最小启动契约测试（例如 import `api.training_app:app` + `pip check`）以防 FastAPI/Starlette/AnyIO 漂移再次阻塞发布。
+
+## Review Summary
+本次改动引入了可观的训练链路增强，但当前存在多个合并阻塞项。前端在 Training 页面出现 Hook 顺序风险，且会话预热存在并发双创建窗口，直接影响会话一致性。后端 story script 的 ensure 恢复路径在 failed 状态下失效，违反“可恢复”要求。你刚提供的启动日志也确认了依赖约束缺口已造成服务不可启动。除阻塞项外，GET 触发写操作的兼容开关会持续侵蚀契约清晰度。建议先修复上述 Blocker，再补齐对应回归测试后合并。

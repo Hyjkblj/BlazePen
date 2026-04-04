@@ -86,6 +86,10 @@ export interface TrainingScenario {
   options: TrainingScenarioOption[];
   completionHint: string;
   recommendation: TrainingScenarioRecommendation | null;
+  /** 后端 storyline：major | micro */
+  sceneLevel?: string | null;
+  majorSceneId?: string | null;
+  majorSceneOrder?: number | null;
 }
 
 export interface TrainingEvaluation {
@@ -288,6 +292,8 @@ export interface TrainingSessionInitParams {
   characterId?: string | number | null;
   trainingMode?: TrainingMode | 'self_paced';
   playerProfile?: TrainingPlayerProfileInput | null;
+  /** MainHome 早开局：无角色 init 成功后把冻结主线写入 sessionStorage 供形象图阶段批量排队场景图 */
+  persistScenarioPrewarmPlan?: boolean;
 }
 
 export type TrainingMediaTaskType = 'image' | 'tts' | 'text';
@@ -380,6 +386,8 @@ export interface TrainingInitResult {
   runtimeState: TrainingRuntimeState;
   nextScenario: TrainingScenario | null;
   scenarioCandidates: TrainingScenario[];
+  /** 冻结主线场景序列（与后端 scenario_sequence 一致，用于预排队场景图） */
+  scenarioSequence: Array<{ id: string; title: string }>;
 }
 
 export interface TrainingScenarioNextResult {
@@ -413,6 +421,8 @@ export interface TrainingProgressResult {
   runtimeState: TrainingRuntimeState;
   decisionContext: TrainingRoundDecisionContext | null;
   consequenceEvents: TrainingConsequenceEvent[];
+  /** 会话已归档且存在结局工件时由读模型附带，与报告 `ending` 同源 */
+  ending: Record<string, unknown> | null;
 }
 
 export interface TrainingProgressAnchor {
@@ -442,6 +452,16 @@ export interface TrainingSessionSummaryResult {
   endTime: string | null;
 }
 
+/** 服务端用于聚合「风险标记统计」「推荐分支变化」的逐回合快照（与 growth_curve 字段来源一致） */
+export interface TrainingReportRoundSnapshot {
+  roundNo: number;
+  scenarioId: string;
+  scenarioTitle: string | null;
+  riskFlags: string[];
+  isHighRisk: boolean;
+  branchTransition: Record<string, unknown> | null;
+}
+
 export interface TrainingReportResult {
   sessionId: TrainingSessionId;
   characterId: string | null;
@@ -457,6 +477,7 @@ export interface TrainingReportResult {
   abilityRadar: TrainingReportMetric[];
   stateRadar: TrainingReportMetric[];
   growthCurve: TrainingReportCurvePoint[];
+  roundSnapshots: TrainingReportRoundSnapshot[];
   history: TrainingReportHistoryItem[];
 }
 
@@ -471,4 +492,5 @@ export interface TrainingDiagnosticsResult {
   recommendationLogs: TrainingRecommendationLog[];
   auditEvents: TrainingAuditEvent[];
   ktObservations: TrainingKtObservation[];
+  ending: Record<string, unknown> | null;
 }

@@ -6,6 +6,6 @@ export function useTrainingReport(explicitSessionId?: string | null) {
   return useTrainingReadQuery<TrainingReportResult>({
     explicitSessionId,
     fetcher: getTrainingReport,
-    fallbackErrorMessage: '读取训练报告失败。',
+    fallbackErrorMessage: '加载学习总结失败。',
   });
 }

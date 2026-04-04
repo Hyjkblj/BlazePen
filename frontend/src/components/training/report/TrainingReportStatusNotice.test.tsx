@@ -8,7 +8,7 @@ describe('TrainingReportStatusNotice', () => {
   it('shows an in-progress notice when report status is not completed', () => {
     render(<TrainingReportStatusNotice status="in_progress" hasSummary={false} />);
 
-    expect(screen.getByText('报告仍在生成中')).toBeTruthy();
+    expect(screen.getByText('学习总结还在更新')).toBeTruthy();
     expect(screen.getByText('in_progress')).toBeTruthy();
   });
 
@@ -23,6 +23,6 @@ describe('TrainingReportStatusNotice', () => {
   it('shows a fallback notice when report is completed without summary', () => {
     render(<TrainingReportStatusNotice status="completed" hasSummary={false} />);
 
-    expect(screen.getByText('摘要暂未就绪')).toBeTruthy();
+    expect(screen.getByText('小结字段暂未齐')).toBeTruthy();
   });
 });

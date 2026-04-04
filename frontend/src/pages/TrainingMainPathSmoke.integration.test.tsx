@@ -11,12 +11,21 @@ import TrainingLandingPage from './TrainingLandingPage';
 
 const trainingApiMocks = vi.hoisted(() => ({
   initTraining: vi.fn(),
+  bindTrainingSessionCharacter: vi.fn(),
   getTrainingSessionSummary: vi.fn(),
   submitTrainingRound: vi.fn(),
   getNextTrainingScenario: vi.fn(),
   createTrainingMediaTask: vi.fn(),
   getTrainingMediaTask: vi.fn(),
   getTrainingProgress: vi.fn(),
+  buildTrainingSceneImageMediaTaskCreateParams: vi.fn((params: any) => ({
+    sessionId: params.sessionId,
+    roundNo: params.roundNo,
+    taskType: 'image',
+    idempotencyKey: `training-scene-image:${params.sessionId}:${params.scenario?.id}:attempt:0`,
+    maxRetries: 1,
+    payload: {},
+  })),
 }));
 
 const trainingCharacterApiMocks = vi.hoisted(() => ({
@@ -216,12 +225,18 @@ describe('training main path smoke baseline', () => {
   it('keeps the training initialization and submit happy path stable', async () => {
     trainingApiMocks.initTraining.mockResolvedValueOnce({
       sessionId: 'training-session-1',
+      characterId: null,
       trainingMode: 'guided',
       status: 'initialized',
       roundNo: 0,
       runtimeState: createRuntimeState('scenario-1', 0),
       nextScenario: createScenario('scenario-1', 'Initial Briefing'),
       scenarioCandidates: [],
+      scenarioSequence: [{ id: 'scenario-1', title: 'Initial Briefing' }],
+    });
+    trainingApiMocks.bindTrainingSessionCharacter.mockResolvedValue({
+      sessionId: 'training-session-1',
+      characterId: 42,
     });
     trainingApiMocks.getTrainingSessionSummary.mockResolvedValue(
       createSessionSummary('training-session-1', 'scenario-1', 'Initial Briefing')
@@ -318,11 +333,21 @@ describe('training main path smoke baseline', () => {
     });
     expect(initialSceneImage).toBeTruthy();
 
-    const optionButton = document.querySelector<HTMLButtonElement>(
-      '.training-cinematic-choice-band__option'
+    const narration = document.querySelector<HTMLButtonElement>('.training-simplified__narration');
+    if (narration) {
+      fireEvent.click(narration);
+    }
+
+    await waitFor(
+      () => {
+        const optionButton = document.querySelector<HTMLButtonElement>(
+          '.training-cinematic-choice-band__option'
+        );
+        expect(optionButton).toBeTruthy();
+        fireEvent.click(optionButton!);
+      },
+      { timeout: 8000 }
     );
-    expect(optionButton).toBeTruthy();
-    fireEvent.click(optionButton!);
 
     await waitFor(() => {
       expect(trainingApiMocks.submitTrainingRound).toHaveBeenCalledWith({

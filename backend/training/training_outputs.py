@@ -1586,6 +1586,8 @@ class TrainingInitOutput:
     # 兼容旧测试和旧调用方，允许直接注入原始字典；服务内部仍优先传 DTO。
     next_scenario: Optional[TrainingScenarioOutput | Dict[str, Any]] = None
     scenario_candidates: Optional[List[TrainingScenarioOutput | Dict[str, Any]]] = None
+    # 冻结后的主线摘要序列（id/title），供前端批量预请求场景图等。
+    scenario_sequence: Optional[List[Dict[str, str]]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """导出稳定字典结构，并按需省略可选字段。"""
@@ -1604,6 +1606,12 @@ class TrainingInitOutput:
             payload["runtime_state"] = _serialize_runtime_state(self.runtime_state)
         if self.scenario_candidates is not None:
             payload["scenario_candidates"] = _serialize_scenario_list(self.scenario_candidates)
+        if self.scenario_sequence:
+            payload["scenario_sequence"] = [
+                {"id": str(item.get("id") or "").strip(), "title": str(item.get("title") or "").strip()}
+                for item in self.scenario_sequence
+                if str(item.get("id") or "").strip()
+            ]
         return payload
 
 
@@ -1725,6 +1733,7 @@ class TrainingProgressOutput:
     decision_context: Optional["TrainingRoundDecisionContextOutput | Dict[str, Any]"] = None
     consequence_events: List["TrainingConsequenceEventOutput | Dict[str, Any]"] = field(default_factory=list)
     media_tasks: List["TrainingRoundMediaTaskSummaryOutput | Dict[str, Any]"] = field(default_factory=list)
+    ending: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """导出训练进度。"""
@@ -1745,6 +1754,8 @@ class TrainingProgressOutput:
             payload["decision_context"] = _serialize_decision_context(self.decision_context)
         payload["consequence_events"] = _serialize_consequence_event_list(self.consequence_events)
         payload["media_tasks"] = _serialize_round_media_task_summary_list(self.media_tasks)
+        if self.ending is not None:
+            payload["ending"] = _copy_dict(self.ending)
         return payload
 
 
@@ -2150,6 +2161,8 @@ class TrainingReportOutput:
     ability_radar: List["TrainingReportMetricOutput | Dict[str, Any]"] = field(default_factory=list)
     state_radar: List["TrainingReportMetricOutput | Dict[str, Any]"] = field(default_factory=list)
     growth_curve: List["TrainingReportCurvePointOutput | Dict[str, Any]"] = field(default_factory=list)
+    # 服务端聚合摘要所用的逐回合快照（含 risk_flags、branch_transition 等）
+    round_snapshots: List[Dict[str, Any]] = field(default_factory=list)
     history: List[TrainingReportHistoryItemOutput] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -2167,6 +2180,7 @@ class TrainingReportOutput:
             "ability_radar": _serialize_report_metric_list(self.ability_radar),
             "state_radar": _serialize_report_metric_list(self.state_radar),
             "growth_curve": _serialize_report_curve_point_list(self.growth_curve),
+            "round_snapshots": _copy_dict_list(self.round_snapshots),
             "history": [item.to_dict() for item in self.history],
         }
         if self.player_profile is not None:
@@ -2190,6 +2204,7 @@ class TrainingDiagnosticsOutput:
     recommendation_logs: List[TrainingRecommendationLogOutput | Dict[str, Any]] = field(default_factory=list)
     audit_events: List[TrainingAuditEventOutput | Dict[str, Any]] = field(default_factory=list)
     kt_observations: List[TrainingKtObservationOutput | Dict[str, Any]] = field(default_factory=list)
+    ending: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """导出稳定诊断字典。"""
@@ -2207,6 +2222,8 @@ class TrainingDiagnosticsOutput:
             payload["player_profile"] = _serialize_player_profile(self.player_profile)
         if self.runtime_state is not None:
             payload["runtime_state"] = _serialize_runtime_state(self.runtime_state)
+        if self.ending is not None:
+            payload["ending"] = _copy_dict(self.ending)
         return payload
 
 

@@ -1,13 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import './SceneTransition.css';
 
+export type SceneTransitionTone = 'story' | 'training';
+
 interface SceneTransitionProps {
   sceneName: string;
   actNumber: number;
   onComplete: () => void;
+  /** story：蓝紫渐变（默认）；training：红色战训主题 */
+  tone?: SceneTransitionTone;
 }
 
-const SceneTransition: React.FC<SceneTransitionProps> = ({ sceneName, actNumber, onComplete }) => {
+const SceneTransition: React.FC<SceneTransitionProps> = ({
+  sceneName,
+  actNumber,
+  onComplete,
+  tone = 'story',
+}) => {
   const [isVisible, setIsVisible] = useState(true);
   const [showContent, setShowContent] = useState(false);
 
@@ -32,8 +41,13 @@ const SceneTransition: React.FC<SceneTransitionProps> = ({ sceneName, actNumber,
   if (!isVisible) return null;
 
   return (
-    <div className="scene-transition-overlay">
+    <div
+      className={`scene-transition-overlay${tone === 'training' ? ' scene-transition-overlay--training' : ''}`}
+    >
       <div className="scene-transition-container">
+        {tone === 'training' ? (
+          <div className={`scene-transition-eyebrow ${showContent ? 'show' : ''}`}>实训 · 大场景</div>
+        ) : null}
         {/* 幕数显示 */}
         <div className={`act-number ${showContent ? 'show' : ''}`}>
           {actNumber === 1 ? '第一幕' : `第${actNumber}幕`}

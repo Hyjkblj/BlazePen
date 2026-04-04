@@ -58,6 +58,7 @@ import type {
   TrainingReportHistoryItem,
   TrainingReportMetric,
   TrainingReportResult,
+  TrainingReportRoundSnapshot,
   TrainingReportSummary,
   TrainingRoundDecisionContext,
   TrainingRoundSubmitMediaTaskSummary,
@@ -139,6 +140,28 @@ const normalizeStringArray = (value: unknown): string[] =>
         .map((item) => normalizeOptionalString(item))
         .filter((item): item is string => item !== null)
     : [];
+
+const normalizeTrainingScenarioSequenceOutlines = (
+  value: unknown
+): Array<{ id: string; title: string }> => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => {
+      const rec = asRecord(item);
+      if (!rec) {
+        return null;
+      }
+      const id = normalizeOptionalString(rec.id);
+      if (!id) {
+        return null;
+      }
+      const title = normalizeOptionalString(rec.title) ?? id;
+      return { id, title };
+    })
+    .filter((item): item is { id: string; title: string } => item !== null);
+};
 
 const normalizeNumberMap = (value: unknown): Record<string, number> => {
   const record = asRecord(value);
@@ -331,6 +354,21 @@ const normalizeTrainingRoundDecisionContext = (
   };
 };
 
+const normalizeMajorSceneOrder = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const n = Math.trunc(value);
+    return n > 0 ? n : null;
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) {
+      const n = Math.trunc(parsed);
+      return n > 0 ? n : null;
+    }
+  }
+  return null;
+};
+
 const normalizeTrainingScenario = (
   payload: TrainingScenarioApiResponse | null | undefined
 ): TrainingScenario | null => {
@@ -356,6 +394,9 @@ const normalizeTrainingScenario = (
       : [],
     completionHint: normalizeOptionalString(payload?.completion_hint) ?? '',
     recommendation: normalizeTrainingScenarioRecommendation(payload?.recommendation),
+    sceneLevel: normalizeOptionalString(payload?.scene_level),
+    majorSceneId: normalizeOptionalString(payload?.major_scene_id),
+    majorSceneOrder: normalizeMajorSceneOrder(payload?.major_scene_order),
   };
 };
 
@@ -946,6 +987,7 @@ export const normalizeTrainingInitPayload = (
   const roundNo = normalizeNumber(payload?.round_no);
   const playerProfile = normalizeTrainingPlayerProfile(payload?.player_profile);
   const nextScenario = normalizeTrainingScenario(payload?.next_scenario);
+  const scenarioSequence = normalizeTrainingScenarioSequenceOutlines(payload?.scenario_sequence);
 
   return {
     sessionId: normalizeOptionalString(payload?.session_id) ?? '',
@@ -966,6 +1008,7 @@ export const normalizeTrainingInitPayload = (
           .map((item) => normalizeTrainingScenario(item))
           .filter((item): item is TrainingScenario => item !== null)
       : [],
+    scenarioSequence,
   };
 };
 
@@ -1056,6 +1099,7 @@ export const normalizeTrainingProgressPayload = (
           .map((item) => normalizeTrainingConsequenceEvent(item))
           .filter((item): item is TrainingConsequenceEvent => item !== null)
       : [],
+    ending: asRecord(payload?.ending) ? cloneRecord(payload?.ending) : null,
   };
 };
 
@@ -1093,6 +1137,26 @@ export const normalizeTrainingSessionSummaryPayload = (
     createdAt: normalizeOptionalString(payload?.created_at),
     updatedAt: normalizeOptionalString(payload?.updated_at),
     endTime: normalizeOptionalString(payload?.end_time),
+  };
+};
+
+const normalizeTrainingReportRoundSnapshot = (raw: unknown): TrainingReportRoundSnapshot | null => {
+  const record = asRecord(raw);
+  if (!record) {
+    return null;
+  }
+  const branchRaw = record.branch_transition;
+  let branchTransition: Record<string, unknown> | null = null;
+  if (branchRaw && typeof branchRaw === 'object' && !Array.isArray(branchRaw)) {
+    branchTransition = cloneRecord(branchRaw as Record<string, unknown>);
+  }
+  return {
+    roundNo: normalizeNumber(record.round_no),
+    scenarioId: normalizeOptionalString(record.scenario_id) ?? '',
+    scenarioTitle: normalizeOptionalString(record.scenario_title),
+    riskFlags: normalizeStringArray(record.risk_flags),
+    isHighRisk: record.is_high_risk === true,
+    branchTransition,
   };
 };
 
@@ -1136,6 +1200,11 @@ export const normalizeTrainingReportPayload = (
           .map((item) => normalizeTrainingReportCurvePoint(item))
           .filter((item): item is TrainingReportCurvePoint => item !== null)
       : [],
+    roundSnapshots: Array.isArray(payload?.round_snapshots)
+      ? payload.round_snapshots
+          .map((item) => normalizeTrainingReportRoundSnapshot(item))
+          .filter((item): item is TrainingReportRoundSnapshot => item !== null)
+      : [],
     history: Array.isArray(payload?.history)
       ? payload.history
           .map((item) => normalizeTrainingReportHistoryItem(item))
@@ -1178,5 +1247,6 @@ export const normalizeTrainingDiagnosticsPayload = (
           .map((item) => normalizeTrainingKtObservation(item))
           .filter((item): item is TrainingKtObservation => item !== null)
       : [],
+    ending: asRecord(payload?.ending) ? cloneRecord(payload?.ending) : null,
   };
 };

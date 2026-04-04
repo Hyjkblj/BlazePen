@@ -7,7 +7,6 @@ Contract:
 
 from __future__ import annotations
 
-import os
 from typing import Any, Dict
 
 from training.exceptions import (
@@ -45,17 +44,38 @@ class TrainingStoryScriptService:
             raise TrainingSessionNotFoundError(session_id=session_id)
 
         existing = self.training_store.get_story_script_by_session_id(session_id)
-        if existing is not None and isinstance(getattr(existing, "payload", None), dict) and existing.payload:
-            return self._to_response(existing)
-        if existing is not None and str(getattr(existing, "status", "") or "").strip().lower() in {
-            "pending",
-            "running",
-        }:
+        if existing is not None:
+            payload = getattr(existing, "payload", None)
+            has_payload = isinstance(payload, dict) and bool(payload)
+            normalized_status = str(getattr(existing, "status", "") or "").strip().lower()
+
+            if normalized_status in {"pending", "running"}:
+                # Only schedule on state boundary: pending can be scheduled; running should not be resubmitted.
+                if self.story_script_executor is not None and normalized_status == "pending":
+                    self.story_script_executor.submit_session(session_id)
+                return self._to_response(existing)
+
+            if has_payload and normalized_status not in {"failed", "error"}:
+                return self._to_response(existing)
+
+            pending_row = self.training_store.update_story_script_by_session_id(
+                session_id,
+                {
+                    "status": "pending",
+                    "error_code": None,
+                    "error_message": None,
+                },
+            )
+            if pending_row is None:
+                raise TrainingStorageUnavailableError(
+                    message="training story script storage unavailable",
+                    details={"operation": "ensure_story_script", "session_id": session_id},
+                )
+
             # Only schedule on state boundary: pending can be scheduled; running should not be resubmitted.
-            raw_status = str(getattr(existing, "status", "") or "").strip().lower()
-            if self.story_script_executor is not None and raw_status == "pending":
+            if self.story_script_executor is not None:
                 self.story_script_executor.submit_session(session_id)
-            return self._to_response(existing)
+            return self._to_response(pending_row)
 
         # Phase: mark pending (observable state), then schedule background generation.
         # Store layer provides idempotency by unique(session_id).
@@ -112,4 +132,3 @@ class TrainingStoryScriptService:
             "created_at": created_at.isoformat() if created_at is not None else None,
             "updated_at": updated_at.isoformat() if updated_at is not None else None,
         }
-

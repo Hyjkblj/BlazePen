@@ -40,6 +40,6 @@ describe('TrainingReportSummarySection', () => {
     expect(screen.getByText('0.71')).toBeTruthy();
     expect(screen.getByText('K1')).toBeTruthy();
     expect(screen.getByText('focus-source-safety')).toBeTruthy();
-    expect(screen.getByText('已生成')).toBeTruthy();
+    expect(screen.getByText('已有记录')).toBeTruthy();
   });
 });

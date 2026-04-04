@@ -389,6 +389,64 @@ class StoryScriptAgent:
 - 保证 scenes 顺序与结构要求一致
 """.strip()
 
+        def _try_parse_payload(raw_text: str) -> Dict[str, Any]:
+            parsed = json.loads(raw_text)
+            return TrainingStoryScriptPayload.model_validate(parsed).model_dump()
+
+        def _repair_to_strict_json(raw_text: str, *, error: Exception) -> str | None:
+            system_fix = (
+                "你是一个严格的 JSON 修复器。"
+                "你的唯一输出必须是可被 JSON.parse 的合法 JSON，且必须符合给定的 schema。"
+                "不要输出 Markdown、不要输出代码块、不要输出任何解释性文字。"
+            )
+            fix_prompt = f"""
+你将收到一段“剧本生成输出”，它无法被解析为合法 JSON 或无法通过 schema 校验。
+请在不改变语义的前提下，将其修复为严格合法的 JSON，并确保字段与结构完全符合 schema。
+
+【schema（必须严格遵守，不要多字段）】
+{{
+  "version": "training_story_script_v1",
+  "cast": [{{"name": "...", "role": "..."}}],
+  "major_scenes": [...原样回填 major_summaries...],
+  "scenes": [
+    {{
+      "scene_id": "major-1",
+      "scene_type": "major|micro",
+      "title": "...",
+      "time_hint": "",
+      "location_hint": "",
+      "monologue": "...",
+      "dialogue": [{{"speaker": "...", "content": "..."}}],
+      "bridge_summary": "...",
+      "options": [
+        {{"option_id":"opt-1","label":"...","impact_hint":"..."}},
+        {{"option_id":"opt-2","label":"...","impact_hint":"..."}},
+        {{"option_id":"opt-3","label":"...","impact_hint":"..."}}
+      ]
+    }}
+  ]
+}}
+
+【固定角色（speaker 只能来自这些名字或 旁白/玩家）】
+{json.dumps(cast, ensure_ascii=False)}
+
+【大场景摘要（major_scenes 必须原样回填，按顺序）】
+{json.dumps(major_summaries, ensure_ascii=False)}
+
+【解析/校验失败原因（参考用）】
+{str(error)}
+
+【需要修复的原始输出】
+{raw_text}
+""".strip()
+            return self.text_model_service.generate_text(
+                prompt=fix_prompt,
+                system_message=system_fix,
+                max_tokens=self.config.max_tokens,
+                temperature=0.0,
+                use_retry=True,
+            )
+
         last_error: Exception | None = None
         for attempt in range(1, 3):
             raw = self.text_model_service.generate_text(
@@ -402,8 +460,7 @@ class StoryScriptAgent:
                 last_error = RuntimeError("LLM returned empty story script")
                 continue
             try:
-                parsed = json.loads(raw)
-                payload = TrainingStoryScriptPayload.model_validate(parsed).model_dump()
+                payload = _try_parse_payload(raw)
                 break
             except Exception as exc:
                 last_error = exc
@@ -413,6 +470,24 @@ class StoryScriptAgent:
                     attempt,
                     str(exc),
                 )
+                repaired = _repair_to_strict_json(raw, error=exc)
+                if repaired:
+                    try:
+                        payload = _try_parse_payload(repaired)
+                        logger.info(
+                            "story script repaired into strict JSON: session_id=%s attempt=%s",
+                            session_id,
+                            attempt,
+                        )
+                        break
+                    except Exception as repair_exc:
+                        last_error = repair_exc
+                        logger.warning(
+                            "story script repair attempt failed: session_id=%s attempt=%s error=%s",
+                            session_id,
+                            attempt,
+                            str(repair_exc),
+                        )
                 continue
         else:
             logger.warning(

@@ -424,7 +424,30 @@ class TrainingService:
             ),
             next_scenario=self._build_training_scenario_output(next_scenario_bundle.scenario),
             scenario_candidates=self._build_training_scenario_output_list(next_scenario_bundle.scenario_candidates),
+            scenario_sequence=list(sequence),
         ).to_dict()
+
+    def bind_session_character(self, session_id: str, character_id: int) -> Dict[str, Any]:
+        """Bind a training session created without character_id to a concrete character row."""
+        normalized_session_id = str(session_id or "").strip()
+        if not normalized_session_id:
+            raise TrainingSessionNotFoundError(session_id=str(session_id))
+        try:
+            cid = int(character_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("character_id must be a positive integer") from exc
+        if cid < 1:
+            raise ValueError("character_id must be a positive integer")
+        session = self.training_store.get_training_session(normalized_session_id)
+        if session is None:
+            raise TrainingSessionNotFoundError(session_id=normalized_session_id)
+        if getattr(session, "status", None) == "completed":
+            raise TrainingSessionCompletedError(session_id=normalized_session_id)
+        self.training_store.update_training_session(
+            normalized_session_id,
+            {"character_id": cid},
+        )
+        return {"session_id": normalized_session_id, "character_id": cid}
 
     def get_next_scenario(self, session_id: str) -> Dict[str, Any]:
         """根据当前回合返回下一场景。"""
@@ -803,6 +826,7 @@ class TrainingService:
             ability_radar=report_artifacts.ability_radar,
             state_radar=report_artifacts.state_radar,
             growth_curve=report_artifacts.growth_curve,
+            round_snapshots=round_snapshots,
             history=history,
         ).to_dict()
 

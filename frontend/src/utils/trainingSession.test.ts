@@ -123,7 +123,23 @@ describe('trainingSession normalizers', () => {
         },
       },
       scenarioCandidates: [],
+      scenarioSequence: [],
     });
+  });
+
+  it('normalizes scenario_sequence outlines from init payload', () => {
+    const result = normalizeTrainingInitPayload(
+      {
+        session_id: 'session-seq',
+        round_no: 0,
+        scenario_sequence: [{ id: 'S1', title: 'One' }, { id: 'bad', title: '' }],
+      },
+      'guided'
+    );
+    expect(result.scenarioSequence).toEqual([
+      { id: 'S1', title: 'One' },
+      { id: 'bad', title: 'bad' },
+    ]);
   });
 
   it('treats brief as the only canonical scenario summary field', () => {
@@ -285,6 +301,7 @@ describe('trainingSession normalizers', () => {
       },
       decisionContext: null,
       consequenceEvents: [],
+      ending: null,
     });
   });
 
@@ -472,6 +489,21 @@ describe('trainingSession normalizers', () => {
           weighted_k_score: '0.2',
         },
       ],
+      round_snapshots: [
+        {
+          round_no: 1,
+          scenario_id: 'S1',
+          scenario_title: '场景一',
+          risk_flags: ['source_exposure_risk'],
+          is_high_risk: true,
+          branch_transition: {
+            source_scenario_id: 'S0',
+            target_scenario_id: 'S1',
+            transition_type: 'branch',
+            reason: 'source_warning',
+          },
+        },
+      ],
       history: [
         {
           round_no: 1,
@@ -522,6 +554,21 @@ describe('trainingSession normalizers', () => {
         {
           roundNo: 0,
           scenarioTitle: '初始状态',
+        },
+      ],
+      roundSnapshots: [
+        {
+          roundNo: 1,
+          scenarioId: 'S1',
+          scenarioTitle: '场景一',
+          riskFlags: ['source_exposure_risk'],
+          isHighRisk: true,
+          branchTransition: {
+            source_scenario_id: 'S0',
+            target_scenario_id: 'S1',
+            transition_type: 'branch',
+            reason: 'source_warning',
+          },
         },
       ],
       history: [
@@ -617,6 +664,7 @@ describe('trainingSession normalizers', () => {
           timestamp: '2026-03-20T09:00:00Z',
         },
       ],
+      ending: null,
     });
   });
 });

@@ -8,7 +8,7 @@ describe('TrainingReportMetricTable', () => {
   it('renders metric rows with formatted values and labels', () => {
     render(
       <TrainingReportMetricTable
-        title="Ability Radar"
+        title="八维能力纵览"
         metrics={[
           {
             code: 'K1',
@@ -23,14 +23,15 @@ describe('TrainingReportMetricTable', () => {
       />
     );
 
-    expect(screen.getByText('Ability Radar')).toBeTruthy();
+    expect(screen.getByText('八维能力纵览')).toBeTruthy();
+    expect(screen.getByText('史实核验')).toBeTruthy();
     expect(screen.getByText('K1')).toBeTruthy();
     expect(screen.getByText('+0.42')).toBeTruthy();
-    expect(screen.getByText('最高增益 / 权重 0.3')).toBeTruthy();
+    expect(screen.getByText('峰值进步 · 计权 0.3')).toBeTruthy();
   });
 
   it('shows empty state when metrics are not provided', () => {
-    render(<TrainingReportMetricTable title="State Radar" metrics={[]} />);
+    render(<TrainingReportMetricTable title="六维态势指数" metrics={[]} />);
 
     expect(screen.getByText('当前没有指标数据。')).toBeTruthy();
   });

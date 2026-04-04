@@ -1,4 +1,15 @@
 import { useSearchParams } from 'react-router-dom';
+import {
+  TRAINING_DECISION_CONTEXT_LABELS,
+  TRAINING_RUNTIME_FLAG_LABELS,
+  TRAINING_STATE_BAR_LABELS,
+  resolveTrainingLabeledField,
+  resolveTrainingMetricDisplayLabel,
+} from '@/components/training/report/trainingMetricLabels';
+import {
+  pickDisplayableEndingPayload,
+  TrainingInsightEndingBadge,
+} from '@/components/training/TrainingInsightEndingBadge';
 import TrainingInsightShell from '@/components/training/TrainingInsightShell';
 import { useTrainingProgress } from '@/hooks/useTrainingProgress';
 import { normalizeTrainingSessionId } from '@/hooks/useTrainingSessionReadTarget';
@@ -10,6 +21,28 @@ const formatMetricValue = (value: number): string => Number(value.toFixed(2)).to
 const formatOptionalValue = (value: string | null | undefined): string =>
   value && value.trim() ? value : '未提供';
 
+const formatBoolCn = (value: boolean): string => (value ? '是' : '否');
+
+function TrainingLabeledCell({
+  fieldKey,
+  labelMap,
+}: {
+  fieldKey: string;
+  labelMap: Record<string, string>;
+}) {
+  const { primary, codeLine } = resolveTrainingLabeledField(fieldKey, labelMap);
+  return (
+    <div className="training-metric-cell">
+      <strong className="training-metric-cell__primary">{primary}</strong>
+      {codeLine ? (
+        <span className="training-metric-cell__code" title={codeLine}>
+          {codeLine}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function TrainingProgress() {
   const [searchParams] = useSearchParams();
   const querySessionId = normalizeTrainingSessionId(searchParams.get('sessionId'));
@@ -18,22 +51,24 @@ function TrainingProgress() {
 
   return (
     <TrainingInsightShell
-      title="Training Progress"
-      description="训练进度页只消费训练查询读模型，不回推会话事实源。刷新后优先读取显式 sessionId，其次读取当前内存活动会话；本地恢复入口仅用于手动恢复提示。"
+      title="学习进度"
+      description="本页展示你当前练到哪一步、最近一轮的决策与后果等，数据来自服务器上的学习记录，不会在浏览器里随意改写。刷新时优先使用网址里的会话编号。下方可展开查看技术会话编号，便于向老师求助。"
       activeView="progress"
       sessionId={sessionTarget.sessionId}
-      sessionSource={sessionTarget.source}
+      sessionEnding={data?.ending ?? null}
+      sessionIdentity={data?.runtimeState?.playerProfile?.identity ?? null}
+      sessionDisplayName={data?.runtimeState?.playerProfile?.name ?? null}
       navigationSessionId={querySessionId}
       sessionStatus={data?.status ?? sessionTarget.status}
-      loadingMessage={status === 'loading' ? '正在读取训练进度...' : null}
+      loadingMessage={status === 'loading' ? '正在加载学习进度…' : null}
       errorMessage={errorMessage}
       hasStaleData={hasStaleData}
       emptyState={
         !data && !sessionTarget.sessionId
           ? {
-              title: '暂无训练进度',
+              title: '暂时看不到学习进度',
               description:
-                '当前没有可读取的训练 sessionId。请先开始训练，或从训练主页恢复最近一次训练会话。',
+                '当前没有可用的学习会话。请先从训练主页开始或恢复最近一次学习。',
             }
           : null
       }
@@ -41,9 +76,22 @@ function TrainingProgress() {
     >
       {data ? (
         <>
-          <section className="training-insight-section">
+          {(data.status ?? '').toLowerCase() === 'completed' ? (
+            <section className="training-insight-section">
+              <h2>归档结局</h2>
+              {pickDisplayableEndingPayload(data.ending) ? (
+                <TrainingInsightEndingBadge ending={data.ending} variant="inline" showExplanation />
+              ) : (
+                <p className="training-insight-empty">
+                  暂未从服务器读到终局分类。可点「刷新读取」，或打开「学习总结」查看是否已写入。
+                </p>
+              )}
+            </section>
+          ) : null}
+
+          <section className="training-insight-section training-insight-section--progress-overview">
             <h2>进度总览</h2>
-            <div className="training-insight-grid">
+            <div className="training-insight-grid training-insight-grid--progress-summary">
               <dl className="training-insight-stat-card">
                 <dt>当前回合</dt>
                 <dd>{data.roundNo}</dd>
@@ -55,10 +103,6 @@ function TrainingProgress() {
               <dl className="training-insight-stat-card">
                 <dt>完成进度</dt>
                 <dd>{formatPercent(progressPercent)}</dd>
-              </dl>
-              <dl className="training-insight-stat-card">
-                <dt>当前场景</dt>
-                <dd>{data.runtimeState.currentSceneId ?? '暂无'}</dd>
               </dl>
             </div>
           </section>
@@ -72,19 +116,39 @@ function TrainingProgress() {
                   <>
                     <dl className="training-insight-detail-list">
                       <div>
-                        <dt>selectionSource</dt>
+                        <dt>
+                          <TrainingLabeledCell
+                            fieldKey="selectionSource"
+                            labelMap={TRAINING_DECISION_CONTEXT_LABELS}
+                          />
+                        </dt>
                         <dd>{data.decisionContext.selectionSource}</dd>
                       </div>
                       <div>
-                        <dt>recommendedScenarioId</dt>
+                        <dt>
+                          <TrainingLabeledCell
+                            fieldKey="recommendedScenarioId"
+                            labelMap={TRAINING_DECISION_CONTEXT_LABELS}
+                          />
+                        </dt>
                         <dd>{formatOptionalValue(data.decisionContext.recommendedScenarioId)}</dd>
                       </div>
                       <div>
-                        <dt>selectedScenarioId</dt>
+                        <dt>
+                          <TrainingLabeledCell
+                            fieldKey="selectedScenarioId"
+                            labelMap={TRAINING_DECISION_CONTEXT_LABELS}
+                          />
+                        </dt>
                         <dd>{data.decisionContext.selectedScenarioId}</dd>
                       </div>
                       <div>
-                        <dt>candidatePool</dt>
+                        <dt>
+                          <TrainingLabeledCell
+                            fieldKey="candidatePool"
+                            labelMap={TRAINING_DECISION_CONTEXT_LABELS}
+                          />
+                        </dt>
                         <dd>{data.decisionContext.candidatePool.length}</dd>
                       </div>
                     </dl>
@@ -131,44 +195,73 @@ function TrainingProgress() {
           </section>
 
           <section className="training-insight-section">
-            <h2>Runtime State</h2>
+            <h2>运行时状态</h2>
             <div className="training-insight-subgrid">
               <div className="training-insight-detail-card">
-                <h3>State Bar</h3>
+                <h3>简明态势条</h3>
                 <dl className="training-insight-detail-list">
                   <div>
-                    <dt>editorTrust</dt>
+                    <dt>
+                      <TrainingLabeledCell fieldKey="editorTrust" labelMap={TRAINING_STATE_BAR_LABELS} />
+                    </dt>
                     <dd>{formatMetricValue(data.runtimeState.stateBar.editorTrust)}</dd>
                   </div>
                   <div>
-                    <dt>publicStability</dt>
+                    <dt>
+                      <TrainingLabeledCell
+                        fieldKey="publicStability"
+                        labelMap={TRAINING_STATE_BAR_LABELS}
+                      />
+                    </dt>
                     <dd>{formatMetricValue(data.runtimeState.stateBar.publicStability)}</dd>
                   </div>
                   <div>
-                    <dt>sourceSafety</dt>
+                    <dt>
+                      <TrainingLabeledCell fieldKey="sourceSafety" labelMap={TRAINING_STATE_BAR_LABELS} />
+                    </dt>
                     <dd>{formatMetricValue(data.runtimeState.stateBar.sourceSafety)}</dd>
                   </div>
                 </dl>
               </div>
 
               <div className="training-insight-detail-card">
-                <h3>Runtime Flags</h3>
+                <h3>运行标记</h3>
                 <dl className="training-insight-detail-list">
                   <div>
-                    <dt>panicTriggered</dt>
-                    <dd>{String(data.runtimeState.runtimeFlags.panicTriggered)}</dd>
+                    <dt>
+                      <TrainingLabeledCell
+                        fieldKey="panicTriggered"
+                        labelMap={TRAINING_RUNTIME_FLAG_LABELS}
+                      />
+                    </dt>
+                    <dd>{formatBoolCn(data.runtimeState.runtimeFlags.panicTriggered)}</dd>
                   </div>
                   <div>
-                    <dt>sourceExposed</dt>
-                    <dd>{String(data.runtimeState.runtimeFlags.sourceExposed)}</dd>
+                    <dt>
+                      <TrainingLabeledCell
+                        fieldKey="sourceExposed"
+                        labelMap={TRAINING_RUNTIME_FLAG_LABELS}
+                      />
+                    </dt>
+                    <dd>{formatBoolCn(data.runtimeState.runtimeFlags.sourceExposed)}</dd>
                   </div>
                   <div>
-                    <dt>editorLocked</dt>
-                    <dd>{String(data.runtimeState.runtimeFlags.editorLocked)}</dd>
+                    <dt>
+                      <TrainingLabeledCell
+                        fieldKey="editorLocked"
+                        labelMap={TRAINING_RUNTIME_FLAG_LABELS}
+                      />
+                    </dt>
+                    <dd>{formatBoolCn(data.runtimeState.runtimeFlags.editorLocked)}</dd>
                   </div>
                   <div>
-                    <dt>highRiskPath</dt>
-                    <dd>{String(data.runtimeState.runtimeFlags.highRiskPath)}</dd>
+                    <dt>
+                      <TrainingLabeledCell
+                        fieldKey="highRiskPath"
+                        labelMap={TRAINING_RUNTIME_FLAG_LABELS}
+                      />
+                    </dt>
+                    <dd>{formatBoolCn(data.runtimeState.runtimeFlags.highRiskPath)}</dd>
                   </div>
                 </dl>
               </div>
@@ -179,24 +272,34 @@ function TrainingProgress() {
             <h2>能力与状态快照</h2>
             <div className="training-insight-subgrid">
               <div className="training-insight-detail-card">
-                <h3>K State</h3>
+                <h3>八维能力快照</h3>
                 {Object.keys(data.runtimeState.kState).length > 0 ? (
                   <table className="training-insight-metric-table">
                     <thead>
                       <tr>
-                        <th>能力编码</th>
-                        <th>当前值</th>
+                        <th>维度</th>
+                        <th>当前掌握</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {Object.entries(data.runtimeState.kState).map(([code, value]) => (
-                        <tr key={code}>
-                          <td>
-                            <strong>{code}</strong>
-                          </td>
-                          <td>{formatMetricValue(value)}</td>
-                        </tr>
-                      ))}
+                      {Object.entries(data.runtimeState.kState).map(([code, value]) => {
+                        const { primary, codeLine } = resolveTrainingMetricDisplayLabel(code);
+                        return (
+                          <tr key={code}>
+                            <td>
+                              <div className="training-metric-cell">
+                                <strong className="training-metric-cell__primary">{primary}</strong>
+                                {codeLine ? (
+                                  <span className="training-metric-cell__code" title={codeLine}>
+                                    {codeLine}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td>{formatMetricValue(value)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 ) : (
@@ -205,24 +308,34 @@ function TrainingProgress() {
               </div>
 
               <div className="training-insight-detail-card">
-                <h3>S State</h3>
+                <h3>六维态势快照</h3>
                 {Object.keys(data.runtimeState.sState).length > 0 ? (
                   <table className="training-insight-metric-table">
                     <thead>
                       <tr>
-                        <th>状态编码</th>
-                        <th>当前值</th>
+                        <th>维度</th>
+                        <th>当前指数</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {Object.entries(data.runtimeState.sState).map(([code, value]) => (
-                        <tr key={code}>
-                          <td>
-                            <strong>{code}</strong>
-                          </td>
-                          <td>{formatMetricValue(value)}</td>
-                        </tr>
-                      ))}
+                      {Object.entries(data.runtimeState.sState).map(([code, value]) => {
+                        const { primary, codeLine } = resolveTrainingMetricDisplayLabel(code);
+                        return (
+                          <tr key={code}>
+                            <td>
+                              <div className="training-metric-cell">
+                                <strong className="training-metric-cell__primary">{primary}</strong>
+                                {codeLine ? (
+                                  <span className="training-metric-cell__code" title={codeLine}>
+                                    {codeLine}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td>{formatMetricValue(value)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 ) : (

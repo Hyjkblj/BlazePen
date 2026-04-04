@@ -25,6 +25,7 @@ import {
 
 const trainingApiMocks = vi.hoisted(() => ({
   initTraining: vi.fn(),
+  bindTrainingSessionCharacter: vi.fn(),
   getTrainingSessionSummary: vi.fn(),
   submitTrainingRound: vi.fn(),
   getNextTrainingScenario: vi.fn(),
@@ -204,12 +205,22 @@ const clickLandingStartButton = async () => {
   fireEvent.click(confirmButton!);
 };
 
-const submitFirstScenarioOption = () => {
-  const optionButton = document.querySelector<HTMLButtonElement>(
-    '.training-cinematic-choice-band__option'
+const submitFirstScenarioOption = async () => {
+  const narration = document.querySelector<HTMLButtonElement>('.training-simplified__narration');
+  if (narration) {
+    fireEvent.click(narration);
+  }
+
+  await waitFor(
+    () => {
+      const optionButton = document.querySelector<HTMLButtonElement>(
+        '.training-cinematic-choice-band__option'
+      );
+      expect(optionButton).toBeTruthy();
+      fireEvent.click(optionButton!);
+    },
+    { timeout: 8000 }
   );
-  expect(optionButton).toBeTruthy();
-  fireEvent.click(optionButton!);
 };
 
 const expectTrainingEntryVisible = () => {
@@ -276,6 +287,12 @@ describe('Training route integration', () => {
       selected_image_url: '/static/images/characters/training_integration_1.png',
       transparent_url: '/static/images/characters/training_integration_1_transparent.png',
     });
+    trainingApiMocks.bindTrainingSessionCharacter.mockImplementation(
+      async (sessionId: string, characterId: number) => ({
+        sessionId,
+        characterId,
+      })
+    );
     trainingApiMocks.createTrainingMediaTask.mockImplementation(
       async ({ sessionId, roundNo }: { sessionId: string; roundNo?: number | null }) => ({
         taskId: `scene-task-${sessionId}-${roundNo ?? 0}`,
@@ -321,6 +338,7 @@ describe('Training route integration', () => {
       runtimeState: createRuntimeState('scenario-1', 0),
       nextScenario: createScenario('scenario-1', 'Initial Briefing'),
       scenarioCandidates: [],
+      scenarioSequence: [],
     });
     trainingApiMocks.getTrainingSessionSummary.mockResolvedValue(
       createSessionSummary('training-session-1', 'scenario-1', 'Initial Briefing')
@@ -406,7 +424,7 @@ describe('Training route integration', () => {
 
     await expectSceneImageByTitle('Initial Briefing');
 
-    submitFirstScenarioOption();
+    await submitFirstScenarioOption();
 
     await waitFor(() => {
       expect(trainingApiMocks.submitTrainingRound).toHaveBeenCalledWith({
@@ -425,16 +443,39 @@ describe('Training route integration', () => {
     });
   });
 
+  it('does not emit hook-order runtime errors when route redirect transitions into active training view', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      renderRouterApp(ROUTES.TRAINING);
+      await clickLandingStartButton();
+      await expectSceneImageByTitle('Initial Briefing');
+
+      const hookOrderErrors = consoleErrorSpy.mock.calls
+        .map((call) => String(call[0] ?? ''))
+        .filter(
+          (message) =>
+            message.includes('Rendered more hooks than during the previous render') ||
+            message.includes('Rendered fewer hooks than expected')
+        );
+      expect(hookOrderErrors).toEqual([]);
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
   it('prefixes /static scene image urls with VITE_STATIC_ASSET_ORIGIN in training route', async () => {
     vi.stubEnv('VITE_STATIC_ASSET_ORIGIN', 'http://localhost:8010');
     trainingApiMocks.initTraining.mockResolvedValueOnce({
       sessionId: 'training-session-asset-origin',
+      characterId: null,
       trainingMode: 'guided',
       status: 'initialized',
       roundNo: 0,
       runtimeState: createRuntimeState('scenario-1', 0),
       nextScenario: createScenario('scenario-1', 'Initial Briefing'),
       scenarioCandidates: [],
+      scenarioSequence: [{ id: 'scenario-1', title: 'Initial Briefing' }],
     });
     trainingApiMocks.getTrainingSessionSummary.mockResolvedValue(
       createSessionSummary('training-session-asset-origin', 'scenario-1', 'Initial Briefing')
@@ -477,6 +518,7 @@ describe('Training route integration', () => {
       runtimeState: createRuntimeState('scenario-1', 0),
       nextScenario: createScenario('scenario-1', 'Initial Briefing'),
       scenarioCandidates: [],
+      scenarioSequence: [],
     });
     trainingApiMocks.getTrainingSessionSummary.mockResolvedValue(
       createSessionSummary('training-session-retry-scene', 'scenario-1', 'Initial Briefing')
@@ -554,6 +596,7 @@ describe('Training route integration', () => {
       runtimeState: createRuntimeState('scenario-1', 0),
       nextScenario: createScenario('scenario-1', 'Initial Briefing'),
       scenarioCandidates: [],
+      scenarioSequence: [],
     });
     trainingApiMocks.getTrainingSessionSummary.mockResolvedValue(
       createSessionSummary('training-session-retry-poll', 'scenario-1', 'Initial Briefing')
@@ -628,12 +671,14 @@ describe('Training route integration', () => {
   it('restores session summary when submit returns scenario mismatch', async () => {
     trainingApiMocks.initTraining.mockResolvedValueOnce({
       sessionId: 'training-session-mismatch',
+      characterId: null,
       trainingMode: 'guided',
       status: 'initialized',
       roundNo: 0,
       runtimeState: createRuntimeState('scenario-1', 0),
       nextScenario: createScenario('scenario-1', 'Initial Briefing'),
       scenarioCandidates: [],
+      scenarioSequence: [{ id: 'scenario-1', title: 'Initial Briefing' }],
     });
     trainingApiMocks.submitTrainingRound.mockRejectedValueOnce(
       new ServiceError({
@@ -643,6 +688,9 @@ describe('Training route integration', () => {
       })
     );
     trainingApiMocks.getTrainingSessionSummary
+      .mockResolvedValueOnce(
+        createSessionSummary('training-session-mismatch', 'scenario-1', 'Initial Briefing')
+      )
       .mockResolvedValueOnce(
         createSessionSummary('training-session-mismatch', 'scenario-1', 'Initial Briefing')
       )
@@ -676,7 +724,7 @@ describe('Training route integration', () => {
     await clickLandingStartButton();
     await expectSceneImageByTitle('Initial Briefing');
 
-    submitFirstScenarioOption();
+    await submitFirstScenarioOption();
 
     await waitFor(() => {
       expect(trainingApiMocks.submitTrainingRound).toHaveBeenCalledWith({
@@ -703,12 +751,14 @@ describe('Training route integration', () => {
   it('does not recreate scene image task when mismatch recovery keeps the same scenario', async () => {
     trainingApiMocks.initTraining.mockResolvedValueOnce({
       sessionId: 'training-session-mismatch-same-scene',
+      characterId: null,
       trainingMode: 'guided',
       status: 'initialized',
       roundNo: 0,
       runtimeState: createRuntimeState('scenario-1', 0),
       nextScenario: createScenario('scenario-1', 'Initial Briefing'),
       scenarioCandidates: [],
+      scenarioSequence: [{ id: 'scenario-1', title: 'Initial Briefing' }],
     });
     trainingApiMocks.submitTrainingRound.mockRejectedValueOnce(
       new ServiceError({
@@ -718,6 +768,12 @@ describe('Training route integration', () => {
       })
     );
     trainingApiMocks.getTrainingSessionSummary
+      .mockResolvedValueOnce(
+        createSessionSummary('training-session-mismatch-same-scene', 'scenario-1', 'Initial Briefing')
+      )
+      .mockResolvedValueOnce(
+        createSessionSummary('training-session-mismatch-same-scene', 'scenario-1', 'Initial Briefing')
+      )
       .mockResolvedValueOnce(
         createSessionSummary('training-session-mismatch-same-scene', 'scenario-1', 'Initial Briefing')
       )
@@ -736,7 +792,7 @@ describe('Training route integration', () => {
     const createTaskCallsBeforeRecovery = trainingApiMocks.createTrainingMediaTask.mock.calls.length;
     expect(createTaskCallsBeforeRecovery).toBeGreaterThan(0);
 
-    submitFirstScenarioOption();
+    await submitFirstScenarioOption();
 
     await waitFor(() => {
       expect(trainingApiMocks.submitTrainingRound).toHaveBeenCalledWith({
@@ -760,12 +816,14 @@ describe('Training route integration', () => {
   it('retries with a new attempt when scene image create returns conflict with mismatched scope', async () => {
     trainingApiMocks.initTraining.mockResolvedValueOnce({
       sessionId: 'training-session-conflict-mismatch',
+      characterId: null,
       trainingMode: 'guided',
       status: 'initialized',
       roundNo: 0,
       runtimeState: createRuntimeState('scenario-1', 0),
       nextScenario: createScenario('scenario-1', 'Initial Briefing'),
       scenarioCandidates: [],
+      scenarioSequence: [{ id: 'scenario-1', title: 'Initial Briefing' }],
     });
     trainingApiMocks.getTrainingSessionSummary.mockResolvedValue(
       createSessionSummary('training-session-conflict-mismatch', 'scenario-1', 'Initial Briefing')
@@ -1051,5 +1109,4 @@ describe('Training route integration', () => {
     });
   });
 });
-
 

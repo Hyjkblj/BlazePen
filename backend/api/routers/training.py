@@ -26,6 +26,7 @@ from api.error_codes import (
 )
 from api.response import build_success_payload, error_response, not_found_response
 from api.schemas import (
+    TrainingBindSessionCharacterRequest,
     TrainingDiagnosticsApiResponse,
     TrainingHistoryApiResponse,
     TrainingInitApiResponse,
@@ -310,6 +311,49 @@ async def submit_round(
                 "session_id": request.session_id,
                 "scenario_id": request.scenario_id,
             },
+        )
+
+
+@router.post("/sessions/{session_id}/character")
+async def bind_training_session_character(
+    session_id: str,
+    request: TrainingBindSessionCharacterRequest,
+    training_service: TrainingService = Depends(get_training_service),
+):
+    """Bind an existing training session to a character after the session was created without one."""
+
+    try:
+        result = training_service.bind_session_character(
+            session_id=session_id.strip(),
+            character_id=int(request.character_id),
+        )
+        return build_success_payload(data=result)
+    except (TrainingSessionNotFoundError, TrainingSessionRecoveryStateError) as exc:
+        return _build_training_domain_error_response(
+            exc,
+            route_name="training.session_bind_character",
+            session_id=session_id.strip() or None,
+        )
+    except TrainingSessionCompletedError as exc:
+        return _build_training_domain_error_response(
+            exc,
+            route_name="training.session_bind_character",
+            session_id=session_id.strip() or None,
+        )
+    except ValueError as exc:
+        return error_response(
+            code=400,
+            message=str(exc),
+            error_code="VALIDATION_ERROR",
+            details={"route": "training.session_bind_character", "session_id": session_id.strip()},
+        )
+    except Exception as exc:
+        logger.error("failed to bind training session character: %s", str(exc), exc_info=True)
+        return error_response(
+            code=500,
+            message="failed to bind training session character",
+            error_code=INTERNAL_ERROR,
+            details={"route": "training.session_bind_character", "session_id": session_id.strip()},
         )
 
 

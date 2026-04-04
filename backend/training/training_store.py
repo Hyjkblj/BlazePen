@@ -159,6 +159,9 @@ class EndingResultRecord:
 
     session_id: str
     report_payload: Dict[str, Any] = field(default_factory=dict)
+    ending_type: str | None = None
+    ending_score: float | None = None
+    explanation: str | None = None
 
 
 @dataclass(slots=True)
@@ -940,9 +943,23 @@ class DatabaseTrainingStore:
         """把底层结局对象转换成稳定结局模型。"""
         if row is None:
             return None
+        raw_type = getattr(row, "ending_type", None)
+        ending_type = str(raw_type).strip() if raw_type is not None and str(raw_type).strip() else None
+        score_raw = getattr(row, "ending_score", None)
+        ending_score: float | None = None
+        if score_raw is not None:
+            try:
+                ending_score = float(score_raw)
+            except (TypeError, ValueError):
+                ending_score = None
+        expl_raw = getattr(row, "explanation", None)
+        explanation = str(expl_raw).strip() if expl_raw is not None and str(expl_raw).strip() else None
         return EndingResultRecord(
             session_id=str(getattr(row, "session_id")),
             report_payload=dict(getattr(row, "report_payload", {}) or {}),
+            ending_type=ending_type,
+            ending_score=ending_score,
+            explanation=explanation,
         )
 
     def _to_scenario_recommendation_log_record(self, row: Any) -> ScenarioRecommendationLogRecord | None:

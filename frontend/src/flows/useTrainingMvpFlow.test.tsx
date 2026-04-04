@@ -4,6 +4,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTrainingMvpFlow } from './useTrainingMvpFlow';
 import { makeTrainingMediaTask } from '@/test/factories/training';
+import type { TrainingInitResult } from '@/types/training';
 
 const hookMocks = vi.hoisted(() => ({
   bootstrap: {
@@ -14,6 +15,7 @@ const hookMocks = vi.hoisted(() => ({
     activeSession: null,
     restoreSession: vi.fn(),
     startTrainingSession: vi.fn(),
+    finalizePendingTrainingSession: vi.fn(),
     dismissError: vi.fn(),
     clearTrainingSession: vi.fn(),
   },
@@ -48,6 +50,7 @@ const trainingApiMocks = vi.hoisted(() => ({
   createTrainingMediaTask: vi.fn(),
   getTrainingMediaTask: vi.fn(),
   getTrainingReport: vi.fn(),
+  getNextTrainingScenario: vi.fn(),
   buildTrainingSceneImageMediaTaskCreateParams: vi.fn((params: any) => ({
     sessionId: params.sessionId,
     roundNo: params.roundNo,
@@ -151,6 +154,7 @@ describe('useTrainingMvpFlow', () => {
     hookMocks.bootstrap.activeSession = null;
     hookMocks.bootstrap.restoreSession.mockReset();
     hookMocks.bootstrap.startTrainingSession.mockReset();
+    hookMocks.bootstrap.finalizePendingTrainingSession.mockReset();
     hookMocks.bootstrap.dismissError.mockReset();
     hookMocks.bootstrap.clearTrainingSession.mockReset();
 
@@ -180,6 +184,7 @@ describe('useTrainingMvpFlow', () => {
     trainingApiMocks.createTrainingMediaTask.mockReset();
     trainingApiMocks.getTrainingMediaTask.mockReset();
     trainingApiMocks.getTrainingReport.mockReset();
+    trainingApiMocks.getNextTrainingScenario.mockReset();
   });
 
   it('invalidates stale characterId when profile fields change', () => {
@@ -247,6 +252,7 @@ describe('useTrainingMvpFlow', () => {
       runtimeState: initialSessionView.runtimeState,
       nextScenario: initialSessionView.currentScenario,
       scenarioCandidates: [],
+      scenarioSequence: [],
     });
     hookMocks.bootstrap.restoreSession.mockResolvedValueOnce({
       sessionId: 'training-session-1',
@@ -351,6 +357,7 @@ describe('useTrainingMvpFlow', () => {
       runtimeState: initialSessionView.runtimeState,
       nextScenario: initialSessionView.currentScenario,
       scenarioCandidates: [],
+      scenarioSequence: [],
     });
     sessionViewBuilders.buildTrainingSessionViewFromInit.mockReturnValue(initialSessionView);
     sessionViewBuilders.buildTrainingSessionViewFromSummary.mockReturnValue(recoveredSessionView);
@@ -520,6 +527,7 @@ describe('useTrainingMvpFlow', () => {
       runtimeState: initialSessionView.runtimeState,
       nextScenario: initialSessionView.currentScenario,
       scenarioCandidates: [],
+      scenarioSequence: [],
     });
     hookMocks.bootstrap.restoreSession.mockResolvedValueOnce({
       sessionId: 'training-session-1',
@@ -646,5 +654,46 @@ describe('useTrainingMvpFlow', () => {
 
     expect(stalePollCallsAfterAdvance).toBe(stalePollCalls);
     vi.useRealTimers();
+  });
+
+  it('single-flights concurrent startTraining calls to avoid duplicate session creation', async () => {
+    const initialSessionView = createSessionView('scenario-1', 'Initial Briefing');
+    sessionViewBuilders.buildTrainingSessionViewFromInit.mockReturnValue(initialSessionView);
+
+    let resolveInit: ((value: TrainingInitResult) => void) | null = null;
+    hookMocks.bootstrap.startTrainingSession.mockImplementation(
+      () =>
+        new Promise<TrainingInitResult>((resolve) => {
+          resolveInit = resolve;
+        })
+    );
+
+    const { result } = renderHook(() => useTrainingMvpFlow());
+    act(() => {
+      result.current.updateFormDraft('characterId', '42');
+    });
+
+    const firstStartPromise = result.current.startTraining();
+    const secondStartPromise = result.current.startTraining();
+    expect(hookMocks.bootstrap.startTrainingSession).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      resolveInit?.({
+        sessionId: 'training-session-1',
+        trainingMode: 'guided',
+        status: 'initialized',
+        roundNo: 0,
+        runtimeState: initialSessionView.runtimeState,
+        nextScenario: initialSessionView.currentScenario,
+        scenarioCandidates: [],
+        scenarioSequence: [],
+      });
+    });
+
+    await act(async () => {
+      const [firstResult, secondResult] = await Promise.all([firstStartPromise, secondStartPromise]);
+      expect(firstResult).toBe(true);
+      expect(secondResult).toBe(true);
+    });
   });
 });

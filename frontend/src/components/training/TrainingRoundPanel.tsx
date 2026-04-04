@@ -93,7 +93,7 @@ function TrainingRoundPanel({
 
           {completionReportStatus === 'loading' ? (
             <Typography.Paragraph className="training-shell__completion-loading">
-              正在汇总最终训练报告...
+              正在汇总学习总结…
             </Typography.Paragraph>
           ) : null}
 

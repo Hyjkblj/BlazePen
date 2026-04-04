@@ -40,6 +40,33 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _coerce_ending_payload_from_record(ending_row: Any) -> Dict[str, Any] | None:
+    """合并 report_payload 与表字段，避免 JSON 空对象时丢失结局分类。"""
+    if ending_row is None:
+        return None
+    payload: Dict[str, Any] = dict(getattr(ending_row, "report_payload", None) or {})
+    type_hint = str(payload.get("type") or payload.get("ending_type") or "").strip()
+    if not type_hint:
+        col_type = getattr(ending_row, "ending_type", None)
+        if col_type is not None and str(col_type).strip():
+            payload["type"] = str(col_type).strip()
+    if payload.get("score") is None:
+        score = getattr(ending_row, "ending_score", None)
+        if score is not None:
+            try:
+                payload["score"] = float(score)
+            except (TypeError, ValueError):
+                pass
+    if not str(payload.get("explanation") or "").strip():
+        expl = getattr(ending_row, "explanation", None)
+        if expl is not None and str(expl).strip():
+            payload["explanation"] = str(expl).strip()
+    final_type = str(payload.get("type") or payload.get("ending_type") or "").strip()
+    if not final_type:
+        return None
+    return payload
+
+
 def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
     return max(lower, min(upper, value))
 
@@ -160,6 +187,8 @@ class TrainingQueryService:
         latest_decision_context, latest_consequence_events = (
             self._get_latest_round_runtime_artifacts(session_id)
         )
+        ending_row = self.training_store.get_ending_result(session_id)
+        ending_payload = _coerce_ending_payload_from_record(ending_row)
 
         return TrainingProgressOutput(
             session_id=session_id,
@@ -175,6 +204,7 @@ class TrainingQueryService:
             ),
             decision_context=latest_decision_context,
             consequence_events=latest_consequence_events,
+            ending=ending_payload,
         ).to_dict()
 
     def get_history(self, session_id: str) -> Dict[str, Any]:
@@ -277,11 +307,12 @@ class TrainingQueryService:
             runtime_state=self._build_training_runtime_state_output(
                 self._build_runtime_state(session=session)
             ),
-            ending=ending.report_payload if ending else None,
+            ending=_coerce_ending_payload_from_record(ending),
             summary=report_summary,
             ability_radar=report_artifacts.ability_radar,
             state_radar=report_artifacts.state_radar,
             growth_curve=report_artifacts.growth_curve,
+            round_snapshots=round_snapshots,
             history=history,
         ).to_dict()
 
@@ -306,6 +337,8 @@ class TrainingQueryService:
             audit_events=audit_event_outputs,
             kt_observations=kt_observation_outputs,
         )
+        ending_row = self.training_store.get_ending_result(session_id)
+        ending_payload = _coerce_ending_payload_from_record(ending_row)
 
         return TrainingDiagnosticsOutput(
             session_id=session_id,
@@ -320,6 +353,7 @@ class TrainingQueryService:
             recommendation_logs=recommendation_outputs,
             audit_events=audit_event_outputs,
             kt_observations=kt_observation_outputs,
+            ending=ending_payload,
         ).to_dict()
 
     def _get_session_or_raise(self, session_id: str) -> Any:

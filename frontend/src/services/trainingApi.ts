@@ -320,6 +320,7 @@ export const buildTrainingSceneImageMediaTaskCreateParams = (options: {
   scenario: TrainingScenario;
   attemptNo?: number;
   generateStorylineSeries?: boolean;
+  characterId?: number;
 }): TrainingMediaTaskCreateParams => {
   const attemptNo = Math.max(0, Math.floor(options.attemptNo ?? 0));
   const idempotencyKey = `training-scene-image:${options.sessionId}:${options.scenario.id}:attempt:${attemptNo}`;
@@ -342,6 +343,14 @@ export const buildTrainingSceneImageMediaTaskCreateParams = (options: {
   // Default: do NOT force storyline-series generation from frontend hot path.
   if (options.generateStorylineSeries === true) {
     payload.generate_storyline_series = true;
+  }
+
+  if (
+    options.characterId !== undefined &&
+    Number.isInteger(options.characterId) &&
+    options.characterId > 0
+  ) {
+    payload.character_id = options.characterId;
   }
 
   return {
@@ -650,6 +659,51 @@ export const getTrainingSessionSummary = async (
       error,
       'Failed to restore training session.',
       'Training session restore timed out.'
+    );
+  }
+};
+
+export const bindTrainingSessionCharacter = async (
+  sessionId: string,
+  characterId: number
+): Promise<{ sessionId: string; characterId: number }> => {
+  const normalizedSessionId = requireString(sessionId, 'sessionId');
+  if (!Number.isInteger(characterId) || characterId < 1) {
+    throw new ServiceError({
+      code: 'VALIDATION_ERROR',
+      message: 'characterId must be a positive integer when binding training session character.',
+    });
+  }
+
+  try {
+    const response = await httpClient.post(
+      `/v1/training/sessions/${encodeURIComponent(normalizedSessionId)}/character`,
+      { character_id: characterId },
+      { timeout: 30000 }
+    );
+    const data = unwrapApiData<{ session_id?: string; character_id?: number | string }>(response);
+    const resolvedSessionId =
+      normalizeOptionalString(data.session_id) ?? normalizedSessionId;
+    assertSessionId(resolvedSessionId, 'training session bind character');
+    const rawCid = data.character_id;
+    const resolvedCid =
+      typeof rawCid === 'number' && Number.isInteger(rawCid) && rawCid > 0
+        ? rawCid
+        : typeof rawCid === 'string' && rawCid.trim() !== ''
+          ? Number.parseInt(rawCid.trim(), 10)
+          : characterId;
+    if (!Number.isInteger(resolvedCid) || resolvedCid < 1) {
+      throw new ServiceError({
+        code: 'INVALID_RESPONSE',
+        message: 'Missing character_id in training session bind response.',
+      });
+    }
+    return { sessionId: resolvedSessionId, characterId: resolvedCid };
+  } catch (error: unknown) {
+    throw toTrainingServiceError(
+      error,
+      'Failed to bind training session character.',
+      'Training session bind character timed out.'
     );
   }
 };

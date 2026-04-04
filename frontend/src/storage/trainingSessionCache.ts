@@ -106,3 +106,63 @@ export const clearTrainingResumeTarget = (): void => {
 export const TRAINING_STORAGE_KEYS = {
   TRAINING_RESUME_TARGET: TRAINING_RESUME_TARGET_KEY,
 } as const;
+
+/** sessionStorage：本会话内场景图批量预创建计划（MainHome 开局后写入） */
+const TRAINING_PREWARM_PLAN_KEY = 'trainingPrewarmPlan';
+
+export interface TrainingPrewarmScenarioOutline {
+  id: string;
+  title: string;
+}
+
+export interface TrainingPrewarmPlan {
+  sessionId: string;
+  scenarios: TrainingPrewarmScenarioOutline[];
+}
+
+export const persistTrainingPrewarmPlan = (plan: TrainingPrewarmPlan): void => {
+  const sessionId = normalizeStoredString(plan.sessionId);
+  if (!sessionId || !Array.isArray(plan.scenarios) || plan.scenarios.length === 0) {
+    sessionStorage.removeItem(TRAINING_PREWARM_PLAN_KEY);
+    return;
+  }
+  const scenarios = plan.scenarios
+    .map((item) => ({
+      id: normalizeStoredString(item.id) ?? '',
+      title: normalizeStoredString(item.title) ?? '',
+    }))
+    .filter((item) => item.id !== '');
+  if (!scenarios.length) {
+    sessionStorage.removeItem(TRAINING_PREWARM_PLAN_KEY);
+    return;
+  }
+  sessionStorage.setItem(TRAINING_PREWARM_PLAN_KEY, JSON.stringify({ sessionId, scenarios }));
+};
+
+export const readTrainingPrewarmPlan = (): TrainingPrewarmPlan | null => {
+  try {
+    const raw = sessionStorage.getItem(TRAINING_PREWARM_PLAN_KEY);
+    if (!raw) return null;
+    const payload = JSON.parse(raw) as Record<string, unknown>;
+    const sessionId = normalizeStoredString(payload.sessionId);
+    if (!sessionId) return null;
+    const list = Array.isArray(payload.scenarios) ? payload.scenarios : [];
+    const scenarios = list
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+        const rec = item as Record<string, unknown>;
+        const id = normalizeStoredString(rec.id);
+        if (!id) return null;
+        return { id, title: normalizeStoredString(rec.title) ?? id };
+      })
+      .filter((item): item is TrainingPrewarmScenarioOutline => item !== null);
+    if (!scenarios.length) return null;
+    return { sessionId, scenarios };
+  } catch {
+    return null;
+  }
+};
+
+export const clearTrainingPrewarmPlan = (): void => {
+  sessionStorage.removeItem(TRAINING_PREWARM_PLAN_KEY);
+};

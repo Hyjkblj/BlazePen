@@ -13,6 +13,39 @@
   animation: fadeIn 0.5s ease-in-out;
 }
 
+/* 实训大场景：红色战训主题（与故事模式蓝紫区分） */
+.scene-transition-overlay--training {
+  background: radial-gradient(ellipse 120% 80% at 50% 20%, rgba(255, 72, 66, 0.35), transparent 55%),
+    linear-gradient(145deg, #1f0508 0%, #5c0f14 38%, #2a0406 72%, #120203 100%);
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.45);
+}
+
+.scene-transition-overlay--training .act-number {
+  color: #ffe8e4;
+  text-shadow:
+    0 0 28px rgba(255, 80, 72, 0.75),
+    0 0 2px rgba(0, 0, 0, 0.9);
+  letter-spacing: 0.12em;
+}
+
+.scene-transition-overlay--training .scene-name {
+  color: rgba(255, 244, 240, 0.94);
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.55);
+}
+
+.scene-transition-overlay--training .decoration-line {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 120, 108, 0.85),
+    rgba(255, 210, 200, 0.5),
+    rgba(255, 120, 108, 0.85),
+    transparent
+  );
+  height: 3px;
+  box-shadow: 0 0 16px rgba(255, 90, 80, 0.45);
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -30,6 +63,22 @@
   justify-content: center;
   gap: 20px;
   position: relative;
+}
+
+.scene-transition-eyebrow {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: rgba(255, 200, 190, 0.72);
+  opacity: 0;
+  transform: translateY(-12px);
+  transition: all 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.scene-transition-eyebrow.show {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* 幕数样式 */

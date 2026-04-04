@@ -4,7 +4,12 @@ import { useTrainingRoundRunner } from '@/hooks/useTrainingRoundRunner';
 import { useTrainingSceneImageFlow } from '@/hooks/useTrainingSceneImageFlow';
 import { useTrainingSessionBootstrap } from '@/hooks/useTrainingSessionBootstrap';
 import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
-import { getNextTrainingScenario } from '@/services/trainingApi';
+import {
+  buildTrainingSceneImageMediaTaskCreateParams,
+  createTrainingMediaTask,
+  getNextTrainingScenario,
+} from '@/services/trainingApi';
+import { readTrainingPrewarmPlan } from '@/storage/trainingSessionCache';
 import {
   buildBlockedTrainingSessionView,
   buildCompletedTrainingSessionView,
@@ -128,6 +133,7 @@ export function useTrainingMvpFlow(
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const autoRestoreSessionIdRef = useRef<string | null>(null);
   const rejectedPreferredCharacterIdRef = useRef<string | null>(null);
+  const startTrainingInFlightRef = useRef<Promise<boolean> | null>(null);
   const sessionViewModel = useTrainingSessionViewModel({
     explicitSessionId,
     sessionView,
@@ -371,14 +377,73 @@ export function useTrainingMvpFlow(
 
   const prewarmAllSceneImages = useCallback(
     async (characterId: string) => {
-      void characterId;
-      // Intentionally a no-op for now.
-      // Landing阶段不允许通过“预热”隐式创建训练会话；避免产生服务端副作用与恢复歧义。
+      const plan = readTrainingPrewarmPlan();
+      const sessionId = bootstrap.activeSession?.sessionId ?? null;
+      if (!plan || !sessionId || plan.sessionId !== sessionId) {
+        return;
+      }
+      const normalizedCharacterId = normalizeCharacterIdInput(characterId);
+      if (!normalizedCharacterId) {
+        return;
+      }
+      const cid = Number.parseInt(normalizedCharacterId, 10);
+      if (!Number.isInteger(cid) || cid < 1) {
+        return;
+      }
+      const roundNo = Math.max((bootstrap.activeSession?.roundNo ?? 0) + 1, 1);
+      const stubScenario = (outline: { id: string; title: string }): TrainingScenario => ({
+        id: outline.id,
+        title: outline.title,
+        eraDate: '',
+        location: '',
+        brief: '',
+        mission: '',
+        decisionFocus: '',
+        targetSkills: [],
+        riskTags: [],
+        options: [],
+        completionHint: '',
+        recommendation: null,
+      });
+      const staggerMs = 120;
+      for (const outline of plan.scenarios) {
+        try {
+          await createTrainingMediaTask(
+            buildTrainingSceneImageMediaTaskCreateParams({
+              sessionId,
+              roundNo,
+              scenario: stubScenario(outline),
+              attemptNo: 0,
+              generateStorylineSeries: false,
+              characterId: cid,
+            })
+          );
+        } catch (error: unknown) {
+          trackFrontendTelemetry({
+            domain: 'training',
+            event: 'training.scene_image.prewarm',
+            status: 'failed',
+            metadata: { sessionId, scenarioId: outline.id },
+            cause: error,
+          });
+        }
+        await new Promise((r) => {
+          window.setTimeout(r, staggerMs);
+        });
+      }
     },
-    []
+    [
+      bootstrap.activeSession?.roundNo,
+      bootstrap.activeSession?.sessionId,
+    ]
   );
 
   const startTraining = useCallback(async () => {
+    if (startTrainingInFlightRef.current) {
+      return startTrainingInFlightRef.current;
+    }
+
+    const runStartTraining = async (): Promise<boolean> => {
     roundRunner.dismissError();
     bootstrap.dismissError();
     setNoticeMessage(null);
@@ -387,17 +452,37 @@ export function useTrainingMvpFlow(
       return true;
     }
 
-    if (bootstrap.activeSession?.sessionId) {
-      // A prewarmed session may already exist (e.g. started while generating portraits).
-      // Don't force an immediate restore here (which can double-consume summary mocks in tests);
-      // the training route will materialize sessionView via its own restoration effects.
-      return true;
-    }
-
     const normalizedCharacterId = normalizeCharacterIdInput(formDraft.characterId);
     if (!normalizedCharacterId) {
       setNoticeMessage('\u8bf7\u5148\u751f\u6210\u5e76\u786e\u8ba4\u5f62\u8c61\u56fe\uff0c\u518d\u542f\u52a8\u8bad\u7ec3\u3002');
       return false;
+    }
+
+    const existingSessionId = bootstrap.activeSession?.sessionId ?? null;
+    if (existingSessionId) {
+      const summaryResult = await bootstrap.finalizePendingTrainingSession(normalizedCharacterId);
+      if (!summaryResult) {
+        return false;
+      }
+      let nextView = buildTrainingSessionViewFromSummary(summaryResult);
+      if (!nextView.currentScenario && summaryResult.canResume && !summaryResult.isCompleted) {
+        try {
+          const nextScenarioResult = await getNextTrainingScenario({
+            sessionId: summaryResult.sessionId,
+          });
+          nextView = buildTrainingSessionViewFromNext(nextView, nextScenarioResult);
+          setRestoreNextScenarioFailed(false);
+        } catch {
+          setRestoreNextScenarioFailed(true);
+        }
+      } else {
+        setRestoreNextScenarioFailed(false);
+      }
+      setLatestOutcome(null);
+      resetSceneImageFlow();
+      resetCompletionReportFlow();
+      setSessionView(nextView);
+      return true;
     }
 
     const initResult = await bootstrap.startTrainingSession({
@@ -416,7 +501,26 @@ export function useTrainingMvpFlow(
     resetCompletionReportFlow();
     setSessionView(buildTrainingSessionViewFromInit(initResult));
     return true;
-  }, [bootstrap, formDraft, resetCompletionReportFlow, resetSceneImageFlow, roundRunner, trainingMode]);
+    };
+
+    const inFlightPromise = runStartTraining();
+    startTrainingInFlightRef.current = inFlightPromise;
+    try {
+      return await inFlightPromise;
+    } finally {
+      if (startTrainingInFlightRef.current === inFlightPromise) {
+        startTrainingInFlightRef.current = null;
+      }
+    }
+  }, [
+    bootstrap,
+    formDraft,
+    resetCompletionReportFlow,
+    resetSceneImageFlow,
+    roundRunner,
+    sessionView,
+    trainingMode,
+  ]);
 
   const retryRestore = useCallback(async () => {
     roundRunner.dismissError();

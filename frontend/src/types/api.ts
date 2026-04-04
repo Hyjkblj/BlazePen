@@ -380,6 +380,9 @@ export interface TrainingScenarioApiResponse extends GenericApiRecord {
   options?: TrainingScenarioOptionApiResponse[] | null;
   completion_hint?: string | null;
   recommendation?: TrainingScenarioRecommendationApiResponse | null;
+  scene_level?: string | null;
+  major_scene_id?: string | null;
+  major_scene_order?: number | string | null;
 }
 
 export interface TrainingEvaluationApiResponse extends GenericApiRecord {
@@ -448,6 +451,7 @@ export interface TrainingInitResponse extends GenericApiRecord {
   runtime_state?: TrainingRuntimeStateApiResponse | null;
   next_scenario?: TrainingScenarioApiResponse | null;
   scenario_candidates?: TrainingScenarioApiResponse[] | null;
+  scenario_sequence?: Array<Record<string, unknown>> | null;
 }
 
 export interface TrainingScenarioNextRequest extends GenericApiRecord {
@@ -542,6 +546,7 @@ export interface TrainingProgressResponse extends GenericApiRecord {
   runtime_state?: TrainingRuntimeStateApiResponse | null;
   decision_context?: TrainingRoundDecisionContextApiResponse | null;
   consequence_events?: TrainingConsequenceEventApiResponse[] | null;
+  ending?: Record<string, unknown> | null;
 }
 
 export interface TrainingSessionProgressAnchorResponse extends GenericApiRecord {
@@ -763,6 +768,7 @@ export interface TrainingReportResponse extends GenericApiRecord {
   ability_radar?: TrainingReportMetricApiResponse[] | null;
   state_radar?: TrainingReportMetricApiResponse[] | null;
   growth_curve?: TrainingReportCurvePointApiResponse[] | null;
+  round_snapshots?: Record<string, unknown>[] | null;
   history?: TrainingReportHistoryItemApiResponse[] | null;
 }
 
@@ -777,4 +783,5 @@ export interface TrainingDiagnosticsResponse extends GenericApiRecord {
   recommendation_logs?: TrainingRecommendationLogApiResponse[] | null;
   audit_events?: TrainingAuditEventApiResponse[] | null;
   kt_observations?: TrainingKtObservationApiResponse[] | null;
+  ending?: Record<string, unknown> | null;
 }

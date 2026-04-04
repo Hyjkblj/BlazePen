@@ -15,15 +15,15 @@ interface TrainingShellHeaderProps {
 
 const insightLinks = (sessionId: string | null) => [
   {
-    label: '查看训练进度',
+    label: '查看学习进度',
     to: buildTrainingProgressRoute(sessionId),
   },
   {
-    label: '查看训练报告',
+    label: '查看学习总结',
     to: buildTrainingReportRoute(sessionId),
   },
   {
-    label: '查看训练诊断',
+    label: '查看学情诊断',
     to: buildTrainingDiagnosticsRoute(sessionId),
   },
 ];

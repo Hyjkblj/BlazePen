@@ -3,8 +3,10 @@ import TrainingReportGrowthCurveSection from '@/components/training/report/Train
 import TrainingReportHistorySection from '@/components/training/report/TrainingReportHistorySection';
 import TrainingReportMetricTable from '@/components/training/report/TrainingReportMetricTable';
 import TrainingReportRiskSection from '@/components/training/report/TrainingReportRiskSection';
+import TrainingReportRoundSnapshotsSection from '@/components/training/report/TrainingReportRoundSnapshotsSection';
 import TrainingReportStatusNotice from '@/components/training/report/TrainingReportStatusNotice';
 import TrainingReportSummarySection from '@/components/training/report/TrainingReportSummarySection';
+import { getEndingTypeLabel } from '@/components/training/TrainingInsightEndingBadge';
 import TrainingInsightShell from '@/components/training/TrainingInsightShell';
 import { useTrainingReport } from '@/hooks/useTrainingReport';
 import { normalizeTrainingSessionId } from '@/hooks/useTrainingSessionReadTarget';
@@ -15,24 +17,29 @@ function TrainingReport() {
   const { data, status, errorMessage, sessionTarget, hasStaleData, reload } =
     useTrainingReport(querySessionId);
 
+  const reportTitle = getEndingTypeLabel(data?.ending ?? null) ?? '学习总结';
+
   return (
     <TrainingInsightShell
-      title="Training Report"
-      description="训练报告页只展示服务端整理后的读模型摘要、能力变化和复盘建议，不在页面层二次拼装 recommendation、audit 或内部快照结构。"
+      title={reportTitle}
+      titleAriaLabel="学习总结"
+      description="本页展示你在本轮实训中的学习小结：完成了几轮、能力大致涨落、老师（系统）给出的练习建议等，数据由服务器根据你的作答与规则汇总生成。下方可展开查看会话编号，便于向老师反馈问题。"
       activeView="report"
       sessionId={sessionTarget.sessionId}
-      sessionSource={sessionTarget.source}
+      sessionEnding={data?.ending ?? null}
+      sessionIdentity={data?.playerProfile?.identity ?? data?.runtimeState?.playerProfile?.identity ?? null}
+      sessionDisplayName={data?.playerProfile?.name ?? data?.runtimeState?.playerProfile?.name ?? null}
       navigationSessionId={querySessionId}
       sessionStatus={data?.status ?? sessionTarget.status}
-      loadingMessage={status === 'loading' ? '正在读取训练报告...' : null}
+      loadingMessage={status === 'loading' ? '正在加载学习总结…' : null}
       errorMessage={errorMessage}
       hasStaleData={hasStaleData}
       emptyState={
         !data && !sessionTarget.sessionId
           ? {
-              title: '暂无训练报告',
+              title: '暂时看不到学习总结',
               description:
-                '当前没有可读取的训练 sessionId。请先完成一次训练，或从训练主页恢复训练会话后再查看报告。',
+                '当前没有可用的学习会话编号。请先完成一轮实训，或从训练主页恢复最近一次学习后再打开本页。',
             }
           : null
       }
@@ -57,14 +64,16 @@ function TrainingReport() {
             branchTransitions={data.summary?.branchTransitions ?? []}
           />
 
+          <TrainingReportRoundSnapshotsSection snapshots={data.roundSnapshots ?? []} />
+
           <section className="training-insight-section">
-            <h2>能力变化与状态变化</h2>
+            <h2>能力与情境变化</h2>
             <div className="training-insight-subgrid">
               <TrainingReportMetricTable
-                title="Ability Radar"
+                title="八维能力纵览"
                 metrics={data.abilityRadar}
               />
-              <TrainingReportMetricTable title="State Radar" metrics={data.stateRadar} />
+              <TrainingReportMetricTable title="六维态势指数" metrics={data.stateRadar} />
             </div>
           </section>
 

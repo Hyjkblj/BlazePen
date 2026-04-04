@@ -775,18 +775,20 @@ class TrainingRouterTestCase(unittest.TestCase):
         self.assertEqual(payload["data"]["runtime_state"]["state_bar"]["editor_trust"], 0.62)
 
     def test_submit_route_should_dispatch_pending_and_running_media_tasks(self):
-        self.app.dependency_overrides[get_training_service] = lambda: _SubmitRoundWithMediaTasksTrainingService()
+        """媒体任务调度在 TrainingService.submit_round 内完成；路由仅转发。桩服务镜像调度逻辑以便断言。"""
         fake_executor = _FakeMediaTaskExecutor()
+        service = _SubmitRoundWithMediaTasksTrainingService()
+        service.media_task_executor = fake_executor
+        self.app.dependency_overrides[get_training_service] = lambda: service
 
-        with patch("api.routers.training.get_training_media_task_executor", return_value=fake_executor):
-            response = self.client.post(
-                "/api/v1/training/round/submit",
-                json={
-                    "session_id": "s-test",
-                    "scenario_id": "S1",
-                    "user_input": "hello",
-                },
-            )
+        response = self.client.post(
+            "/api/v1/training/round/submit",
+            json={
+                "session_id": "s-test",
+                "scenario_id": "S1",
+                "user_input": "hello",
+            },
+        )
 
         payload = response.json()
         self.assertEqual(response.status_code, 200)
@@ -798,20 +800,24 @@ class TrainingRouterTestCase(unittest.TestCase):
         )
 
     def test_submit_route_should_keep_success_when_media_dispatch_resolution_fails(self):
-        self.app.dependency_overrides[get_training_service] = lambda: _SubmitRoundWithMediaTasksTrainingService()
+        """单任务 submit 失败时服务层吞掉异常并仍返回成功；桩行为与 TrainingService 一致。"""
 
-        with patch(
-            "api.routers.training.get_training_media_task_executor",
-            side_effect=RuntimeError("executor unavailable"),
-        ):
-            response = self.client.post(
-                "/api/v1/training/round/submit",
-                json={
-                    "session_id": "s-test",
-                    "scenario_id": "S1",
-                    "user_input": "hello",
-                },
-            )
+        class _ExplodingMediaTaskExecutor:
+            def submit_task(self, task_id: str) -> None:
+                raise RuntimeError("dispatch failed")
+
+        service = _SubmitRoundWithMediaTasksTrainingService()
+        service.media_task_executor = _ExplodingMediaTaskExecutor()
+        self.app.dependency_overrides[get_training_service] = lambda: service
+
+        response = self.client.post(
+            "/api/v1/training/round/submit",
+            json={
+                "session_id": "s-test",
+                "scenario_id": "S1",
+                "user_input": "hello",
+            },
+        )
 
         payload = response.json()
         self.assertEqual(response.status_code, 200)
@@ -925,6 +931,21 @@ class _ScenarioMismatchTrainingService:
         )
 
 
+def _dispatch_round_media_tasks_like_training_service(executor, media_tasks: list | None) -> None:
+    """与 TrainingService.submit_round 中对 round_media_tasks 的调度规则一致（仅测桩使用）。"""
+    if executor is None or not media_tasks:
+        return
+    for item in media_tasks:
+        task_id = str((item or {}).get("task_id") or "").strip()
+        status = str((item or {}).get("status") or "").strip().lower()
+        if not task_id or status not in {"pending", "running"}:
+            continue
+        try:
+            executor.submit_task(task_id)
+        except Exception:
+            pass
+
+
 class _SubmitRoundWithMediaTasksTrainingService(_FakeTrainingService):
     def submit_round(self, session_id, scenario_id, user_input, selected_option=None, media_tasks=None):
         payload = super().submit_round(
@@ -939,6 +960,10 @@ class _SubmitRoundWithMediaTasksTrainingService(_FakeTrainingService):
             {"task_id": "task-running", "task_type": "tts", "status": "running"},
             {"task_id": "task-succeeded", "task_type": "text", "status": "succeeded"},
         ]
+        _dispatch_round_media_tasks_like_training_service(
+            getattr(self, "media_task_executor", None),
+            payload["media_tasks"],
+        )
         return payload
 
 

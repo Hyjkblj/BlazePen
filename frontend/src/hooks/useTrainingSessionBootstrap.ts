@@ -1,9 +1,15 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTrainingFlow } from '@/contexts';
 import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
-import { getTrainingSessionSummary, initTraining } from '@/services/trainingApi';
 import {
+  bindTrainingSessionCharacter,
+  getTrainingSessionSummary,
+  initTraining,
+} from '@/services/trainingApi';
+import {
+  clearTrainingPrewarmPlan,
   clearTrainingResumeTarget,
+  persistTrainingPrewarmPlan,
   persistTrainingResumeTarget,
   readTrainingResumeTarget,
   type TrainingResumeTarget,
@@ -43,6 +49,9 @@ export interface UseTrainingSessionBootstrapResult {
   startTrainingSession: (
     params: TrainingSessionInitParams
   ) => Promise<TrainingInitResult | null>;
+  finalizePendingTrainingSession: (
+    characterId: string
+  ) => Promise<TrainingSessionSummaryResult | null>;
   restoreSession: (
     options?: RestoreTrainingSessionOptions
   ) => Promise<TrainingSessionSummaryResult | null>;
@@ -91,6 +100,9 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
   const [resumeTarget, setResumeTarget] = useState<TrainingResumeTarget | null>(() =>
     readTrainingResumeTarget()
   );
+  const startTrainingInFlightRef = useRef<Map<string, Promise<TrainingInitResult | null>>>(
+    new Map()
+  );
 
   const refreshResumeTarget = useCallback(() => {
     const nextTarget = readTrainingResumeTarget();
@@ -101,6 +113,7 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
   const clearTrainingSession = useCallback(() => {
     clearActiveSession();
     clearTrainingResumeTarget();
+    clearTrainingPrewarmPlan();
     setResumeTarget(null);
     setErrorMessage(null);
     setStatus('idle');
@@ -116,70 +129,151 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
   const startTrainingSession = useCallback(
     async (params: TrainingSessionInitParams): Promise<TrainingInitResult | null> => {
       const normalizedCharacterId = normalizeCharacterId(params.characterId ?? null);
+      const singleFlightKey = [
+        String(params.userId || '').trim(),
+        String(params.trainingMode || '').trim(),
+        normalizedCharacterId ?? '',
+      ].join('|');
+      const existingInFlight = startTrainingInFlightRef.current.get(singleFlightKey);
+      if (existingInFlight) {
+        return existingInFlight;
+      }
+
       const initTelemetryMetadata = {
         trainingMode: params.trainingMode,
         hasCharacterId: normalizedCharacterId !== null,
         hasPlayerProfile: params.playerProfile !== null,
       };
 
+      const startPromise = (async (): Promise<TrainingInitResult | null> => {
+        setStatus('starting');
+        setErrorMessage(null);
+
+        try {
+          trackFrontendTelemetry({
+            domain: 'training',
+            event: 'training.init',
+            status: 'requested',
+            metadata: initTelemetryMetadata,
+          });
+          const initResult = await initTraining(params);
+          const resolvedCharacterId = normalizeCharacterId(
+            initResult.characterId ?? normalizedCharacterId
+          );
+          setActiveSession({
+            sessionId: initResult.sessionId,
+            trainingMode: initResult.trainingMode,
+            characterId: resolvedCharacterId,
+            status: initResult.status,
+            roundNo: initResult.roundNo,
+            totalRounds: null,
+            runtimeState: initResult.runtimeState,
+          });
+          persistTrainingResumeTarget({
+            sessionId: initResult.sessionId,
+            trainingMode: initResult.trainingMode,
+            characterId: resolvedCharacterId,
+            status: initResult.status,
+          });
+          if (
+            params.persistScenarioPrewarmPlan &&
+            resolvedCharacterId === null &&
+            initResult.scenarioSequence.length > 0
+          ) {
+            persistTrainingPrewarmPlan({
+              sessionId: initResult.sessionId,
+              scenarios: initResult.scenarioSequence,
+            });
+          }
+          refreshResumeTarget();
+          setStatus('ready');
+          trackFrontendTelemetry({
+            domain: 'training',
+            event: 'training.init',
+            status: 'succeeded',
+            metadata: {
+              ...initTelemetryMetadata,
+              hasCharacterId: resolvedCharacterId !== null,
+              sessionId: initResult.sessionId,
+              status: initResult.status,
+              roundNo: initResult.roundNo,
+            },
+          });
+          return initResult;
+        } catch (error: unknown) {
+          trackFrontendTelemetry({
+            domain: 'training',
+            event: 'training.init',
+            status: 'failed',
+            metadata: initTelemetryMetadata,
+            cause: error,
+          });
+          setErrorMessage(getTrainingStartErrorMessage(error));
+          setStatus('error');
+          return null;
+        }
+      })();
+
+      startTrainingInFlightRef.current.set(singleFlightKey, startPromise);
+      void startPromise.finally(() => {
+        const currentInFlight = startTrainingInFlightRef.current.get(singleFlightKey);
+        if (currentInFlight === startPromise) {
+          startTrainingInFlightRef.current.delete(singleFlightKey);
+        }
+      });
+      return startPromise;
+    },
+    [refreshResumeTarget, setActiveSession]
+  );
+
+  const finalizePendingTrainingSession = useCallback(
+    async (characterId: string): Promise<TrainingSessionSummaryResult | null> => {
+      const normalizedCharacterId = normalizeCharacterId(characterId);
+      const sessionId = state.activeSession?.sessionId ?? null;
+      if (!normalizedCharacterId || !sessionId) {
+        setErrorMessage('无法完成训练会话绑定：缺少会话或角色。');
+        setStatus('error');
+        return null;
+      }
+      const cid = Number.parseInt(normalizedCharacterId, 10);
+      if (!Number.isInteger(cid) || cid < 1) {
+        setErrorMessage('角色 ID 无效。');
+        setStatus('error');
+        return null;
+      }
+
       setStatus('starting');
       setErrorMessage(null);
 
       try {
-        trackFrontendTelemetry({
-          domain: 'training',
-          event: 'training.init',
-          status: 'requested',
-          metadata: initTelemetryMetadata,
-        });
-        const initResult = await initTraining(params);
-        const resolvedCharacterId = normalizeCharacterId(
-          initResult.characterId ?? normalizedCharacterId
-        );
+        await bindTrainingSessionCharacter(sessionId, cid);
+        const summaryResult = await getTrainingSessionSummary(sessionId);
+        const resolvedCharacterId = normalizeCharacterId(summaryResult.characterId);
         setActiveSession({
-          sessionId: initResult.sessionId,
-          trainingMode: initResult.trainingMode,
+          sessionId: summaryResult.sessionId,
+          trainingMode: summaryResult.trainingMode,
           characterId: resolvedCharacterId,
-          status: initResult.status,
-          roundNo: initResult.roundNo,
-          totalRounds: null,
-          runtimeState: initResult.runtimeState,
+          status: summaryResult.status,
+          roundNo: summaryResult.roundNo,
+          totalRounds: summaryResult.totalRounds,
+          runtimeState: summaryResult.runtimeState,
         });
         persistTrainingResumeTarget({
-          sessionId: initResult.sessionId,
-          trainingMode: initResult.trainingMode,
+          sessionId: summaryResult.sessionId,
+          trainingMode: summaryResult.trainingMode,
           characterId: resolvedCharacterId,
-          status: initResult.status,
+          status: summaryResult.status,
         });
         refreshResumeTarget();
         setStatus('ready');
-        trackFrontendTelemetry({
-          domain: 'training',
-          event: 'training.init',
-          status: 'succeeded',
-          metadata: {
-            ...initTelemetryMetadata,
-            hasCharacterId: resolvedCharacterId !== null,
-            sessionId: initResult.sessionId,
-            status: initResult.status,
-            roundNo: initResult.roundNo,
-          },
-        });
-        return initResult;
+        return summaryResult;
       } catch (error: unknown) {
-        trackFrontendTelemetry({
-          domain: 'training',
-          event: 'training.init',
-          status: 'failed',
-          metadata: initTelemetryMetadata,
-          cause: error,
-        });
         setErrorMessage(getTrainingStartErrorMessage(error));
         setStatus('error');
         return null;
       }
     },
-    [refreshResumeTarget, setActiveSession]
+    [refreshResumeTarget, setActiveSession, state.activeSession?.sessionId]
   );
 
   const restoreSession = useCallback(
@@ -295,6 +389,7 @@ export function useTrainingSessionBootstrap(): UseTrainingSessionBootstrapResult
     resumeTarget,
     hasResumeTarget: Boolean(resumeTarget?.sessionId || state.activeSession?.sessionId),
     startTrainingSession,
+    finalizePendingTrainingSession,
     restoreSession,
     clearTrainingSession,
     dismissError,

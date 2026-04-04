@@ -1,5 +1,7 @@
 import type { TrainingReportMetric } from '@/types/training';
 
+import { resolveTrainingMetricDisplayLabel } from './trainingMetricLabels';
+
 const formatMetricValue = (value: number): string => Number(value.toFixed(2)).toString();
 
 const formatSignedMetric = (value: number): string => {
@@ -27,35 +29,44 @@ function TrainingReportMetricTable({
         <table className="training-insight-metric-table">
           <thead>
             <tr>
-              <th>指标</th>
-              <th>初始</th>
-              <th>最终</th>
-              <th>变化</th>
-              <th>说明</th>
+              <th>维度</th>
+              <th>开笔</th>
+              <th>收官</th>
+              <th>起伏</th>
+              <th>侧记</th>
             </tr>
           </thead>
           <tbody>
             {metrics.map((metric) => {
               const labels = [];
               if (metric.isHighestGain) {
-                labels.push('最高增益');
+                labels.push('峰值进步');
               }
               if (metric.isLowestFinal) {
-                labels.push('最低最终值');
+                labels.push('终局偏弱');
               }
               if (metric.weight !== null) {
-                labels.push(`权重 ${formatMetricValue(metric.weight)}`);
+                labels.push(`计权 ${formatMetricValue(metric.weight)}`);
               }
+
+              const { primary, codeLine } = resolveTrainingMetricDisplayLabel(metric.code);
 
               return (
                 <tr key={metric.code}>
                   <td>
-                    <strong>{metric.code}</strong>
+                    <div className="training-metric-cell">
+                      <strong className="training-metric-cell__primary">{primary}</strong>
+                      {codeLine ? (
+                        <span className="training-metric-cell__code" title={codeLine}>
+                          {codeLine}
+                        </span>
+                      ) : null}
+                    </div>
                   </td>
                   <td>{formatMetricValue(metric.initial)}</td>
                   <td>{formatMetricValue(metric.final)}</td>
                   <td>{formatSignedMetric(metric.delta)}</td>
-                  <td>{labels.join(' / ') || '无'}</td>
+                  <td>{labels.join(' · ') || '—'}</td>
                 </tr>
               );
             })}

@@ -472,6 +472,7 @@ describe('trainingApi', () => {
           severity: 'high',
         },
       ],
+      ending: null,
     });
 
     expect(httpClient.get).toHaveBeenCalledWith('/v1/training/progress/training-session-progress', {

@@ -178,6 +178,12 @@ class TrainingInitRequest(_StrictTrainingRequestModel):
     player_profile: Optional[TrainingPlayerProfileRequest] = Field(None, description="玩家身份档案（可选）")
 
 
+class TrainingBindSessionCharacterRequest(_StrictTrainingRequestModel):
+    """将已开始会话绑定到已创建的角色（会话可先无 character_id 初始化）。"""
+
+    character_id: int = Field(..., ge=1, description="角色ID")
+
+
 class TrainingScenarioOptionResponse(BaseModel):
     """训练场景选项响应"""
     id: str
@@ -570,6 +576,7 @@ class TrainingProgressResponse(BaseModel):
     runtime_state: Optional[TrainingRuntimeStateResponse] = None
     decision_context: Optional[TrainingRoundDecisionContextResponse] = None
     consequence_events: List[TrainingConsequenceEventResponse] = Field(default_factory=list)
+    ending: Optional[Dict[str, Any]] = None
 
 
 class TrainingSessionProgressAnchorResponse(BaseModel):
@@ -727,6 +734,10 @@ class TrainingReportResponse(BaseModel):
     ability_radar: List[TrainingReportMetricResponse] = Field(default_factory=list)
     state_radar: List[TrainingReportMetricResponse] = Field(default_factory=list)
     growth_curve: List[TrainingReportCurvePointResponse] = Field(default_factory=list)
+    round_snapshots: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="报告聚合用逐回合快照（含 risk_flags、branch_transition 等）",
+    )
     history: List[TrainingReportHistoryItemResponse] = Field(default_factory=list)
 
 
@@ -742,6 +753,7 @@ class TrainingDiagnosticsResponse(BaseModel):
     recommendation_logs: List[TrainingRecommendationLogResponse] = Field(default_factory=list)
     audit_events: List[TrainingAuditEventResponse] = Field(default_factory=list)
     kt_observations: List[TrainingKtObservationResponse] = Field(default_factory=list)
+    ending: Optional[Dict[str, Any]] = None
 
 
 class TrainingInitApiResponse(ApiResponse):

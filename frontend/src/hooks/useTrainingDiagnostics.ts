@@ -6,6 +6,6 @@ export function useTrainingDiagnostics(explicitSessionId?: string | null) {
   return useTrainingReadQuery<TrainingDiagnosticsResult>({
     explicitSessionId,
     fetcher: getTrainingDiagnostics,
-    fallbackErrorMessage: '读取训练诊断失败。',
+    fallbackErrorMessage: '加载学情诊断失败。',
   });
 }

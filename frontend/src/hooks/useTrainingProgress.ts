@@ -6,7 +6,7 @@ export function useTrainingProgress(explicitSessionId?: string | null) {
   const query = useTrainingReadQuery<TrainingProgressResult>({
     explicitSessionId,
     fetcher: getTrainingProgress,
-    fallbackErrorMessage: '读取训练进度失败。',
+    fallbackErrorMessage: '加载学习进度失败。',
   });
 
   const totalRounds = query.data?.totalRounds ?? 0;

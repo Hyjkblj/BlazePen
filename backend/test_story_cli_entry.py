@@ -48,6 +48,28 @@ class StoryCliEntryTestCase(unittest.TestCase):
             ]
         )
 
+    def test_main_should_dispatch_probe_llm_command(self):
+        with patch.object(run_story_cli, "run_story_llm_probe", return_value=3) as llm_probe_runner:
+            exit_code = run_story_cli.main(
+                [
+                    "probe-llm",
+                    "--character-id",
+                    "7",
+                    "--scene-id",
+                    "school",
+                ]
+            )
+
+        self.assertEqual(exit_code, 3)
+        llm_probe_runner.assert_called_once_with(
+            [
+                "--character-id",
+                "7",
+                "--scene-id",
+                "school",
+            ]
+        )
+
     def test_main_should_show_root_help_when_requested(self):
         captured_stdout = io.StringIO()
 
@@ -58,6 +80,7 @@ class StoryCliEntryTestCase(unittest.TestCase):
         help_output = captured_stdout.getvalue()
         self.assertIn("Story backend unified CLI entrypoint", help_output)
         self.assertIn("smoke", help_output)
+        self.assertIn("probe-llm", help_output)
 
 
 if __name__ == "__main__":

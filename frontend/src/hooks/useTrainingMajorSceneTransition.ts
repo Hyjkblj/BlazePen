@@ -27,6 +27,20 @@ function deriveMajorScenePresentation(scenario: TrainingScenario): {
       actNumber: 1,
     };
   }
+
+  // Compatibility fallback: if backend has not provided storyline major-scene fields yet,
+  // still show transition on scenario switches so the UX does not silently degrade.
+  const fallbackScenarioId = scenario.id?.trim();
+  if (fallbackScenarioId) {
+    const order = scenario.majorSceneOrder;
+    const actNumber = typeof order === 'number' && order > 0 ? order : 1;
+    return {
+      key: `scenario:${fallbackScenarioId}`,
+      displayTitle: scenario.title?.trim() || fallbackScenarioId,
+      actNumber,
+    };
+  }
+
   return null;
 }
 

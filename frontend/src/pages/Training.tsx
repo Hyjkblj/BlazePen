@@ -7,12 +7,14 @@ import { buildTrainingReportRoute, ROUTES } from '@/config/routes';
 import { useTrainingMvpFlow } from '@/flows/useTrainingMvpFlow';
 import { useTrainingMajorSceneTransition } from '@/hooks/useTrainingMajorSceneTransition';
 import { normalizeTrainingSessionId } from '@/hooks/useTrainingSessionReadTarget';
+import { useSceneFadeTransition } from '@/hooks/useSceneFadeTransition';
+import { useTypewriter } from '@/hooks/useTypewriter';
 import { getStaticAssetContractWarning } from '@/services/assetUrl';
 import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
 import './Training.css';
 
 /** 场景图 URL 就绪后延迟再展示独白/选项，给大图解码与绘制留出时间 */
-const POST_SCENE_IMAGE_UI_DELAY_MS = 2000;
+const POST_SCENE_IMAGE_UI_DELAY_MS = 0;
 const AUTO_REVEAL_CHOICES_IDLE_MS = 20000;
 
 const buildScenePlaceholderText = ({
@@ -31,7 +33,7 @@ const buildScenePlaceholderText = ({
     return '会话未就绪...';
   }
   if (sceneImageStatus === 'pending' || sceneImageStatus === 'running') {
-    return '后端正在生成场景图...';
+    return '加载中..';
   }
   return '';
 };
@@ -66,6 +68,7 @@ function Training() {
   const hasInsightEntry = flow.insightSessionId !== null;
   const hasSession = Boolean(sessionView);
   const currentScenario = sessionView?.currentScenario ?? null;
+  const { isFadingOut, isFadingIn } = useSceneFadeTransition(currentScenario?.id ?? null);
   const {
     showMajorTransition,
     majorTransitionTitle,
@@ -82,6 +85,7 @@ function Training() {
   const showCompletionNotice = Boolean(sessionView?.isCompleted);
   const showLoadingMask = isSubmitting || bootstrapStatus === 'restoring';
   const placeholderText = buildScenePlaceholderText({ hasSession, bootstrapStatus, sceneImageStatus });
+  const isSceneImageLoading = sceneImageStatus === 'pending' || sceneImageStatus === 'running';
   const hasSceneImageWarning = !sceneImageUrl && sceneImageStatus === 'failed';
   const [sceneAssetFailed, setSceneAssetFailed] = useState(false);
   const normalizedSceneImageUrl = useMemo(() => (sceneImageUrl ? String(sceneImageUrl).trim() : ''), [sceneImageUrl]);
@@ -92,8 +96,9 @@ function Training() {
     [normalizedSceneImageUrl]
   );
   const showChoiceBand = !showCompletionNotice && options.length > 0;
-  const canRevealNarrationAndChoices =
-    showChoiceBand && (sceneImageStatus === 'succeeded' || sceneImageStatus === 'failed');
+  // 叙事内容与选项不再等待图片就绪，只要场景数据存在就立即显示
+  // 图片在后台继续加载，加载完成后自动替换占位背景
+  const canRevealNarrationAndChoices = showChoiceBand;
   const [postImageUiReady, setPostImageUiReady] = useState(false);
 
   useEffect(() => {
@@ -140,6 +145,26 @@ function Training() {
     narrationText ? 'narration' : 'choices'
   );
 
+  // 打字机效果：仅在叙事阶段且 overlay 可见时激活
+  const typewriterActive = choiceStage === 'narration' && showChoiceOverlay;
+  const {
+    displayedText: typewriterText,
+    isDone: typewriterDone,
+    skip: skipTypewriter,
+  } = useTypewriter(typewriterActive ? narrationText : '', {
+    charIntervalMs: 32,
+    autoStart: typewriterActive,
+  });
+
+  // 点击叙事区域：打字机未完成时先跳过，完成后进入选项
+  const handleNarrationClick = () => {
+    if (!typewriterDone) {
+      skipTypewriter();
+    } else {
+      setChoiceStage('choices');
+    }
+  };
+
   useEffect(() => {
     if (!showChoiceOverlay) {
       return;
@@ -150,11 +175,23 @@ function Training() {
     }
 
     setChoiceStage('narration');
+    // 兜底计时器：防止打字机 hook 异常时页面卡死
     const timer = window.setTimeout(() => {
       setChoiceStage('choices');
     }, AUTO_REVEAL_CHOICES_IDLE_MS);
     return () => window.clearTimeout(timer);
   }, [currentScenario?.id, narrationText, showChoiceOverlay]);
+
+  // 打字机完成后再等 20s 自动进入选项
+  useEffect(() => {
+    if (!typewriterDone || choiceStage !== 'narration') {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setChoiceStage('choices');
+    }, AUTO_REVEAL_CHOICES_IDLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [typewriterDone, choiceStage]);
 
   if (!sessionView && !hasInsightEntry) {
     return <Navigate to={hasResumeTarget ? ROUTES.TRAINING_LANDING : ROUTES.TRAINING_MAINHOME} replace />;
@@ -171,12 +208,20 @@ function Training() {
         />
       ) : null}
       <section className="training-simplified" aria-live="polite">
-        <div className="training-simplified__scene-frame">
+        <div className={[
+          'training-simplified__scene-frame',
+          isFadingOut ? 'training-simplified__scene-frame--fade-out' : '',
+          isFadingIn ? 'training-simplified__scene-frame--fade-in' : '',
+        ].filter(Boolean).join(' ')}>
           <StaticAssetImage
             imageUrl={sceneImageUrl}
             alt={currentScenario?.title ? `${currentScenario.title} 场景图` : '训练场景图'}
             imageClassName="training-simplified__scene-image"
-            placeholderClassName="training-simplified__scene-placeholder"
+            placeholderClassName={
+              isSceneImageLoading
+                ? 'training-simplified__scene-placeholder training-simplified__scene-placeholder--loading'
+                : 'training-simplified__scene-placeholder'
+            }
             placeholder={placeholderText}
             onError={() => {
               setSceneAssetFailed(true);
@@ -199,16 +244,18 @@ function Training() {
                 <button
                   type="button"
                   className="training-simplified__narration"
-                  onClick={() => setChoiceStage('choices')}
+                  onClick={handleNarrationClick}
                   disabled={optionDisabled}
                 >
                   <span className="training-simplified__narration-label">当前节点</span>
-                  <span className="training-simplified__narration-text">{narrationText}</span>
+                  <span className="training-simplified__narration-text">
+                    {typewriterText}
+                    {!typewriterDone ? (
+                      <span className="training-simplified__narration-cursor" aria-hidden="true" />
+                    ) : null}
+                  </span>
                   <span className="training-simplified__narration-hint">
-                    <span>点击可立即进入选项</span>
-                    <span className="training-simplified__narration-hint-corner">
-                      20 秒无操作将自动展开选项
-                    </span>
+                    {typewriterDone ? '点击任意位置继续' : '点击跳过'}
                   </span>
                 </button>
               ) : null}

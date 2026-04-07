@@ -25,7 +25,7 @@ const AUTO_REVEAL_CHOICES_IDLE_MS = 20000;
 const readEndingNarrativeText = (ending: Record<string, unknown> | null | undefined): string | null => {
   if (!ending || typeof ending !== 'object') return null;
 
-  const directCandidates = ['summary', 'ending_text', 'endingText', 'description', 'explanation', 'title'] as const;
+  const directCandidates = ['ending_text', 'endingText', 'description', 'explanation', 'title'] as const;
   for (const key of directCandidates) {
     const value = ending[key];
     if (typeof value === 'string' && value.trim() !== '') {
@@ -57,7 +57,19 @@ const resolveEndingTypeLabel = (ending: Record<string, unknown> | null | undefin
   return null;
 };
 
-const buildEndingFallbackNarrative = (endingType: string | null, completionTeaser: string | null): string => {
+const sanitizeCompletionNarrativeText = (text: string): string => {
+  return text
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      return !/^综合能力评分/.test(trimmed) && !/^综合加权分/.test(trimmed);
+    })
+    .join('\n')
+    .trim();
+};
+
+const buildEndingFallbackNarrative = (endingType: string | null): string => {
   const normalizedType = (endingType ?? '').toLowerCase();
   let lead = '任务暂告一段落。你在高压信息环境下完成了取舍与发布，后续影响仍在持续扩散。';
 
@@ -73,9 +85,7 @@ const buildEndingFallbackNarrative = (endingType: string | null, completionTease
     lead = '关键节点处理出现失衡，线索保护与信息发布目标都受到明显冲击。';
   }
 
-  return completionTeaser
-    ? `${lead}\n\n${completionTeaser}\n\n点击下方“查看可视化评估报告”，查看完整能力雷达与回合轨迹。`
-    : `${lead}\n\n点击下方“查看可视化评估报告”，查看完整能力雷达与回合轨迹。`;
+  return `${lead}\n\n点击下方“查看可视化评估报告”，查看完整能力雷达与回合轨迹。`;
 };
 
 const buildScenePlaceholderText = ({
@@ -321,21 +331,6 @@ function Training() {
     return () => window.clearTimeout(timer);
   }, [legacyTypewriterDone, choiceStage]);
 
-  const completionReportTeaser = useMemo(() => {
-    if (!sessionView?.isCompleted || !completionReport?.summary) {
-      return null;
-    }
-    const s = completionReport.summary;
-    const initial = s.weightedScoreInitial;
-    const final = s.weightedScoreFinal;
-    const delta = s.weightedScoreDelta;
-    if (![initial, final, delta].every((x) => typeof x === 'number' && Number.isFinite(x))) {
-      return null;
-    }
-    const deltaLabel = `${delta >= 0 ? '+' : ''}${delta.toFixed(2)}`;
-    return `综合加权分 ${initial.toFixed(2)} → ${final.toFixed(2)}（${deltaLabel}）`;
-  }, [completionReport, sessionView?.isCompleted]);
-
   const completionEndingPayload = useMemo<Record<string, unknown> | null>(() => {
     if (completionReport?.ending && typeof completionReport.ending === 'object') {
       return completionReport.ending;
@@ -351,17 +346,19 @@ function Training() {
 
     const endingText = readEndingNarrativeText(completionEndingPayload);
     const endingType = resolveEndingTypeLabel(completionEndingPayload);
-    const teaser = completionReportTeaser ?? null;
 
     if (endingText) {
-      if (endingType && !endingText.includes(endingType)) {
-        return `[${endingType}]\n${endingText}`;
+      const sanitizedEndingText = sanitizeCompletionNarrativeText(endingText);
+      if (sanitizedEndingText) {
+        if (endingType && !sanitizedEndingText.includes(endingType)) {
+          return `[${endingType}]\n${sanitizedEndingText}`;
+        }
+        return sanitizedEndingText;
       }
-      return endingText;
     }
 
-    return buildEndingFallbackNarrative(endingType, teaser);
-  }, [completionEndingPayload, completionReportTeaser, showCompletionNotice]);
+    return buildEndingFallbackNarrative(endingType);
+  }, [completionEndingPayload, showCompletionNotice]);
 
   const {
     displayedText: completionStoryDisplayedText,
@@ -610,16 +607,14 @@ function Training() {
         </div>
 
         {showCompletionNotice ? (
-          <div className="training-simplified__completion-footer">
-            {sessionView?.sessionId ? (
-              <Link
-                className="training-simplified__report-link"
-                to={buildTrainingReportRoute(sessionView.sessionId)}
-              >
-                查看可视化评估报告
-              </Link>
-            ) : null}
-          </div>
+          sessionView?.sessionId ? (
+            <Link
+              className="training-simplified__report-link"
+              to={buildTrainingReportRoute(sessionView.sessionId)}
+            >
+              查看可视化评估报告
+            </Link>
+          ) : null
         ) : (
           <div className="training-simplified__options">
             {options.length > 0 ? null : (

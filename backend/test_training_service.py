@@ -1470,7 +1470,13 @@ class TrainingServiceTestCase(unittest.TestCase):
             scenario_sequence=[{"id": "S_A", "title": "A"}],
             scenario_repository=repository,
         )
-        init_result = service.init_training(user_id="u5")
+        # disable_storyline_expansion keeps the sequence as a single scene so
+        # one submit completes the session — the test intent is about sequence
+        # freezing across deploys, not about storyline expansion.
+        init_result = service.init_training(
+            user_id="u5",
+            player_profile={"disable_storyline_expansion": True},
+        )
         session_id = init_result["session_id"]
 
         # 模拟发版后代码默认序列变化，但会话应继续使用初始化时冻结的序列。

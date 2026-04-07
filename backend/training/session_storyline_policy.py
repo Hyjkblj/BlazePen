@@ -427,18 +427,17 @@ class SessionStorylinePolicy:
         training_mode: str,
         player_profile: Dict[str, Any] | None,
     ) -> bool:
-        if not isinstance(player_profile, dict):
-            return False
-        if bool(player_profile.get("disable_storyline_expansion")):
-            return False
-        if bool(player_profile.get("force_storyline_expansion")):
-            return True
+        # Explicit overrides take priority regardless of mode.
+        if isinstance(player_profile, dict):
+            if bool(player_profile.get("disable_storyline_expansion")):
+                return False
+            if bool(player_profile.get("force_storyline_expansion")):
+                return True
 
+        # Structure (major+micro expansion) is determined solely by training_mode.
+        # identity only influences content style, not session structure.
         normalized_mode = _normalize_text(training_mode).lower().replace("_", "-")
-        if normalized_mode != "guided":
-            return False
-
-        return bool(_normalize_text(player_profile.get("identity")))
+        return normalized_mode == "guided"
 
     def _normalize_base_sequence(self, base_sequence: Sequence[Dict[str, Any]] | None) -> List[Dict[str, Any]]:
         normalized: List[Dict[str, Any]] = []

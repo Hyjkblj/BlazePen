@@ -9,6 +9,7 @@ export interface StaticAssetImageProps {
   imageClassName: string;
   placeholderClassName: string;
   placeholder: ReactNode;
+  onLoad?: () => void;
   onError?: () => void;
 }
 
@@ -18,6 +19,7 @@ export default function StaticAssetImage({
   imageClassName,
   placeholderClassName,
   placeholder,
+  onLoad,
   onError,
 }: StaticAssetImageProps) {
   const normalizedUrl = useMemo(() => String(imageUrl ?? '').trim(), [imageUrl]);
@@ -41,6 +43,7 @@ export default function StaticAssetImage({
           className={imageClassName}
           onLoad={() => {
             setStatus('loaded');
+            onLoad?.();
           }}
           onError={() => {
             setStatus('error');

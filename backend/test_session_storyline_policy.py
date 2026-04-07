@@ -58,19 +58,46 @@ class SessionStorylinePolicyTestCase(unittest.TestCase):
             self.assertEqual(scene.get("storyline_total"), len(result))
 
     def test_should_keep_base_sequence_when_not_eligible(self):
+        # guided mode without identity should still expand (structure != content)
         no_identity = self.policy.build_session_sequence(
             training_mode="guided",
             base_sequence=self.base_sequence,
             player_profile={"name": "Li"},
         )
-        self.assertEqual([item["id"] for item in no_identity], [item["id"] for item in self.base_sequence])
+        self.assertGreaterEqual(len(no_identity), len(self.base_sequence) * 3)
 
+        # guided mode with no profile at all should also expand
+        no_profile = self.policy.build_session_sequence(
+            training_mode="guided",
+            base_sequence=self.base_sequence,
+            player_profile=None,
+        )
+        self.assertGreaterEqual(len(no_profile), len(self.base_sequence) * 3)
+
+        # non-guided modes should not expand
         non_guided = self.policy.build_session_sequence(
             training_mode="self-paced",
             base_sequence=self.base_sequence,
             player_profile={"identity": "战地记者"},
         )
         self.assertEqual([item["id"] for item in non_guided], [item["id"] for item in self.base_sequence])
+
+    def test_should_respect_explicit_expansion_overrides(self):
+        # disable_storyline_expansion overrides guided mode
+        disabled = self.policy.build_session_sequence(
+            training_mode="guided",
+            base_sequence=self.base_sequence,
+            player_profile={"disable_storyline_expansion": True},
+        )
+        self.assertEqual([item["id"] for item in disabled], [item["id"] for item in self.base_sequence])
+
+        # force_storyline_expansion overrides non-guided mode
+        forced = self.policy.build_session_sequence(
+            training_mode="self-paced",
+            base_sequence=self.base_sequence,
+            player_profile={"force_storyline_expansion": True},
+        )
+        self.assertGreaterEqual(len(forced), len(self.base_sequence) * 3)
 
     def test_should_generate_unique_storyline_per_session_without_explicit_seed(self):
         first = self.policy.build_session_sequence(

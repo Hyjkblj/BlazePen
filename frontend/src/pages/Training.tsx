@@ -22,6 +22,62 @@ import './Training.css';
 const POST_SCENE_IMAGE_UI_DELAY_MS = 0;
 const AUTO_REVEAL_CHOICES_IDLE_MS = 20000;
 
+const readEndingNarrativeText = (ending: Record<string, unknown> | null | undefined): string | null => {
+  if (!ending || typeof ending !== 'object') return null;
+
+  const directCandidates = ['summary', 'ending_text', 'endingText', 'description', 'explanation', 'title'] as const;
+  for (const key of directCandidates) {
+    const value = ending[key];
+    if (typeof value === 'string' && value.trim() !== '') {
+      return value.trim();
+    }
+  }
+
+  const nestedCandidates = ['article', 'story', 'narrative'] as const;
+  for (const key of nestedCandidates) {
+    const value = ending[key];
+    if (!value || typeof value !== 'object') continue;
+    const record = value as Record<string, unknown>;
+    for (const subKey of ['text', 'content', 'summary', 'description'] as const) {
+      const subValue = record[subKey];
+      if (typeof subValue === 'string' && subValue.trim() !== '') {
+        return subValue.trim();
+      }
+    }
+  }
+
+  return null;
+};
+
+const resolveEndingTypeLabel = (ending: Record<string, unknown> | null | undefined): string | null => {
+  if (!ending || typeof ending !== 'object') return null;
+  const raw = ending.type ?? ending.ending_type;
+  if (typeof raw === 'string' && raw.trim() !== '') return raw.trim();
+  if (typeof raw === 'number' && Number.isFinite(raw)) return String(raw);
+  return null;
+};
+
+const buildEndingFallbackNarrative = (endingType: string | null, completionTeaser: string | null): string => {
+  const normalizedType = (endingType ?? '').toLowerCase();
+  let lead = '任务暂告一段落。你在高压信息环境下完成了取舍与发布，后续影响仍在持续扩散。';
+
+  if (normalizedType.includes('excellent') || normalizedType.includes('卓越')) {
+    lead = '你在保护线索人物与公共利益之间取得了稳健平衡，报道克制且可信。';
+  } else if (normalizedType.includes('recovery') || normalizedType.includes('修复')) {
+    lead = '你在不利局面下及时修正策略，降低了扩散风险并守住了关键底线。';
+  } else if (normalizedType.includes('steady') || normalizedType.includes('稳健')) {
+    lead = '你维持了稳定推进，信息发布节奏与风险控制保持在可接受区间。';
+  } else if (normalizedType.includes('costly') || normalizedType.includes('代价')) {
+    lead = '你完成了核心目标，但关键节点的代价偏高，后续影响仍需持续跟进。';
+  } else if (normalizedType.includes('fail') || normalizedType.includes('失败')) {
+    lead = '关键节点处理出现失衡，线索保护与信息发布目标都受到明显冲击。';
+  }
+
+  return completionTeaser
+    ? `${lead}\n\n${completionTeaser}\n\n点击下方“查看可视化评估报告”，查看完整能力雷达与回合轨迹。`
+    : `${lead}\n\n点击下方“查看可视化评估报告”，查看完整能力雷达与回合轨迹。`;
+};
+
 const buildScenePlaceholderText = ({
   hasSession,
   bootstrapStatus,
@@ -63,9 +119,7 @@ function Training() {
     sceneImageStatus,
     sceneImageUrl,
     sceneImageErrorMessage,
-    completionReportStatus,
     completionReport,
-    completionReportErrorMessage,
     selectedOptionId,
     submitOption,
     pendingNextScenario,
@@ -95,6 +149,7 @@ function Training() {
   const isSceneImageLoading = sceneImageStatus === 'pending' || sceneImageStatus === 'running';
   const hasSceneImageWarning = !sceneImageUrl && sceneImageStatus === 'failed';
   const [sceneAssetFailed, setSceneAssetFailed] = useState(false);
+  const [sceneAssetLoaded, setSceneAssetLoaded] = useState(false);
   const normalizedSceneImageUrl = useMemo(() => (sceneImageUrl ? String(sceneImageUrl).trim() : ''), [sceneImageUrl]);
   const isRelativeStaticUrl = normalizedSceneImageUrl.startsWith('/static/');
   const showStaticAssetWarning = Boolean(sceneAssetFailed) && Boolean(normalizedSceneImageUrl);
@@ -103,8 +158,8 @@ function Training() {
     [normalizedSceneImageUrl]
   );
   const showChoiceBand = !showCompletionNotice && options.length > 0;
-  // 叙事内容与选项不再等待图片就绪，只要场景数据存在就立即显示
-  const canRevealNarrationAndChoices = showChoiceBand;
+  // 独白/选项只在场景图真正渲染完成后出现，避免文字先于画面闪出。
+  const canRevealNarrationAndChoices = showChoiceBand && sceneAssetLoaded;
   const [postImageUiReady, setPostImageUiReady] = useState(false);
 
   useEffect(() => {
@@ -118,6 +173,11 @@ function Training() {
     }, POST_SCENE_IMAGE_UI_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [canRevealNarrationAndChoices, currentScenario?.id, normalizedSceneImageUrl]);
+
+  useEffect(() => {
+    setSceneAssetLoaded(false);
+    setSceneAssetFailed(false);
+  }, [currentScenario?.id, normalizedSceneImageUrl]);
 
   const showChoiceOverlay = canRevealNarrationAndChoices && postImageUiReady;
 
@@ -276,6 +336,41 @@ function Training() {
     return `综合加权分 ${initial.toFixed(2)} → ${final.toFixed(2)}（${deltaLabel}）`;
   }, [completionReport, sessionView?.isCompleted]);
 
+  const completionEndingPayload = useMemo<Record<string, unknown> | null>(() => {
+    if (completionReport?.ending && typeof completionReport.ending === 'object') {
+      return completionReport.ending;
+    }
+    if (flow.latestOutcome?.ending && typeof flow.latestOutcome.ending === 'object') {
+      return flow.latestOutcome.ending;
+    }
+    return null;
+  }, [completionReport?.ending, flow.latestOutcome?.ending]);
+
+  const completionStoryText = useMemo(() => {
+    if (!showCompletionNotice) return '';
+
+    const endingText = readEndingNarrativeText(completionEndingPayload);
+    const endingType = resolveEndingTypeLabel(completionEndingPayload);
+    const teaser = completionReportTeaser ?? null;
+
+    if (endingText) {
+      if (endingType && !endingText.includes(endingType)) {
+        return `[${endingType}]\n${endingText}`;
+      }
+      return endingText;
+    }
+
+    return buildEndingFallbackNarrative(endingType, teaser);
+  }, [completionEndingPayload, completionReportTeaser, showCompletionNotice]);
+
+  const {
+    displayedText: completionStoryDisplayedText,
+    isDone: completionStoryDone,
+  } = useTypewriter(showCompletionNotice ? completionStoryText : '', {
+    charIntervalMs: 28,
+    autoStart: showCompletionNotice,
+  });
+
   // Progress info for ProgressBadge (Task 7.6)
   const roundNo = sessionView?.roundNo ?? null;
   const totalRounds = sessionView?.totalRounds ?? null;
@@ -317,7 +412,11 @@ function Training() {
                 : 'training-simplified__scene-placeholder'
             }
             placeholder={placeholderText}
+            onLoad={() => {
+              setSceneAssetLoaded(true);
+            }}
             onError={() => {
+              setSceneAssetLoaded(false);
               setSceneAssetFailed(true);
               trackFrontendTelemetry({
                 domain: 'training',
@@ -445,6 +544,16 @@ function Training() {
               ) : null}
             </div>
           ) : null}
+          {showCompletionNotice && completionStoryText ? (
+            <div className="training-simplified__completion-story" aria-live="polite">
+              <p className="training-simplified__completion-story-text">
+                {completionStoryDisplayedText}
+                {!completionStoryDone ? (
+                  <span className="training-simplified__narration-cursor" aria-hidden="true" />
+                ) : null}
+              </p>
+            </div>
+          ) : null}
         </div>
 
         <div className="training-simplified__feedback-stack">
@@ -501,33 +610,15 @@ function Training() {
         </div>
 
         {showCompletionNotice ? (
-          <div className="training-simplified__completion-panel">
-            <p className="training-simplified__completion-title">训练已完成</p>
-            <p className="training-simplified__completion-lede">
-              能力雷达、状态曲线与回合履历已整理为报告，请点击下方进入可视化评估页。
-            </p>
-            {completionReportStatus === 'loading' ? (
-              <p className="training-simplified__completion-muted">正在加载评估摘要…</p>
-            ) : null}
-            {completionReportErrorMessage ? (
-              <p className="training-simplified__completion-muted">{completionReportErrorMessage}</p>
-            ) : null}
-            {completionReportTeaser ? (
-              <p className="training-simplified__completion-teaser">{completionReportTeaser}</p>
-            ) : null}
-            <div className="training-simplified__completion-actions">
-              {sessionView?.sessionId ? (
-                <Link
-                  className="training-simplified__report-link"
-                  to={buildTrainingReportRoute(sessionView.sessionId)}
-                >
-                  查看可视化评估报告
-                </Link>
-              ) : null}
-              <Link className="training-simplified__completion-sub-link" to={ROUTES.TRAINING_MAINHOME}>
-                返回训练首页
+          <div className="training-simplified__completion-footer">
+            {sessionView?.sessionId ? (
+              <Link
+                className="training-simplified__report-link"
+                to={buildTrainingReportRoute(sessionView.sessionId)}
+              >
+                查看可视化评估报告
               </Link>
-            </div>
+            ) : null}
           </div>
         ) : (
           <div className="training-simplified__options">

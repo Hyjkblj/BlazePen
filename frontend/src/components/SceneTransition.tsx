@@ -5,17 +5,15 @@ export type SceneTransitionTone = 'story' | 'training';
 
 interface SceneTransitionProps {
   sceneName: string;
+  // Kept for API compatibility with existing call sites.
   actNumber: number;
   onComplete: () => void;
-  /** story：蓝紫渐变（默认）；training：红色战训主题 */
   tone?: SceneTransitionTone;
-  /** 过渡桥接氛围文字，非空时在场景名称下方展示 */
   bridgeSummary?: string | null;
 }
 
 const SceneTransition: React.FC<SceneTransitionProps> = ({
   sceneName,
-  actNumber,
   onComplete,
   tone = 'story',
   bridgeSummary,
@@ -24,16 +22,14 @@ const SceneTransition: React.FC<SceneTransitionProps> = ({
   const [showContent, setShowContent] = useState(false);
 
   useEffect(() => {
-    // 延迟显示内容，让转场动画先开始
     const contentTimer = setTimeout(() => {
       setShowContent(true);
     }, 300);
 
-    // 动画完成后调用回调
     const completeTimer = setTimeout(() => {
       setIsVisible(false);
       onComplete();
-    }, 2500); // 总动画时长2.5秒
+    }, 2500);
 
     return () => {
       clearTimeout(contentTimer);
@@ -51,24 +47,17 @@ const SceneTransition: React.FC<SceneTransitionProps> = ({
         {tone === 'training' ? (
           <div className={`scene-transition-eyebrow ${showContent ? 'show' : ''}`}>实训 · 大场景</div>
         ) : null}
-        {/* 幕数显示 */}
-        <div className={`act-number ${showContent ? 'show' : ''}`}>
-          {actNumber === 1 ? '第一幕' : `第${actNumber}幕`}
-        </div>
-        
-        {/* 场景名称 */}
+
         <div className={`scene-name ${showContent ? 'show' : ''}`}>
           {sceneName}
         </div>
 
-        {/* 过渡桥接氛围文字 */}
         {bridgeSummary ? (
           <p className={`scene-transition-bridge ${showContent ? 'show' : ''}`}>
             {bridgeSummary}
           </p>
         ) : null}
 
-        {/* 装饰线条 */}
         <div className={`decoration-line ${showContent ? 'show' : ''}`} />
       </div>
     </div>

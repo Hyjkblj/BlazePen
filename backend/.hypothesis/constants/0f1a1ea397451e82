@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\scenario_repository.py
+# hypothesis_version: 6.151.11
+
+['branch', 'branch_tags', 'brief', 'briefing', 'config', 'go_to', 'id', 'model_validate', 'next_rules', 'options', 'phase_tags', 'r', 'risk_tags', 'scenario_bank.json', 'scenario_bank_v1', 'target_skills', 'title', 'utf-8']

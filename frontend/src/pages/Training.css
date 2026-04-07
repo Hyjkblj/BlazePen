@@ -1497,3 +1497,147 @@
     top: 12px;
   }
 }
+
+
+/* ── Phase 5: 后果叙事 ─────────────────────────────────────────── */
+
+.training-consequence-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(100%, 760px);
+  margin: 0 auto;
+  padding: 28px 32px 24px;
+  border: 1px solid rgba(95, 65, 23, 0.14);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(47, 32, 20, 0.88), rgba(30, 18, 10, 0.82));
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.32);
+}
+
+.training-consequence-view__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.training-consequence-view__line {
+  font-size: clamp(14px, 1.6vw, 16px);
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s ease;
+}
+
+.training-consequence-view__line--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.training-consequence-view__hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 235, 210, 0.58);
+  text-align: center;
+  animation: consequence-hint-pulse 2s ease-in-out infinite;
+}
+
+@keyframes consequence-hint-pulse {
+  0%, 100% { opacity: 0.58; }
+  50% { opacity: 0.92; }
+}
+
+/* ── Phase 1–3: 叙事阶段 ─────────────────────────────────────────── */
+
+.training-narrative-phase {
+  pointer-events: auto;
+  width: min(100%, 1100px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 22px;
+  padding: 16px 18px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.66), rgba(0, 0, 0, 0.4));
+  color: rgba(255, 255, 255, 0.92);
+  text-align: left;
+  cursor: pointer;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.training-narrative-phase__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 235, 221, 0.84);
+}
+
+.training-narrative-phase__segment {
+  display: block;
+  margin-top: 10px;
+  white-space: pre-wrap;
+  line-height: 1.65;
+  font-size: clamp(14px, 1.6vw, 16px);
+  color: rgba(255, 255, 255, 0.9);
+  font-style: italic;
+}
+
+.training-narrative-phase__dialogue-line {
+  display: block;
+  margin-top: 10px;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  font-size: clamp(14px, 1.6vw, 16px);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.training-narrative-phase__decision-prompt {
+  display: block;
+  margin-top: 4px;
+  font-size: clamp(15px, 1.8vw, 18px);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 235, 210, 0.96);
+  text-align: center;
+}
+
+/* ── Phase 7: 进度徽章 ─────────────────────────────────────────── */
+
+.training-simplified__progress-badge-wrapper {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.training-progress-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.42);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}

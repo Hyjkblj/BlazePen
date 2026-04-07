@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\training_query_service.py
+# hypothesis_version: 6.151.11
+
+[0.0, 1.0, 'TrainingQueryService', 'character_id', 'completed', 'created_at', 'current_round_no', 'current_scenario_id', 'end_time', 'ending_score', 'ending_type', 'explanation', 'flow_error', 'guided', 'id', 'phase', 'raw_payload', 'report_payload', 'risk_flags', 'round_no', 'scenario', 'score', 'summary_resume', 'training_mode', 'type', 'updated_at', 'user_action', 'weighted_score_delta']

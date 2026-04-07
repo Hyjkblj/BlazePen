@@ -487,6 +487,7 @@ class _SpyRoundTransitionPolicy:
         s_before,
         recent_risk_rounds,
         scenario_payload,
+        recent_history=None,
     ):
         self.calls.append(
             {
@@ -510,6 +511,7 @@ class _SpyRoundTransitionPolicy:
             s_before=s_before,
             recent_risk_rounds=recent_risk_rounds,
             scenario_payload=scenario_payload,
+            recent_history=recent_history,
         )
 
 

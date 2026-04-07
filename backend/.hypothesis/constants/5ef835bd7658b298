@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\runtime_state.py
+# hypothesis_version: 6.151.11
+
+[0.0, 1.0, 'GameRuntimeFlags', 'GameRuntimeState', 'GameStateBar', 'current_round_no', 'current_scenario_id', 'current_scene_id', 'editor_locked', 'editor_trust', 'high_risk_path', 'k_state', 'panic_triggered', 'player_profile', 'public_panic', 'public_stability', 'runtime_flags', 's_state', 'session_id', 'session_meta', 'source_exposed', 'source_safety', 'state_bar']

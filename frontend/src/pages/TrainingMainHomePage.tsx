@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import TrainingMainHome from '@/components/training/TrainingMainHome';
 import { ROUTES } from '@/config/routes';
+import { useTrainingLobbyBgm } from '@/hooks/useTrainingLobbyBgm';
 import { useTrainingSessionBootstrap } from '@/hooks/useTrainingSessionBootstrap';
 
 const DEFAULT_TRAINING_USER_ID = 'frontend-training-user';
 
 function TrainingMainHomePage() {
   const navigate = useNavigate();
+  useTrainingLobbyBgm();
   const { startTrainingSession, status } = useTrainingSessionBootstrap();
   const [enterBusy, setEnterBusy] = useState(false);
   const enterDisabled = status === 'starting' || enterBusy;

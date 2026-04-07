@@ -62,18 +62,29 @@ class TrainingStoryScriptExecutor:
             session_id=session_id,
             session=session,
         )
-        major_scene_sources = [
-            dict(item)
-            for item in (snapshot_bundle.scenario_payload_sequence or [])[:6]
-            if isinstance(item, dict)
-        ]
+        full_sequence = list(snapshot_bundle.scenario_payload_sequence or [])
         player_profile = self.training_service.scenario_policy.resolve_session_player_profile(session)
+
+        if not full_sequence:
+            logger.error(
+                "story script generation aborted: empty scenario_payload_sequence: session_id=%s",
+                session_id,
+            )
+            self.training_store.update_story_script_by_session_id(
+                session_id,
+                {
+                    "status": "failed",
+                    "error_code": "EMPTY_SEQUENCE",
+                    "error_message": "scenario_payload_sequence is empty",
+                },
+            )
+            return
 
         agent = StoryScriptAgent(training_store=self.training_store)
         try:
-            payload = agent.ensure_script_for_session(
+            payload = agent.fill_scenario_narratives(
                 session_id=session_id,
-                major_scene_sources=major_scene_sources,
+                scenario_payload_sequence=full_sequence,
                 player_profile=player_profile,
                 allow_llm=True,
             )

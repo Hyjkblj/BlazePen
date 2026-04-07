@@ -90,6 +90,7 @@ class TrainingRoundEvaluator:
         round_no: int,
         k_before: Optional[Dict[str, float]] = None,
         s_before: Optional[Dict[str, float]] = None,
+        recent_history: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """评估单回合输入，并始终返回合法完整的评估结果。"""
         # 规则基线始终先跑，既是兜底，也是后续融合的校准基准。
@@ -120,6 +121,7 @@ class TrainingRoundEvaluator:
             round_no=round_no,
             k_before=k_before,
             s_before=s_before,
+            recent_history=recent_history,
         )
         if llm_payload is None:
             fallback = dict(rules_result)
@@ -146,6 +148,7 @@ class TrainingRoundEvaluator:
         round_no: int,
         k_before: Optional[Dict[str, float]],
         s_before: Optional[Dict[str, float]],
+        recent_history: Optional[List[Dict[str, Any]]] = None,
     ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         """调用 LLM 并把输出归一为内部评估结构。"""
         if self._llm_service is None:
@@ -158,6 +161,7 @@ class TrainingRoundEvaluator:
             round_no=round_no,
             k_before=k_before,
             s_before=s_before,
+            recent_history=recent_history,
         )
 
         try:
@@ -196,6 +200,7 @@ class TrainingRoundEvaluator:
         round_no: int,
         k_before: Optional[Dict[str, float]],
         s_before: Optional[Dict[str, float]],
+        recent_history: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, str]]:
         """构建面向 LLM 的结构化评估提示词。"""
         skill_template = {code: 0.0 for code in SKILL_CODES}
@@ -220,13 +225,37 @@ class TrainingRoundEvaluator:
             "\"evidence\":[1-6 concise reasons]}. "
             "All delta values must be in [-0.2, 0.2]."
         )
+
+        # 历史注入：仅在 round_no >= 3 且 recent_history 非空时注入
+        history_section = ""
+        if round_no >= 3 and recent_history:
+            history_entries = []
+            for entry in recent_history:
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    summary = {
+                        "round_no": entry.get("round_no"),
+                        "scenario_id": entry.get("scenario_id"),
+                        "risk_flags": entry.get("risk_flags", []),
+                        "evidence": (entry.get("evidence") or [])[:2],
+                    }
+                    history_entries.append(summary)
+                except Exception:
+                    continue
+            if history_entries:
+                history_section = (
+                    f"recent_history={json.dumps(history_entries, ensure_ascii=False)}\n"
+                )
+
         user_prompt = (
             f"round_no={round_no}\n"
             f"scenario_id={scenario_id}\n"
             f"user_input={user_input}\n"
             f"k_before={json.dumps(k_context, ensure_ascii=False)}\n"
             f"s_before={json.dumps(s_context, ensure_ascii=False)}\n"
-            f"skill_delta_template={json.dumps(skill_template, ensure_ascii=False)}\n"
+            + history_section
+            + f"skill_delta_template={json.dumps(skill_template, ensure_ascii=False)}\n"
             f"s_delta_template={json.dumps(s_template, ensure_ascii=False)}\n"
             f"Risk flags vocabulary suggestions: {', '.join(risk_flags)}.\n"
             "Return one JSON object only."

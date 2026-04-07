@@ -231,6 +231,16 @@ class RecommendationPhaseBoostConfig(BaseModel):
     reason: str = ""
 
 
+class RecommendationLlmOverrideConfig(BaseModel):
+    """LLM 覆盖触发条件配置。"""
+
+    enabled: bool = False
+    min_consecutive_risk_rounds: int = Field(default=2, ge=1)
+    min_weak_skill_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
+    max_public_panic: float = Field(default=0.7, ge=0.0, le=1.0)
+    min_editor_trust: float = Field(default=0.25, ge=0.0, le=1.0)
+
+
 class RecommendationConfig(BaseModel):
     """下一题推荐策略配置。"""
 
@@ -243,6 +253,9 @@ class RecommendationConfig(BaseModel):
     state_boosts: List[RecommendationStateBoostConfig] = Field(default_factory=list)
     risk_boosts: List[RecommendationRiskBoostConfig] = Field(default_factory=list)
     phase_boosts: List[RecommendationPhaseBoostConfig] = Field(default_factory=list)
+    llm_override: "RecommendationLlmOverrideConfig" = Field(
+        default_factory=lambda: RecommendationLlmOverrideConfig()
+    )
 
 
 class FlowForcedRoundConfig(BaseModel):

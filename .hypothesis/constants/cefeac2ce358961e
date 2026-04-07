@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\utils\logger.py
+# hypothesis_version: 6.151.11
+
+['%Y-%m-%d %H:%M:%S', 'INFO', 'LOG_LEVEL']

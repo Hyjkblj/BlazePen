@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\llm\providers\volcengine_provider.py
+# hypothesis_version: 6.151.11
+
+[200, 401, 403, 429, 500, 'Authorization', 'Content-Type', 'application/json', 'base_url', 'choices', 'cn-beijing', 'cn-north-1', 'code', 'content', 'error', 'finish_reason', 'max_tokens', 'message', 'messages', 'model', 'region', 'safe experience mode', 'setlimitexceeded', 'temperature', 'toomanyrequests', 'type', 'usage', '火山引擎API请求超时']

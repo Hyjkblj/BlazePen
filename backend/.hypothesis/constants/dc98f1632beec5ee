@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\contracts.py
+# hypothesis_version: 6.151.11
+
+[0.0, 0.5, 1.0, '1', '[^a-zA-Z0-9_]+', '_', 'after', 'before', 'calibration', 'candidate_pool', 'code', 'confidence', 'decision_context', 'delta', 'eval_mode', 'event_type', 'evidence', 'fallback_reason', 'focus_tags', 'guided', 'id', 'is_high_risk', 'is_recommended', 'is_selected', 'is_target', 'llm_model', 'llm_raw_text', 'model_dump', 'observation_summary', 'on', 'payload', 'primary_risk_flag', 'primary_skill_code', 'rank', 'rank_score', 'risk_flags', 'round_no', 'rules_only', 's_delta', 'scenario_id', 'scenario_title', 'selected_scenario_id', 'selection_source', 'skill_delta', 'skill_observations', 'skill_scores_preview', 'state_observations', 'target_skills', 'title', 'training_mode', 'true', 'weak_skills_before', 'y', 'yes']

@@ -452,6 +452,36 @@ export interface TrainingSessionSummaryResult {
   endTime: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Story Script Narrative types (v2 payload)
+// ---------------------------------------------------------------------------
+
+/** 对话行：单条台词 */
+export interface ScriptNarrativeLine {
+  speaker: string;
+  content: string;
+}
+
+/** 选项叙事条目 */
+export interface ScriptNarrativeOptionItem {
+  option_id: string;
+  narrative_label: string;
+  impact_hint: string;
+}
+
+/**
+ * 单个场景的叙事内容。
+ * v2 payload 中 `narratives[scenario_id]` 的值类型。
+ */
+export interface ScriptNarrative {
+  monologue: string;
+  dialogue: ScriptNarrativeLine[];
+  bridge_summary: string;
+  options_narrative: Record<string, ScriptNarrativeOptionItem>;
+}
+
+// ---------------------------------------------------------------------------
+
 /** 服务端用于聚合「风险标记统计」「推荐分支变化」的逐回合快照（与 growth_curve 字段来源一致） */
 export interface TrainingReportRoundSnapshot {
   roundNo: number;

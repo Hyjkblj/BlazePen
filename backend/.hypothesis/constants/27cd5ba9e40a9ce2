@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\evaluator.py
+# hypothesis_version: 6.151.11
+
+[0.0, 1e-06, 0.3, 0.5, 0.7, 1.0, '[^a-zA-Z0-9_]+', '\\{[\\s\\S]*\\}', '_', 'auto', 'calibration', 'confidence', 'content', 'empty llm output', 'eval_mode', 'evidence', 'fallback_reason', 'flag', 'hard_penalties', 'llm', 'llm_model', 'llm_plus_rules', 'llm_raw_text', 'llm_weight', 'model', 'note', 'privacy_leak_risk', 'risk_flags', 'role', 'round_no', 'rule', 'rule_weight', 'rules_fallback', 'rules_only', 'rumor_spread_risk', 's_delta', 'scenario_id', 'skill_delta', 'skill_scores_preview', 'system', 'user']

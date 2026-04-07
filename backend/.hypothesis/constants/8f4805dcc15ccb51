@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\llm\providers\base.py
+# hypothesis_version: 6.151.11
+
+[0.7, 200, 'api_key', 'content', 'model', 'role', 'system', 'user']

@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\training_mode.py
+# hypothesis_version: 6.151.11
+
+['-', '[\\s_]+', 'adaptive', 'fallback_mode', 'guided', 'self-paced']

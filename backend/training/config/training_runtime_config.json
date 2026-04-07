@@ -333,7 +333,14 @@
         "boost": 0.45,
         "reason": "与当前训练阶段相邻，作为未配置阶段标签时的兜底"
       }
-    ]
+    ],
+    "llm_override": {
+      "enabled": false,
+      "min_consecutive_risk_rounds": 2,
+      "min_weak_skill_threshold": 0.3,
+      "max_public_panic": 0.7,
+      "min_editor_trust": 0.25
+    }
   },
   "flow": {
     "stage_windows": [

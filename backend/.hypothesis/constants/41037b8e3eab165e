@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\llm\providers\dashscope_provider.py
+# hypothesis_version: 6.151.11
+
+[200, 401, 429, 500, 'Authorization', 'Content-Type', 'DashScope API请求超时', 'Forbidden', 'InvalidApiKey', 'Throttling', 'application/json', 'base_url', 'choices', 'code', 'content', 'finish_reason', 'input', 'max_tokens', 'message', 'messages', 'model', 'output', 'parameters', 'status_code', 'temperature', 'unknown', 'usage', '未知错误']

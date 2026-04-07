@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\llm\config.py
+# hypothesis_version: 6.151.11
+
+['DASHSCOPE_API_KEY', 'DASHSCOPE_MODEL', 'LLM_DEFAULT_PROVIDER', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL', 'VOLCENGINE_REGION', 'api_key', 'auto', 'base_url', 'cn-beijing', 'dashscope', 'default_provider', 'gpt-4o', 'model', 'openai', 'qwen-flash', 'region', 'volcengine']

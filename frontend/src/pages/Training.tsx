@@ -1,16 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import SceneTransition from '@/components/SceneTransition';
 import StaticAssetImage from '@/components/StaticAssetImage';
+import NarrativeConsequenceView from '@/components/training/NarrativeConsequenceView';
+import ProgressBadge from '@/components/training/ProgressBadge';
 import TrainingCinematicChoiceBand from '@/components/training/TrainingCinematicChoiceBand';
 import { buildTrainingReportRoute, ROUTES } from '@/config/routes';
 import { useTrainingMvpFlow } from '@/flows/useTrainingMvpFlow';
+import { useNarrativePhaseEngine } from '@/hooks/useNarrativePhaseEngine';
 import { useTrainingMajorSceneTransition } from '@/hooks/useTrainingMajorSceneTransition';
 import { normalizeTrainingSessionId } from '@/hooks/useTrainingSessionReadTarget';
 import { useSceneFadeTransition } from '@/hooks/useSceneFadeTransition';
+import { useStoryScriptPayload } from '@/hooks/useStoryScriptPayload';
 import { useTypewriter } from '@/hooks/useTypewriter';
 import { getStaticAssetContractWarning } from '@/services/assetUrl';
 import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
+import { resolveNarrativeForScenario } from '@/utils/trainingSession';
 import './Training.css';
 
 /** 场景图 URL 就绪后延迟再展示独白/选项，给大图解码与绘制留出时间 */
@@ -63,6 +68,8 @@ function Training() {
     completionReportErrorMessage,
     selectedOptionId,
     submitOption,
+    pendingNextScenario,
+    commitPendingNextScenario,
   } = flow;
 
   const hasInsightEntry = flow.insightSessionId !== null;
@@ -97,7 +104,6 @@ function Training() {
   );
   const showChoiceBand = !showCompletionNotice && options.length > 0;
   // 叙事内容与选项不再等待图片就绪，只要场景数据存在就立即显示
-  // 图片在后台继续加载，加载完成后自动替换占位背景
   const canRevealNarrationAndChoices = showChoiceBand;
   const [postImageUiReady, setPostImageUiReady] = useState(false);
 
@@ -114,17 +120,146 @@ function Training() {
   }, [canRevealNarrationAndChoices, currentScenario?.id, normalizedSceneImageUrl]);
 
   const showChoiceOverlay = canRevealNarrationAndChoices && postImageUiReady;
-  const narrationText = useMemo(() => {
-    if (!currentScenario) {
-      return '';
-    }
+
+  // ---------------------------------------------------------------------------
+  // Task 7.1: Story script payload + narrative phase engine
+  // ---------------------------------------------------------------------------
+  const { payload: storyScriptPayload } = useStoryScriptPayload(sessionView?.sessionId);
+
+  // Fallback narration text (brief + mission) used when ScriptNarrative is unavailable
+  const fallbackNarrationText = useMemo(() => {
+    if (!currentScenario) return '';
     const brief = String(currentScenario.brief ?? '').trim();
     const mission = String(currentScenario.mission ?? '').trim();
-    if (brief && mission) {
-      return `${brief}\n\n任务：${mission}`;
-    }
+    if (brief && mission) return `${brief}\n\n任务：${mission}`;
     return brief || mission || '';
   }, [currentScenario]);
+
+  const handlePhaseComplete = useCallback(() => {
+    // Phase completion is handled by the engine's internal state transitions.
+    // When consequence phase completes (auto-advance or click), the engine moves
+    // to bridge/progress. We use the phase state to drive rendering below.
+  }, []);
+
+  const phaseEngine = useNarrativePhaseEngine({
+    scenario: currentScenario,
+    storyScriptPayload,
+    latestOutcome: flow.latestOutcome,
+    onPhaseComplete: handlePhaseComplete,
+  });
+
+  const { state: phaseState, advance: phaseAdvance } = phaseEngine;
+  const currentPhase = phaseState.phase;
+
+  useEffect(() => {
+    if (!pendingNextScenario) return;
+    if (currentPhase !== 'progress') return;
+    commitPendingNextScenario();
+  }, [commitPendingNextScenario, currentPhase, pendingNextScenario]);
+
+  // ---------------------------------------------------------------------------
+  // Task 7.2: Phase 1 (monologue) typewriter
+  // ---------------------------------------------------------------------------
+  const isMonologuePhase = currentPhase === 'monologue';
+  const currentMonologueSegment =
+    isMonologuePhase && phaseState.monologueSegments.length > 0
+      ? (phaseState.monologueSegments[phaseState.currentSegmentIndex] ?? '')
+      : '';
+
+  const typewriterActive = isMonologuePhase && showChoiceOverlay && currentMonologueSegment !== '';
+  const {
+    displayedText: typewriterText,
+    isDone: typewriterDone,
+    skip: skipTypewriter,
+  } = useTypewriter(typewriterActive ? currentMonologueSegment : '', {
+    charIntervalMs: 32,
+    autoStart: typewriterActive,
+  });
+
+  // Click on monologue: if typewriter in progress → complete segment; if done → advance to next segment/phase
+  const handleMonologueClick = () => {
+    if (!typewriterDone) {
+      skipTypewriter();
+    } else {
+      phaseAdvance();
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Task 7.3: Phase 4 narrative labels from options_narrative
+  // ---------------------------------------------------------------------------
+  const narrativeLabels = useMemo<Record<string, string>>(() => {
+    if (!currentScenario || !storyScriptPayload) return {};
+    try {
+      const narrative = resolveNarrativeForScenario(storyScriptPayload, currentScenario.id);
+      if (!narrative?.options_narrative) return {};
+      const labels: Record<string, string> = {};
+      for (const [optionId, item] of Object.entries(narrative.options_narrative)) {
+        if (item?.narrative_label) {
+          labels[optionId] = item.narrative_label;
+        }
+      }
+      return labels;
+    } catch {
+      return {};
+    }
+  }, [currentScenario, storyScriptPayload]);
+
+  // ---------------------------------------------------------------------------
+  // Task 7.4: Phase 5 consequence — handle click to advance
+  // ---------------------------------------------------------------------------
+  const handleConsequenceClick = useCallback(() => {
+    phaseAdvance();
+  }, [phaseAdvance]);
+
+  // ---------------------------------------------------------------------------
+  // Determine what to render in the overlay based on phase
+  // ---------------------------------------------------------------------------
+  // When phase engine starts at 'choice' (no narrative available), fall back to
+  // the legacy choiceStage state machine for the narration text.
+  const engineStartedAtChoice = currentPhase === 'choice' && phaseState.monologueSegments.length === 0;
+
+  // Legacy choiceStage for fallback narration (when no ScriptNarrative)
+  const narrationText = fallbackNarrationText;
+  const [choiceStage, setChoiceStage] = useState<'narration' | 'choices'>(() =>
+    narrationText ? 'narration' : 'choices'
+  );
+
+  // Legacy typewriter for fallback narration path
+  const legacyTypewriterActive = engineStartedAtChoice && choiceStage === 'narration' && showChoiceOverlay;
+  const {
+    displayedText: legacyTypewriterText,
+    isDone: legacyTypewriterDone,
+    skip: skipLegacyTypewriter,
+  } = useTypewriter(legacyTypewriterActive ? narrationText : '', {
+    charIntervalMs: 32,
+    autoStart: legacyTypewriterActive,
+  });
+
+  const handleLegacyNarrationClick = () => {
+    if (!legacyTypewriterDone) {
+      skipLegacyTypewriter();
+    } else {
+      setChoiceStage('choices');
+    }
+  };
+
+  useEffect(() => {
+    if (!engineStartedAtChoice || !showChoiceOverlay) return;
+    if (!narrationText) {
+      setChoiceStage('choices');
+      return;
+    }
+    setChoiceStage('narration');
+    const timer = window.setTimeout(() => setChoiceStage('choices'), AUTO_REVEAL_CHOICES_IDLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [currentScenario?.id, narrationText, showChoiceOverlay, engineStartedAtChoice]);
+
+  useEffect(() => {
+    if (!legacyTypewriterDone || choiceStage !== 'narration') return;
+    const timer = window.setTimeout(() => setChoiceStage('choices'), AUTO_REVEAL_CHOICES_IDLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [legacyTypewriterDone, choiceStage]);
 
   const completionReportTeaser = useMemo(() => {
     if (!sessionView?.isCompleted || !completionReport?.summary) {
@@ -141,57 +276,9 @@ function Training() {
     return `综合加权分 ${initial.toFixed(2)} → ${final.toFixed(2)}（${deltaLabel}）`;
   }, [completionReport, sessionView?.isCompleted]);
 
-  const [choiceStage, setChoiceStage] = useState<'narration' | 'choices'>(() =>
-    narrationText ? 'narration' : 'choices'
-  );
-
-  // 打字机效果：仅在叙事阶段且 overlay 可见时激活
-  const typewriterActive = choiceStage === 'narration' && showChoiceOverlay;
-  const {
-    displayedText: typewriterText,
-    isDone: typewriterDone,
-    skip: skipTypewriter,
-  } = useTypewriter(typewriterActive ? narrationText : '', {
-    charIntervalMs: 32,
-    autoStart: typewriterActive,
-  });
-
-  // 点击叙事区域：打字机未完成时先跳过，完成后进入选项
-  const handleNarrationClick = () => {
-    if (!typewriterDone) {
-      skipTypewriter();
-    } else {
-      setChoiceStage('choices');
-    }
-  };
-
-  useEffect(() => {
-    if (!showChoiceOverlay) {
-      return;
-    }
-    if (!narrationText) {
-      setChoiceStage('choices');
-      return;
-    }
-
-    setChoiceStage('narration');
-    // 兜底计时器：防止打字机 hook 异常时页面卡死
-    const timer = window.setTimeout(() => {
-      setChoiceStage('choices');
-    }, AUTO_REVEAL_CHOICES_IDLE_MS);
-    return () => window.clearTimeout(timer);
-  }, [currentScenario?.id, narrationText, showChoiceOverlay]);
-
-  // 打字机完成后再等 20s 自动进入选项
-  useEffect(() => {
-    if (!typewriterDone || choiceStage !== 'narration') {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setChoiceStage('choices');
-    }, AUTO_REVEAL_CHOICES_IDLE_MS);
-    return () => window.clearTimeout(timer);
-  }, [typewriterDone, choiceStage]);
+  // Progress info for ProgressBadge (Task 7.6)
+  const roundNo = sessionView?.roundNo ?? null;
+  const totalRounds = sessionView?.totalRounds ?? null;
 
   if (!sessionView && !hasInsightEntry) {
     return <Navigate to={hasResumeTarget ? ROUTES.TRAINING_LANDING : ROUTES.TRAINING_MAINHOME} replace />;
@@ -204,8 +291,15 @@ function Training() {
           sceneName={majorTransitionTitle}
           actNumber={majorTransitionAct}
           tone="training"
+          bridgeSummary={phaseState.bridgeSummary || null}
           onComplete={dismissMajorTransition}
         />
+      ) : null}
+      {/* Task 7.6: ProgressBadge */}
+      {roundNo != null && !showCompletionNotice ? (
+        <div className="training-simplified__progress-badge-wrapper">
+          <ProgressBadge roundNo={roundNo} totalRounds={totalRounds} />
+        </div>
       ) : null}
       <section className="training-simplified" aria-live="polite">
         <div className={[
@@ -240,34 +334,114 @@ function Training() {
           {showLoadingMask ? <div className="training-simplified__scene-mask">训练流程处理中...</div> : null}
           {showChoiceOverlay ? (
             <div className="training-simplified__choice-overlay">
-              {choiceStage === 'narration' && narrationText ? (
+              {/* Task 7.2: Phase 1 — monologue typewriter */}
+              {currentPhase === 'monologue' && currentMonologueSegment ? (
                 <button
                   type="button"
-                  className="training-simplified__narration"
-                  onClick={handleNarrationClick}
+                  className="training-simplified__narration training-narrative-phase"
+                  onClick={handleMonologueClick}
                   disabled={optionDisabled}
                 >
-                  <span className="training-simplified__narration-label">当前节点</span>
-                  <span className="training-simplified__narration-text">
+                  <span className="training-simplified__narration-label training-narrative-phase__label">独白</span>
+                  <span className="training-simplified__narration-text training-narrative-phase__segment">
                     {typewriterText}
                     {!typewriterDone ? (
                       <span className="training-simplified__narration-cursor" aria-hidden="true" />
                     ) : null}
                   </span>
                   <span className="training-simplified__narration-hint">
-                    {typewriterDone ? '点击任意位置继续' : '点击跳过'}
+                    {typewriterDone ? '点击继续' : '点击跳过'}
                   </span>
                 </button>
               ) : null}
-              {choiceStage === 'choices' ? (
+
+              {/* Task 7.2: Phase 2 — dialogue line-by-line */}
+              {currentPhase === 'dialogue' && phaseState.dialogueLines.length > 0 ? (
+                <button
+                  type="button"
+                  className="training-simplified__narration training-narrative-phase"
+                  onClick={phaseAdvance}
+                  disabled={optionDisabled}
+                >
+                  <span className="training-simplified__narration-label training-narrative-phase__label">
+                    {phaseState.dialogueLines[phaseState.currentDialogueIndex]?.speaker ?? ''}
+                  </span>
+                  <span className="training-simplified__narration-text training-narrative-phase__dialogue-line">
+                    {phaseState.dialogueLines[phaseState.currentDialogueIndex]?.content ?? ''}
+                  </span>
+                  <span className="training-simplified__narration-hint">点击继续</span>
+                </button>
+              ) : null}
+
+              {/* Task 7.2: Phase 3 — decision pause */}
+              {currentPhase === 'decision_pause' ? (
+                <button
+                  type="button"
+                  className="training-simplified__narration training-narrative-phase"
+                  onClick={phaseAdvance}
+                  disabled={optionDisabled}
+                >
+                  <span className="training-simplified__narration-text training-narrative-phase__decision-prompt">
+                    {phaseState.decisionPrompt}
+                  </span>
+                </button>
+              ) : null}
+
+              {/* Phase 4 — choices (with narrative labels from Task 7.3) */}
+              {currentPhase === 'choice' && !engineStartedAtChoice ? (
                 <TrainingCinematicChoiceBand
                   options={options}
                   selectedOptionId={selectedOptionId}
                   disabled={optionDisabled}
+                  narrativeLabels={narrativeLabels}
                   onSelectOption={(optionId) => {
                     void submitOption(optionId);
                   }}
                 />
+              ) : null}
+
+              {/* Task 7.4: Phase 5 — consequence narrative */}
+              {currentPhase === 'consequence' && phaseState.consequenceLines.length > 0 ? (
+                <NarrativeConsequenceView
+                  lines={phaseState.consequenceLines}
+                  onClick={handleConsequenceClick}
+                />
+              ) : null}
+
+              {/* Fallback: legacy narration + choice band when no ScriptNarrative */}
+              {engineStartedAtChoice ? (
+                <>
+                  {choiceStage === 'narration' && narrationText ? (
+                    <button
+                      type="button"
+                      className="training-simplified__narration"
+                      onClick={handleLegacyNarrationClick}
+                      disabled={optionDisabled}
+                    >
+                      <span className="training-simplified__narration-label">当前节点</span>
+                      <span className="training-simplified__narration-text">
+                        {legacyTypewriterText}
+                        {!legacyTypewriterDone ? (
+                          <span className="training-simplified__narration-cursor" aria-hidden="true" />
+                        ) : null}
+                      </span>
+                      <span className="training-simplified__narration-hint">
+                        {legacyTypewriterDone ? '点击任意位置继续' : '点击跳过'}
+                      </span>
+                    </button>
+                  ) : null}
+                  {choiceStage === 'choices' ? (
+                    <TrainingCinematicChoiceBand
+                      options={options}
+                      selectedOptionId={selectedOptionId}
+                      disabled={optionDisabled}
+                      narrativeLabels={narrativeLabels}
+                      onSelectOption={(optionId) => {
+                        void submitOption(optionId);
+                      }}
+                    />
+                  ) : null}
+                </>
               ) : null}
             </div>
           ) : null}

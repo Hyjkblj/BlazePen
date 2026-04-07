@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\config.py
+# hypothesis_version: 6.151.11
+
+['./images/characters', './images/composite', './images/scenes', './images/smallscenes', '2K', '5432', 'BAIDU_API_KEY', 'BAIDU_SECRET_KEY', 'DASHSCOPE_API_KEY', 'DASHSCOPE_MODEL', 'DASHSCOPE_TTS_MODEL', 'DB_HOST', 'DB_NAME', 'DB_PASSWORD', 'DB_PORT', 'DB_USER', 'EMBEDDING_MODEL', 'ENV', 'IMAGE_SAVE_DIR', 'IMAGE_SAVE_ENABLED', 'OLLAMA_BASE_URL', 'OLLAMA_MODEL', 'OPENAI_API_KEY', 'SCENE_IMAGE_SAVE_DIR', 'TTS_PROVIDER', 'VECTOR_DB_PATH', 'VOLCENGINE_REGION', 'VOLCENGINE_TTS_MODEL', 'ZHIPU_API_KEY', 'cn-beijing', 'database', 'dev', 'false', 'host', 'localhost', 'max_events', 'noendstory', 'password', 'port', 'postgres', 'prod', 'qwen-flash', 'qwen:7b', 'sambert-zhichu-v1', 'seed-tts-2.0', 'text2vec-chinese', 'total_events', 'true', 'user', 'vector_db', 'volc.tts.default', 'volcengine']

@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\media_task_policy.py
+# hypothesis_version: 6.151.11
+
+[128, ',', ':', 'field', 'idempotency_key', 'image', 'max_retries', 'payload', 'round_no', 'session_id', 'task_type', 'text', 'tts', 'type', 'utf-8', 'value']

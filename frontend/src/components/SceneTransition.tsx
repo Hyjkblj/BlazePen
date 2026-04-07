@@ -9,6 +9,8 @@ interface SceneTransitionProps {
   onComplete: () => void;
   /** story：蓝紫渐变（默认）；training：红色战训主题 */
   tone?: SceneTransitionTone;
+  /** 过渡桥接氛围文字，非空时在场景名称下方展示 */
+  bridgeSummary?: string | null;
 }
 
 const SceneTransition: React.FC<SceneTransitionProps> = ({
@@ -16,6 +18,7 @@ const SceneTransition: React.FC<SceneTransitionProps> = ({
   actNumber,
   onComplete,
   tone = 'story',
+  bridgeSummary,
 }) => {
   const [isVisible, setIsVisible] = useState(true);
   const [showContent, setShowContent] = useState(false);
@@ -57,6 +60,13 @@ const SceneTransition: React.FC<SceneTransitionProps> = ({
         <div className={`scene-name ${showContent ? 'show' : ''}`}>
           {sceneName}
         </div>
+
+        {/* 过渡桥接氛围文字 */}
+        {bridgeSummary ? (
+          <p className={`scene-transition-bridge ${showContent ? 'show' : ''}`}>
+            {bridgeSummary}
+          </p>
+        ) : null}
 
         {/* 装饰线条 */}
         <div className={`decoration-line ${showContent ? 'show' : ''}`} />

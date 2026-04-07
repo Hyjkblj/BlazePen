@@ -10,6 +10,7 @@ interface TrainingCinematicChoiceBandProps {
   onSelectOption: (optionId: string) => void;
   disabled?: boolean;
   ariaLabel?: string;
+  narrativeLabels?: Record<string, string>;
 }
 
 const clampIndex = (index: number, optionCount: number): number => {
@@ -58,6 +59,7 @@ function TrainingCinematicChoiceBand({
   onSelectOption,
   disabled = false,
   ariaLabel = 'Training cinematic choices',
+  narrativeLabels,
 }: TrainingCinematicChoiceBandProps) {
   const cinematicOptions = useMemo(() => options.slice(0, 3), [options]);
   const optionSignature = useMemo(
@@ -191,6 +193,11 @@ function TrainingCinematicChoiceBand({
             {option.impactHint ? (
               <span className="training-cinematic-choice-band__option-hint">
                 {option.impactHint}
+              </span>
+            ) : null}
+            {narrativeLabels?.[option.id] ? (
+              <span className="training-cinematic-choice-band__option-narrative">
+                {narrativeLabels[option.id]}
               </span>
             ) : null}
           </button>

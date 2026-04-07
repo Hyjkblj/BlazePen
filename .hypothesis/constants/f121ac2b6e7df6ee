@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\models\training.py
+# hypothesis_version: 6.151.11
+
+[0.0, 0.5, 128, 'auto', 'characters.id', 'ending_results', 'guided', 'initialized', 'kt_observations', 'kt_state_snapshots', 'pending', 'ready', 'round_evaluations', 'round_no', 'rules_v1', 'session_id', 'training_media_tasks', 'training_rounds', 'training_sessions']

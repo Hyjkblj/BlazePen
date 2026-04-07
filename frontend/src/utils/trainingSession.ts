@@ -1250,3 +1250,117 @@ export const normalizeTrainingDiagnosticsPayload = (
     ending: asRecord(payload?.ending) ? cloneRecord(payload?.ending) : null,
   };
 };
+
+// ---------------------------------------------------------------------------
+// Story Script Narrative resolver (Requirements 6.1–6.4)
+// ---------------------------------------------------------------------------
+
+import type { ScriptNarrative } from '@/types/training';
+
+/**
+ * 根据 `scenarioId` 从剧本 payload 中解析叙事内容。
+ *
+ * - v2 payload（`version === "training_story_script_v2"`）：直接从 `payload.narratives[scenarioId]` 读取。
+ * - v1 payload 或无 version 字段：使用旧版 `scenes[].scene_id` 前缀匹配逻辑。
+ * - 找不到时返回 `null`，不抛出运行时错误（Requirements 6.4）。
+ *
+ * TODO: 在训练场景叙事渲染组件中调用此函数替代直接访问 `scenes[index]`。
+ * 例如：在展示场景独白/对话的组件中，通过 `resolveNarrativeForScenario(storyScriptPayload, scenario.id)`
+ * 获取叙事内容，并在返回 `null` 时渲染空白占位（Requirements 6.3, 6.4）。
+ */
+export const resolveNarrativeForScenario = (
+  payload: unknown,
+  scenarioId: string
+): ScriptNarrative | null => {
+  const record = asRecord(payload);
+  if (!record) {
+    return null;
+  }
+
+  const version = normalizeOptionalString(record.version);
+
+  if (version === 'training_story_script_v2') {
+    // v2: narratives dict keyed by scenario_id (Requirements 6.1)
+    const narratives = asRecord(record.narratives);
+    if (!narratives) {
+      return null;
+    }
+    const entry = asRecord(narratives[scenarioId]);
+    if (!entry) {
+      return null;
+    }
+    return normalizeScriptNarrative(entry);
+  }
+
+  // v1 fallback: scenes array with scene_id field (Requirements 6.2)
+  const scenes = record.scenes;
+  if (!Array.isArray(scenes)) {
+    return null;
+  }
+
+  for (const scene of scenes) {
+    const sceneRecord = asRecord(scene);
+    if (!sceneRecord) {
+      continue;
+    }
+    const sceneId = normalizeOptionalString(sceneRecord.scene_id);
+    if (!sceneId) {
+      continue;
+    }
+    // Prefix match: scenarioId starts with the scene_id prefix (e.g. "major-1" matches "major-1_micro_...")
+    if (scenarioId === sceneId || scenarioId.startsWith(sceneId + '_')) {
+      return normalizeScriptNarrative(sceneRecord);
+    }
+  }
+
+  return null;
+};
+
+const normalizeScriptNarrativeLine = (value: unknown) => {
+  const rec = asRecord(value);
+  if (!rec) {
+    return null;
+  }
+  const speaker = normalizeOptionalString(rec.speaker);
+  const content = normalizeOptionalString(rec.content);
+  if (speaker === null && content === null) {
+    return null;
+  }
+  return { speaker: speaker ?? '', content: content ?? '' };
+};
+
+const normalizeScriptNarrativeOptionItem = (value: unknown) => {
+  const rec = asRecord(value);
+  if (!rec) {
+    return null;
+  }
+  return {
+    option_id: normalizeOptionalString(rec.option_id) ?? '',
+    narrative_label: normalizeOptionalString(rec.narrative_label) ?? '',
+    impact_hint: normalizeOptionalString(rec.impact_hint) ?? '',
+  };
+};
+
+const normalizeScriptNarrative = (record: Record<string, unknown>): ScriptNarrative => {
+  const dialogue = Array.isArray(record.dialogue)
+    ? record.dialogue
+        .map(normalizeScriptNarrativeLine)
+        .filter((item): item is NonNullable<typeof item> => item !== null)
+    : [];
+
+  const rawOptionsNarrative = asRecord(record.options_narrative) ?? {};
+  const options_narrative: ScriptNarrative['options_narrative'] = {};
+  for (const [key, val] of Object.entries(rawOptionsNarrative)) {
+    const normalized = normalizeScriptNarrativeOptionItem(val);
+    if (normalized) {
+      options_narrative[key] = normalized;
+    }
+  }
+
+  return {
+    monologue: normalizeOptionalString(record.monologue) ?? '',
+    dialogue,
+    bridge_summary: normalizeOptionalString(record.bridge_summary) ?? '',
+    options_narrative,
+  };
+};

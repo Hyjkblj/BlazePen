@@ -21,60 +21,12 @@ type TrainingIdentitySetupProps = {
   updateFormDraft: (field: keyof TrainingFormDraftValue, value: string) => void;
 };
 
-const HISTORIC_FEMALE_NAMES = [
-  '王招娣',
-  '李来娣',
-  '张桂花',
-  '赵春花',
-  '孙小凤',
-  '周秀兰',
-  '吴玉梅',
-  '郑彩云',
-  '冯银花',
-  '陈翠莲',
-  '褚香兰',
-  '卫秋菊',
-  '蒋二妮',
-  '沈素芬',
-  '韩喜妹',
-  '杨凤英',
-  '朱兰英',
-  '秦金莲',
-  '尤巧云',
-  '许桂芝',
-  '何秀英',
-  '吕春妮',
-  '施玉兰',
-  '孔淑芬',
-  '曹翠花',
-] as const;
-
-const HISTORIC_MALE_NAMES = [
-  '王大山',
-  '李铁柱',
-  '张有根',
-  '赵满仓',
-  '孙富贵',
-  '周二喜',
-  '吴长顺',
-  '郑守业',
-  '冯保国',
-  '陈福生',
-  '褚来旺',
-  '卫成才',
-  '蒋顺发',
-  '沈德旺',
-  '韩有福',
-  '杨柱子',
-  '朱进财',
-  '秦老实',
-  '尤庆余',
-  '许旺财',
-  '何金贵',
-  '吕春生',
-  '施忠厚',
-  '孔天佑',
-  '曹守田',
+const HISTORIC_NAMES = [
+  '王招娣', '李铁柱', '张桂花', '赵满仓', '孙小凤',
+  '周二喜', '吴玉梅', '郑守业', '冯银花', '陈福生',
+  '褚香兰', '卫成才', '蒋二妮', '沈德旺', '韩喜妹',
+  '杨柱子', '朱兰英', '秦老实', '尤巧云', '许旺财',
+  '何秀英', '吕春生', '施玉兰', '孔天佑', '曹翠花',
 ] as const;
 
 const pickRandomName = (pool: readonly string[], currentName: string): string => {
@@ -90,14 +42,6 @@ const pickRandomName = (pool: readonly string[], currentName: string): string =>
   return fallbackPool[randomIndex] ?? fallbackPool[0];
 };
 
-const normalizePresetGenderToLabel = (value: string): '男' | '女' => {
-  const normalized = value.trim().toLowerCase();
-  if (normalized === 'male' || normalized === 'm' || normalized === 'man' || normalized === '男') {
-    return '男';
-  }
-  return '女';
-};
-
 function TrainingIdentitySetup({
   formDraft,
   hasGeneratedPortrait,
@@ -109,9 +53,7 @@ function TrainingIdentitySetup({
   updateFormDraft,
 }: TrainingIdentitySetupProps) {
   const handleRandomName = () => {
-    const gender = formDraft.playerGender === '男' ? '男' : '女';
-    const selectedPool = gender === '男' ? HISTORIC_MALE_NAMES : HISTORIC_FEMALE_NAMES;
-    const randomName = pickRandomName(selectedPool, formDraft.playerName);
+    const randomName = pickRandomName(HISTORIC_NAMES, formDraft.playerName);
     if (randomName) {
       updateFormDraft('playerName', randomName);
     }
@@ -123,12 +65,7 @@ function TrainingIdentitySetup({
     if (!selectedPreset) {
       return;
     }
-
     updateFormDraft('playerIdentity', selectedPreset.identity);
-    updateFormDraft('playerGender', normalizePresetGenderToLabel(selectedPreset.defaultGender));
-    if (formDraft.playerName.trim() === '' && selectedPreset.defaultName) {
-      updateFormDraft('playerName', selectedPreset.defaultName);
-    }
   };
 
   return (
@@ -196,12 +133,6 @@ function TrainingIdentitySetup({
             </Radio.Group>
           </div>
 
-          <Input
-            value={formDraft.playerAge}
-            inputMode="numeric"
-            placeholder="年龄"
-            onChange={(event) => updateFormDraft('playerAge', event.target.value)}
-          />
         </div>
       </section>
 

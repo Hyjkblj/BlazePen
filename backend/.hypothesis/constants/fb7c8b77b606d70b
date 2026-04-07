@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\scenario_policy.py
+# hypothesis_version: 6.151.11
+
+['age', 'branch_tags', 'gender', 'id', 'identity', 'name', 'next_rules', 'options', 'phase_tags', 'player_profile', 'risk_tags', 'scenario_sequence', 'scenario_version', 'session_meta', 'target_skills', 'title']

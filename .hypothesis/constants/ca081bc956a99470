@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\consequence_engine.py
+# hypothesis_version: 6.151.11
+
+[0.0, 0.35, 0.45, 0.55, 'editor_locked', 'editor_recovery', 'editor_trust', 'high', 'high_risk_path', 'id', 'low', 'medium', 'panic_triggered', 'public_panic', 'risk_flags', 'runtime_flags', 'scenario_id', 'scenario_title', 'selected_option', 'source_exposed', 'source_protection', 'source_safety', 'stability_control', 'title', '公众恐慌上升', '局势回稳', '当前场景', '来源暴露', '编辑部信任恢复', '编辑部警戒', '进入高风险路径']

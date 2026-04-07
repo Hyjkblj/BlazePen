@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\recommendation_policy.py
+# hypothesis_version: 6.151.11
+
+[0.0, 1.0, 'current_phase_tags', 'distance', 'gt', 'id', 'lt', 'mode', 'phase_boost_score', 'phase_tags', 'rank', 'rank_score', 'reasons', 'recommendation', 'risk_boost_score', 'scenario_phase_tags', 'state_boost_score', 'target_skills', 'weakness_score']

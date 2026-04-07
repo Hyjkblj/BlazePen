@@ -14,8 +14,6 @@ class TrainingIdentityPreset:
     title: str
     description: str
     identity_label: str
-    default_name: str
-    default_gender: str
     appearance_keywords: tuple[str, ...]
     personality_keywords: tuple[str, ...]
     style: str
@@ -25,49 +23,90 @@ class TrainingIdentityPreset:
 
 
 TRAINING_IDENTITY_PRESET_MAP: dict[str, TrainingIdentityPreset] = {
-    "correspondent-female": TrainingIdentityPreset(
-        code="correspondent-female",
-        title="女记者形象",
-        description="冷静、坚定，适合叙事主视觉。",
-        identity_label="战地记者",
-        default_name="前线女记者",
-        default_gender="female",
-        appearance_keywords=("lean", "short dark hair", "war correspondent coat"),
-        personality_keywords=("calm", "resolute", "responsible"),
-        style="wartime documentary realism with dark red accents",
+    "underground-reporter": TrainingIdentityPreset(
+        code="underground-reporter",
+        title="敌后笔锋・地下党报人",
+        description="潜伏沦陷区，以笔为刃，用文章暗语传递情报，动摇日伪统治。",
+        identity_label="地下党宣传线联络员",
+        appearance_keywords=(
+            "civilian clothes",
+            "ink-stained fingers",
+            "sharp observant eyes",
+            "1940s Shanghai intellectual style",
+        ),
+        personality_keywords=("cunning", "composed", "persuasive", "vigilant"),
+        style="occupied zone noir with dim lamplight and newspaper print texture",
+        scene_tone="1937-1945 occupied China underground resistance",
+        palette="sepia tones with muted red propaganda poster accents",
+        lighting="low-key interior lamplight with deep shadows",
     ),
-    "correspondent-male": TrainingIdentityPreset(
-        code="correspondent-male",
-        title="男记者形象",
-        description="沉稳、克制，强调纪实视角。",
-        identity_label="战地记者",
-        default_name="前线男记者",
-        default_gender="male",
-        appearance_keywords=("short hair", "rugged", "war correspondent coat"),
-        personality_keywords=("calm", "disciplined", "reliable"),
-        style="wartime documentary realism with dark red accents",
+    "frontline-war-correspondent": TrainingIdentityPreset(
+        code="frontline-war-correspondent",
+        title="火线记录者・随军战地记者",
+        description="跟随八路军转战敌后，记录烽火瞬间，兼任侦察与通讯职责。",
+        identity_label="八路军政治部宣传科战斗员",
+        appearance_keywords=(
+            "military field uniform",
+            "worn leather satchel",
+            "rugged weathered face",
+            "determined gaze",
+        ),
+        personality_keywords=("brave", "disciplined", "resilient", "loyal"),
+        style="battlefield documentary realism with smoke dust and ruins",
+        scene_tone="1937-1945 Eighth Route Army guerrilla warfare",
+        palette="desaturated earth tones with gunpowder grey",
+        lighting="harsh outdoor daylight with dramatic smoke backlight",
     ),
-    "frontline-photographer": TrainingIdentityPreset(
-        code="frontline-photographer",
-        title="摄影记者形象",
-        description="突出镜头语言与现场张力。",
-        identity_label="摄影记者",
-        default_name="前线摄影记者",
-        default_gender="male",
-        appearance_keywords=("vintage camera", "field gear", "focused look"),
-        personality_keywords=("decisive", "alert", "fearless"),
-        style="battlefield reportage tone with smoke and ruins",
+    "photo-intelligence": TrainingIdentityPreset(
+        code="photo-intelligence",
+        title="镜头暗战・摄影情报员",
+        description="以相机为武器，深入日伪核心区域，在暗房中解密传递关键情报。",
+        identity_label="地下党情报线摄影专员",
+        appearance_keywords=(
+            "vintage Leica camera",
+            "dark overcoat",
+            "calm analytical expression",
+            "nimble posture",
+        ),
+        personality_keywords=("meticulous", "patient", "perceptive", "stealthy"),
+        style="espionage thriller with darkroom chemical haze and film grain",
+        scene_tone="1937-1945 wartime intelligence photography",
+        palette="high-contrast black and white with amber darkroom glow",
+        lighting="dramatic chiaroscuro with single-source darkroom red light",
     ),
-    "radio-operator": TrainingIdentityPreset(
-        code="radio-operator",
-        title="通讯员形象",
-        description="强调联络与信息传递职责。",
-        identity_label="通讯联络员",
-        default_name="战地通讯员",
-        default_gender="female",
-        appearance_keywords=("radio headset", "field uniform", "compact posture"),
-        personality_keywords=("careful", "steady", "team-oriented"),
-        style="wartime communication outpost with tense atmosphere",
+    "newsboy-courier": TrainingIdentityPreset(
+        code="newsboy-courier",
+        title="街头信使・报童交通员",
+        description="以卖报为掩护，穿梭沦陷区街头，传递情报、接送地下党员。",
+        identity_label="地下党交通线联络员",
+        appearance_keywords=(
+            "worn street clothes",
+            "newspaper bundle under arm",
+            "quick alert eyes",
+            "lean agile build",
+        ),
+        personality_keywords=("street-smart", "agile", "resourceful", "inconspicuous"),
+        style="occupied city street realism with crowded market atmosphere",
+        scene_tone="1937-1945 occupied city underground courier network",
+        palette="dusty urban grey with faded newsprint yellow",
+        lighting="harsh midday street light with alley shadow contrast",
+    ),
+    "concession-correspondent": TrainingIdentityPreset(
+        code="concession-correspondent",
+        title="租界喉舌・涉外记者",
+        description="借租界身份周旋于各方势力，向国际社会揭露日军暴行，争取援助。",
+        identity_label="中共地下党国际线联络员",
+        appearance_keywords=(
+            "1940s semi-western dress",
+            "composed diplomatic bearing",
+            "bilingual press badge",
+            "elegant but cautious demeanor",
+        ),
+        personality_keywords=("diplomatic", "sharp-witted", "multilingual", "composed"),
+        style="Shanghai concession intrigue with art deco interiors and tension",
+        scene_tone="1937-1945 Shanghai International Settlement espionage",
+        palette="warm art deco gold and deep navy with newsroom amber",
+        lighting="soft interior chandelier light with window silhouette drama",
     ),
 }
 
@@ -91,35 +130,18 @@ def _normalize_optional_string(value: Any) -> str | None:
     return normalized if normalized else None
 
 
-def _normalize_gender(value: Any, fallback: str) -> str:
-    normalized = _normalize_optional_string(value)
-    if normalized is None:
-        return fallback
-
-    lowered = normalized.lower()
-    if lowered in {"male", "m", "man", "男"}:
-        return "male"
-    if lowered in {"female", "f", "woman", "女"}:
-        return "female"
-    return fallback
-
-
 def list_training_identity_presets() -> list[dict[str, Any]]:
     """Return UI-safe metadata used to render available identity presets."""
 
-    items: list[dict[str, Any]] = []
-    for preset in TRAINING_IDENTITY_PRESET_MAP.values():
-        items.append(
-            {
-                "code": preset.code,
-                "title": preset.title,
-                "description": preset.description,
-                "identity": preset.identity_label,
-                "default_name": preset.default_name,
-                "default_gender": preset.default_gender,
-            }
-        )
-    return items
+    return [
+        {
+            "code": preset.code,
+            "title": preset.title,
+            "description": preset.description,
+            "identity": preset.identity_label,
+        }
+        for preset in TRAINING_IDENTITY_PRESET_MAP.values()
+    ]
 
 
 def resolve_character_request_identity_preset(request_data: dict[str, Any]) -> dict[str, Any]:
@@ -141,9 +163,8 @@ def resolve_character_request_identity_preset(request_data: dict[str, Any]) -> d
             supported_codes=sorted(TRAINING_IDENTITY_PRESET_MAP.keys()),
         )
 
-    resolved_name = _normalize_optional_string(request_data.get("name")) or preset.default_name
+    resolved_name = _normalize_optional_string(request_data.get("name")) or ""
     resolved_identity = _normalize_optional_string(request_data.get("identity")) or preset.identity_label
-    resolved_gender = _normalize_gender(request_data.get("gender"), preset.default_gender)
 
     resolved_data = dict(request_data)
     resolved_data.update(
@@ -151,7 +172,6 @@ def resolve_character_request_identity_preset(request_data: dict[str, Any]) -> d
             "identity_code": preset.code,
             "name": resolved_name,
             "identity": resolved_identity,
-            "gender": resolved_gender,
             "appearance": {
                 "keywords": list(preset.appearance_keywords),
                 "scene_tone": preset.scene_tone,

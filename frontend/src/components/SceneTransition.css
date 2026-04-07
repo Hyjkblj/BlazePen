@@ -130,6 +130,30 @@
   transform: scaleX(1);
 }
 
+/* 过渡桥接氛围文字 */
+.scene-transition-bridge {
+  font-size: 16px;
+  font-style: italic;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.65);
+  letter-spacing: 2px;
+  text-align: center;
+  max-width: 480px;
+  margin: 0;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.5s;
+}
+
+.scene-transition-bridge.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.scene-transition-overlay--training .scene-transition-bridge {
+  color: rgba(255, 220, 210, 0.6);
+}
+
 /* 淡出动画 */
 .scene-transition-overlay.fade-out {
   animation: fadeOut 0.5s ease-in-out forwards;

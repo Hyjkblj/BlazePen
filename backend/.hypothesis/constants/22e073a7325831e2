@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\training_repository.py
+# hypothesis_version: 6.151.11
+
+[0.0, 200, 300, 'auto', 'candidate_pool', 'decision_context', 'duplicate key', 'event_type', 'evidence', 'explanation', 'focus_tags', 'guided', 'idempotency_key', 'in_progress', 'is_high_risk', 'max_retries', 'observation_summary', 'payload', 'pending', 'primary_risk_flag', 'primary_skill_code', 'ready', 'request_payload', 'risk_flags', 'round_no', 'route', 'running', 'scenario_id', 'scenario_title', 'score', 'selected_scenario_id', 'selection_source', 'session_id', 'session_initialized', 'skill_observations', 'state_observations', 'status', 'target_skills', 'task_id', 'task_type', 'training_media_tasks', 'training_mode', 'training_rounds', 'type', 'unknown_event', 'updated_at', 'weak_skills_before']

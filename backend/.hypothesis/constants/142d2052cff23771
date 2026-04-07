@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\reporting_policy.py
+# hypothesis_version: 6.151.11
+
+[0.0, 'branch_transition', 'count', 'decision_context', 'editor_locked', 'high_risk_path', 'is_high_risk', 'k_state', 'panic_triggered', 'phase', 'phase_tags', 'phase_transition', 'primary_skill_code', 'reason', 'risk_flags', 'round_no', 'round_nos', 'round_submitted', 'runtime_flags', 's_state', 'scenario_id', 'scenario_title', 'source_exposed', 'source_scenario_id', 'target_scenario_id', 'timestamp', 'to_phase', 'transition_type', 'triggered_flags', 'weighted_k_score', '、', '关键分支路径', '初始状态']

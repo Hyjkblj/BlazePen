@@ -16,6 +16,8 @@ from training.exceptions import (
 from training.output_assembler_policy import TrainingOutputAssemblerPolicy
 from training.report_context_policy import TrainingReportContextPolicy
 from training.recommendation_policy import RecommendationPolicy
+from training.recommendation_agent import RecommendationAgent
+from training.behavior_profile_agent import BehaviorProfile, BehaviorProfileAgent, build_round_history_from_store_records
 from training.reporting_policy import TrainingReportingPolicy
 from training.round_transition_policy import TrainingRoundTransitionPolicy
 from training.runtime_artifact_policy import TrainingRuntimeArtifactPolicy
@@ -40,6 +42,10 @@ __all__ = [
     "ScenarioPolicy",
     "ScenarioRepository",
     "RecommendationPolicy",
+    "RecommendationAgent",
+    "BehaviorProfile",
+    "BehaviorProfileAgent",
+    "build_round_history_from_store_records",
     "TrainingReportingPolicy",
     "TrainingRuntimeArtifactPolicy",
     "TrainingOutputAssemblerPolicy",

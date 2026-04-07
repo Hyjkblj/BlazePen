@@ -25,6 +25,8 @@ from training.output_assembler_policy import TrainingOutputAssemblerPolicy
 from training.phase_policy import TrainingPhasePolicy, TrainingPhaseSnapshot
 from training.report_context_policy import TrainingReportContextPolicy
 from training.recommendation_policy import RecommendationPolicy
+from training.recommendation_agent import RecommendationAgent
+from training.director_agent import ExecutionPlan, TrainingDirectorAgent
 from training.reporting_policy import TrainingReportingPolicy
 from training.round_transition_policy import TrainingRoundTransitionPolicy
 from training.round_flow_policy import TrainingRoundFlowPolicy
@@ -182,7 +184,7 @@ class TrainingService:
         self.scenario_repository = scenario_repository or ScenarioRepository()
         # 阶段策略独立注入，供推荐、审计、后续诊断面板复用。
         self.phase_policy = phase_policy or TrainingPhasePolicy(runtime_config=self.runtime_config)
-        self.recommendation_policy = recommendation_policy or RecommendationPolicy(
+        self.recommendation_policy = recommendation_policy or RecommendationAgent(
             runtime_config=self.runtime_config,
             phase_policy=self.phase_policy,
         )
@@ -192,6 +194,8 @@ class TrainingService:
         self.telemetry_policy = telemetry_policy or TrainingTelemetryPolicy(phase_policy=self.phase_policy)
         # 运行时后果由独立引擎负责，服务层只做编排与持久化。
         self.consequence_engine = consequence_engine or ConsequenceEngine()
+        # Director Agent：在每轮提交前生成执行计划，预留 LLM 决策接口。
+        self.director_agent = TrainingDirectorAgent(runtime_config=self.runtime_config)
         # Optional async dispatch hook (injected by API wiring).
         # Kept as a runtime attribute to avoid hard dependency cycles.
         self.media_task_executor = None
@@ -526,8 +530,33 @@ class TrainingService:
             media_tasks=media_tasks,
         )
 
-        # 先基于当前上下文生成推荐结果，确保“前端看到的候选集”和“提交时回放的决策上下文”来自同一份数据。
+        # ---- Director Agent 执行计划 ----
         runtime_flags = self._resolve_session_runtime_flags(session)
+        try:
+            execution_plan = self.director_agent.plan(
+                session=session,
+                round_no=round_no,
+                k_state=k_before,
+                s_state=s_before,
+                recent_risk_rounds=recent_risk_rounds,
+                runtime_flags=runtime_flags,
+            )
+            if execution_plan.needs_script_refresh:
+                logger.info(
+                    "director_agent: needs_script_refresh=True session_id=%s round_no=%s",
+                    session_id, round_no,
+                )
+            if execution_plan.force_low_risk_scenario:
+                logger.info(
+                    "director_agent: force_low_risk_scenario=True session_id=%s round_no=%s",
+                    session_id, round_no,
+                )
+        except Exception as exc:
+            logger.warning("director_agent.plan failed, using default plan: %s", exc)
+            execution_plan = ExecutionPlan()
+        # ---- 结束 Director Agent ----
+
+        # 先基于当前上下文生成推荐结果，确保“前端看到的候选集”和“提交时回放的决策上下文”来自同一份数据。
         try:
             next_scenario_bundle = self.flow_policy.build_next_scenario_bundle(
                 training_mode=training_mode,
@@ -581,6 +610,7 @@ class TrainingService:
             scenario_payload_catalog=scenario_payload_catalog,
             scenario_id=scenario_id,
         )
+        recent_history = self._build_recent_history(session_id=session_id, round_no=round_no)
         transition_artifacts = self.round_transition_policy.build_round_transition_artifacts(
             session=session,
             evaluator=self.evaluator,
@@ -594,6 +624,7 @@ class TrainingService:
             s_before=s_before,
             recent_risk_rounds=recent_risk_rounds,
             scenario_payload=selected_scenario_payload,
+            recent_history=recent_history,
         )
         eval_result = transition_artifacts.evaluation_payload
         updated_k = transition_artifacts.updated_k_state
@@ -1085,6 +1116,34 @@ class TrainingService:
             payload = RoundEvaluationPayload.from_raw(getattr(evaluation_row, "raw_payload", None)).to_dict()
             risk_rounds.append([str(flag) for flag in payload.get("risk_flags", []) if str(flag or "").strip()])
         return risk_rounds
+
+    def _build_recent_history(
+        self,
+        session_id: str,
+        round_no: int,
+        window: int = 3,
+    ) -> List[Dict[str, Any]]:
+        """从已落库的历史回合中提取最近 window 轮的评估摘要。"""
+        if round_no < 3:
+            return []
+        try:
+            rows = list(self.training_store.get_round_evaluations_by_session(session_id))
+            recent = rows[-window:]
+            result = []
+            for row in recent:
+                eval_payload = getattr(row, "evaluation_payload", None) or {}
+                if not isinstance(eval_payload, dict):
+                    eval_payload = {}
+                result.append({
+                    "round_no": getattr(row, "round_no", None),
+                    "scenario_id": getattr(row, "scenario_id", None),
+                    "risk_flags": eval_payload.get("risk_flags", []),
+                    "evidence": eval_payload.get("evidence", [])[:2],
+                })
+            return result
+        except Exception as exc:
+            logger.warning("_build_recent_history failed: %s", exc)
+            return []
 
     def _extract_round_runtime_state(
         self,

@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\report_context_policy.py
+# hypothesis_version: 6.151.11
+
+[0.0, 1.0, 'branch_transition', 'consequence_events', 'created_at', 'id', 'is_high_risk', 'k_state', 'kt_after', 'kt_before', 'primary_skill_code', 'raw_payload', 'risk_flags', 'round_id', 'round_no', 'runtime_flags', 's_state', 'scenario_id', 'scenario_title', 'selected_option', 'state_after', 'state_before', 'timestamp', 'title', 'user_action', 'user_input_raw']

@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\behavior_profile_agent.py
+# hypothesis_version: 6.151.11
+
+[-0.2, -0.05, 0.0, 0.05, 0.2, 0.4, 0.9, 'aggressive_publisher', 'balanced', 'decreasing', 'evaluation_payload', 'increasing', 'k_state_after', 'kt_after', 'over_cautious', 'panic_amplifier', 'panic_triggered', 'privacy_leak_risk', 'public_panic', 'raw_payload', 'risk_flags', 'round_id', 'round_no', 'rumor_spread_risk', 'scenario_id', 'skill_delta', 'source_exposed', 'source_exposure', 'source_risk', 'source_safety', 'stable', 'unverified_publish', 'verification_chain', '上升', '下降', '倾向快速发布、忽视核验', '反复引发公众恐慌', '反复触发来源暴露风险', '稳定', '行为均衡', '过度谨慎、频繁延迟', '，']

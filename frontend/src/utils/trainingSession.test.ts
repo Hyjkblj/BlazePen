@@ -8,6 +8,7 @@ import {
   normalizeTrainingReportPayload,
   normalizeTrainingRoundSubmitPayload,
   normalizeTrainingSessionSummaryPayload,
+  resolveNarrativeForScenario,
 } from './trainingSession';
 
 describe('trainingSession normalizers', () => {
@@ -666,5 +667,76 @@ describe('trainingSession normalizers', () => {
       ],
       ending: null,
     });
+  });
+});
+
+describe('resolveNarrativeForScenario', () => {
+  const v2Payload = {
+    version: 'training_story_script_v2',
+    narratives: {
+      'major-1': {
+        monologue: '独白内容',
+        dialogue: [{ speaker: '记者', content: '你好' }],
+        bridge_summary: '承接摘要',
+        options_narrative: {
+          'opt-1': { option_id: 'opt-1', narrative_label: '选项一', impact_hint: '影响提示' },
+        },
+      },
+    },
+  };
+
+  const v1Payload = {
+    scenes: [
+      {
+        scene_id: 'major-1',
+        monologue: 'v1 独白',
+        dialogue: [{ speaker: '编辑', content: '注意核实' }],
+        bridge_summary: 'v1 摘要',
+        options_narrative: {},
+      },
+    ],
+  };
+
+  it('reads from narratives dict when payload is v2 (Requirements 6.1)', () => {
+    const result = resolveNarrativeForScenario(v2Payload, 'major-1');
+    expect(result).not.toBeNull();
+    expect(result?.monologue).toBe('独白内容');
+    expect(result?.dialogue).toEqual([{ speaker: '记者', content: '你好' }]);
+    expect(result?.bridge_summary).toBe('承接摘要');
+    expect(result?.options_narrative['opt-1']).toMatchObject({ narrative_label: '选项一' });
+  });
+
+  it('falls back to scenes[].scene_id lookup for v1 payload (Requirements 6.2)', () => {
+    const result = resolveNarrativeForScenario(v1Payload, 'major-1');
+    expect(result).not.toBeNull();
+    expect(result?.monologue).toBe('v1 独白');
+  });
+
+  it('matches v1 scene by prefix for micro scenarios (Requirements 6.2)', () => {
+    const result = resolveNarrativeForScenario(v1Payload, 'major-1_micro_1_1_suffix');
+    expect(result).not.toBeNull();
+    expect(result?.monologue).toBe('v1 独白');
+  });
+
+  it('returns null when scenarioId is not found in v2 payload (Requirements 6.4)', () => {
+    const result = resolveNarrativeForScenario(v2Payload, 'nonexistent-scenario');
+    expect(result).toBeNull();
+  });
+
+  it('returns null when scenarioId is not found in v1 payload (Requirements 6.4)', () => {
+    const result = resolveNarrativeForScenario(v1Payload, 'nonexistent-scenario');
+    expect(result).toBeNull();
+  });
+
+  it('returns null for null/undefined payload without throwing (Requirements 6.4)', () => {
+    expect(resolveNarrativeForScenario(null, 'major-1')).toBeNull();
+    expect(resolveNarrativeForScenario(undefined, 'major-1')).toBeNull();
+    expect(resolveNarrativeForScenario({}, 'major-1')).toBeNull();
+  });
+
+  it('returns null for malformed payload without throwing (Requirements 6.4)', () => {
+    expect(resolveNarrativeForScenario('not-an-object', 'major-1')).toBeNull();
+    expect(resolveNarrativeForScenario(42, 'major-1')).toBeNull();
+    expect(resolveNarrativeForScenario({ version: 'training_story_script_v2' }, 'major-1')).toBeNull();
   });
 });

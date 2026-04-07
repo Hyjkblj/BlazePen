@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react';
 import TrainingTitleFire from '@/components/training/TrainingTitleFire';
 import './TrainingMainHome.css';
 
-const HOVER_SFX_VIDEO_URL = new URL(
-  '../../assets/video/屏幕录制 2026-04-07 020459.mp4',
+const HOVER_SFX_AUDIO_URL = new URL(
+  '../../assets/audio/pixabay-hover-513360.mp3',
   import.meta.url
 ).href;
 
@@ -13,41 +13,30 @@ type TrainingMainHomeProps = {
 };
 
 function TrainingMainHome({ onEnter, enterDisabled = false }: TrainingMainHomeProps) {
-  const hoverVideoAudioRef = useRef<HTMLAudioElement | null>(null);
-  const hoverVideoStopTimerRef = useRef<number | null>(null);
+  const hoverAudioClipRef = useRef<HTMLAudioElement | null>(null);
   const hoverAudioContextRef = useRef<AudioContext | null>(null);
   const hoverSfxLastPlayedAtRef = useRef(0);
-
-  const clearHoverVideoStopTimer = () => {
-    if (hoverVideoStopTimerRef.current === null || typeof window === 'undefined') {
-      return;
-    }
-    window.clearTimeout(hoverVideoStopTimerRef.current);
-    hoverVideoStopTimerRef.current = null;
-  };
 
   useEffect(() => {
     if (typeof window !== 'undefined' && typeof window.Audio !== 'undefined') {
       try {
-        const hoverVideoAudio = new window.Audio(HOVER_SFX_VIDEO_URL);
-        hoverVideoAudio.preload = 'auto';
-        hoverVideoAudio.volume = 0.62;
-        hoverVideoAudioRef.current = hoverVideoAudio;
+        const hoverAudioClip = new window.Audio(HOVER_SFX_AUDIO_URL);
+        hoverAudioClip.preload = 'auto';
+        hoverAudioClip.volume = 1;
+        hoverAudioClipRef.current = hoverAudioClip;
       } catch {
-        hoverVideoAudioRef.current = null;
+        hoverAudioClipRef.current = null;
       }
     }
 
     return () => {
-      clearHoverVideoStopTimer();
-
-      const hoverVideoAudio = hoverVideoAudioRef.current;
-      hoverVideoAudioRef.current = null;
-      if (hoverVideoAudio) {
+      const hoverAudioClip = hoverAudioClipRef.current;
+      hoverAudioClipRef.current = null;
+      if (hoverAudioClip) {
         try {
-          hoverVideoAudio.pause();
-          hoverVideoAudio.currentTime = 0;
-          hoverVideoAudio.src = '';
+          hoverAudioClip.pause();
+          hoverAudioClip.currentTime = 0;
+          hoverAudioClip.src = '';
         } catch {
           // Ignore cleanup errors.
         }
@@ -105,26 +94,16 @@ function TrainingMainHome({ onEnter, enterDisabled = false }: TrainingMainHomePr
     }
     hoverSfxLastPlayedAtRef.current = now;
 
-    const hoverVideoAudio = hoverVideoAudioRef.current;
-    if (hoverVideoAudio) {
+    const hoverAudioClip = hoverAudioClipRef.current;
+    if (hoverAudioClip) {
       try {
-        clearHoverVideoStopTimer();
-        hoverVideoAudio.pause();
-        hoverVideoAudio.currentTime = 0;
+        hoverAudioClip.pause();
+        hoverAudioClip.currentTime = 0;
 
-        const playback = hoverVideoAudio.play();
-        hoverVideoStopTimerRef.current = window.setTimeout(() => {
-          const currentAudio = hoverVideoAudioRef.current;
-          if (!currentAudio) {
-            return;
-          }
-          currentAudio.pause();
-          currentAudio.currentTime = 0;
-        }, 220);
+        const playback = hoverAudioClip.play();
 
         if (playback && typeof playback.catch === 'function') {
           void playback.catch(() => {
-            clearHoverVideoStopTimer();
             playSynthHoverSfx();
           });
         }

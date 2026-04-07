@@ -2,9 +2,11 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import TrainingLanding from '@/components/training/TrainingLanding';
 import { ROUTES } from '@/config/routes';
 import { useTrainingMvpFlow } from '@/flows/useTrainingMvpFlow';
+import { useTrainingLobbyBgm } from '@/hooks/useTrainingLobbyBgm';
 import { normalizeTrainingSessionId } from '@/hooks/useTrainingSessionReadTarget';
 
 function TrainingLandingPage() {
+  useTrainingLobbyBgm();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const explicitSessionId = normalizeTrainingSessionId(searchParams.get('sessionId'));

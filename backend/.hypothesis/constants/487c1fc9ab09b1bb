@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\ending_policy.py
+# hypothesis_version: 6.151.11
+
+[0.0, 'accuracy', 'explanation', 'k_state', 'public_panic', 'risk_flags', 's_state', 'score', 'source_safety', 'type']

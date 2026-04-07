@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\branch_resolver.py
+# hypothesis_version: 6.151.11
+
+['branch', 'branch_transition', 'default', 'go_to', 'guided', 'id', 'matched_rule', 'modes', 'next_rules', 'reason', 'source_scenario_id', 'target_scenario_id', 'transition_type', 'triggered_flags', 'when_all_flags', 'when_any_flags', 'when_no_flags']

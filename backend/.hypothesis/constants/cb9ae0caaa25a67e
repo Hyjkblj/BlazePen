@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\llm\base.py
+# hypothesis_version: 6.151.11
+
+[0.7, 1.0, 200, 'auto', 'content', 'dashscope', 'openai', 'role', 'system', 'user', 'volcengine', '未找到可用的LLM提供商，请检查配置']

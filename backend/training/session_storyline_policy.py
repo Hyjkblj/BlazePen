@@ -356,7 +356,7 @@ class SessionStorylinePolicy:
         self,
         *,
         scenario_repository: ScenarioRepository | None = None,
-        micro_scene_min: int = 2,
+        micro_scene_min: int = 3,
         micro_scene_max: int = 3,
     ):
         self.scenario_repository = scenario_repository or ScenarioRepository()

@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\phase_policy.py
+# hypothesis_version: 6.151.11
+
+['end_round', 'guided', 'matched_window_count', 'modes', 'phase_tags', 'reason', 'round_no', 'stage_windows', 'start_round', 'window_reasons']

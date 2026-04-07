@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\api\services\training_service.py
+# hypothesis_version: 6.151.11
+
+[0.0, 0.5, 1.0, '; ', 'character_id', 'completed', 'confidence', 'current_round_no', 'current_scenario_id', 'db_manager', 'duplicate_fallback', 'eval_mode', 'evaluation_payload', 'evidence', 'flow_error', 'guided', 'id', 'idempotency_key', 'llm_model', 'max_retries', 'payload', 'pending', 'phase', 'raw_payload', 'request_payload', 'resume_bundle', 'risk_flags', 'round_no', 'running', 's_delta', 'scenario', 'scenario_id', 'script_seed', 'session_id', 'skill_delta', 'skill_scores_preview', 'status', 'storyline_seed', 'submit_validation', 'task_id', 'task_type', 'title', 'training_mode', 'weighted_score_delta']

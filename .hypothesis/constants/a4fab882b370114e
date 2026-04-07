@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\models\character.py
+# hypothesis_version: 6.151.11
+
+[0.0, 50.0, 100, 'Character', 'CharacterAttribute', 'CharacterState', 'all, delete-orphan', 'attributes', 'character', 'character_attributes', 'character_states', 'characters', 'characters.id', 'school', 'states']

@@ -27,6 +27,7 @@ import type {
   TrainingRoundSubmitMediaTaskSummary,
   TrainingRoundDecisionContext,
   TrainingScenario,
+  TrainingScenarioNextResult,
 } from '@/types/training';
 
 const DEFAULT_TRAINING_USER_ID = 'frontend-training-user';
@@ -130,6 +131,7 @@ export function useTrainingMvpFlow(
   const [restoreNextScenarioFailed, setRestoreNextScenarioFailed] = useState(false);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [latestOutcome, setLatestOutcome] = useState<TrainingRoundOutcomeView | null>(null);
+  const [pendingNextScenario, setPendingNextScenario] = useState<TrainingScenarioNextResult | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const autoRestoreSessionIdRef = useRef<string | null>(null);
   const rejectedPreferredCharacterIdRef = useRef<string | null>(null);
@@ -162,6 +164,7 @@ export function useTrainingMvpFlow(
       if (!summaryResult) {
         return null;
       }
+      setPendingNextScenario(null);
 
       const summaryView = buildTrainingSessionViewFromSummary(summaryResult);
 
@@ -368,6 +371,7 @@ export function useTrainingMvpFlow(
     roundRunner.dismissError();
     setSessionView(null);
     setLatestOutcome(null);
+    setPendingNextScenario(null);
     setSelectedOptionId(null);
     resetSceneImageFlow();
     resetCompletionReportFlow();
@@ -479,6 +483,7 @@ export function useTrainingMvpFlow(
         setRestoreNextScenarioFailed(false);
       }
       setLatestOutcome(null);
+      setPendingNextScenario(null);
       resetSceneImageFlow();
       resetCompletionReportFlow();
       setSessionView(nextView);
@@ -497,6 +502,7 @@ export function useTrainingMvpFlow(
     }
 
     setLatestOutcome(null);
+    setPendingNextScenario(null);
     resetSceneImageFlow();
     resetCompletionReportFlow();
     setSessionView(buildTrainingSessionViewFromInit(initResult));
@@ -552,6 +558,7 @@ export function useTrainingMvpFlow(
     bootstrap.dismissError();
     roundRunner.dismissError();
     setNoticeMessage(null);
+    setPendingNextScenario(null);
 
     const transition = await roundRunner.submitRound({
       scenarioId: sessionView.currentScenario.id,
@@ -579,6 +586,7 @@ export function useTrainingMvpFlow(
     }
 
     if (transition.summaryResult) {
+      setPendingNextScenario(null);
       setSessionView(buildTrainingSessionViewFromSummary(transition.summaryResult));
 
       if (transition.recoveryReason === 'duplicate') {
@@ -595,21 +603,34 @@ export function useTrainingMvpFlow(
     }
 
     if (transition.nextScenarioResult) {
-      setSessionView(buildTrainingSessionViewFromNext(sessionView, transition.nextScenarioResult));
+      setPendingNextScenario(transition.nextScenarioResult);
       return;
     }
 
     if (transition.submitResult?.isCompleted) {
+      setPendingNextScenario(null);
       setSessionView(buildCompletedTrainingSessionView(sessionView, transition.submitResult));
       setNoticeMessage('\u672c\u6b21\u8bad\u7ec3\u5df2\u5b8c\u6210\u3002');
       return;
     }
 
     if (transition.submitResult) {
+      setPendingNextScenario(null);
       setSessionView(buildBlockedTrainingSessionView(sessionView, transition.submitResult));
       setNoticeMessage('\u56de\u5408\u5df2\u63d0\u4ea4\uff0c\u8bf7\u91cd\u8bd5\u6062\u590d\u5f53\u524d\u8bad\u7ec3\u4f1a\u8bdd\u3002');
     }
   }, [bootstrap, roundRunner, selectedOptionId, sessionView]);
+
+  const commitPendingNextScenario = useCallback(() => {
+    if (!pendingNextScenario) {
+      return false;
+    }
+    setSessionView((current) =>
+      current ? buildTrainingSessionViewFromNext(current, pendingNextScenario) : current
+    );
+    setPendingNextScenario(null);
+    return true;
+  }, [pendingNextScenario]);
 
   const submitCurrentRound = useCallback(async () => {
     await submitRoundWithOption();
@@ -656,6 +677,7 @@ export function useTrainingMvpFlow(
     sessionView,
     insightSessionId: sessionViewModel.currentSessionId,
     latestOutcome,
+    pendingNextScenario,
     sceneImageStatus,
     sceneImageUrl,
     sceneImageErrorMessage,
@@ -672,5 +694,6 @@ export function useTrainingMvpFlow(
       selectedOptionId !== null,
     submitCurrentRound,
     submitOption,
+    commitPendingNextScenario,
   };
 }

@@ -59,8 +59,6 @@ export interface TrainingIdentityPresetApiResponse extends GenericApiRecord {
   title?: string;
   description?: string;
   identity?: string;
-  default_name?: string;
-  default_gender?: string;
 }
 
 export interface TrainingIdentityPresetListResponse extends GenericApiRecord {

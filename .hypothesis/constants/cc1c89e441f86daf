@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\llm\providers\openai_provider.py
+# hypothesis_version: 6.151.11
+
+['401', '429', 'Timeout', 'base_url', 'completion_tokens', 'connection', 'invalid_api_key', 'max_tokens', 'messages', 'model', 'network', 'prompt_tokens', 'rate_limit', 'temperature', 'timeout', 'total_tokens', 'unauthorized']

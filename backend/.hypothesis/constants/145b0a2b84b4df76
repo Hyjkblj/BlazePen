@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\recommendation_agent.py
+# hypothesis_version: 6.151.11
+
+[0.0, 0.2, 0.25, 0.3, 0.4, 0.7, 200, '\\{.*\\}', 'auto', 'content', 'difficulty', 'editor_trust', 'enabled', 'id', 'llm', 'llm_override', 'max_public_panic', 'medium', 'min_editor_trust', 'override_source', 'public_panic', 'rank_score', 'recommendation', 'role', 'rules', 'selected_id', 'system', 'target_skills', 'title', 'user']

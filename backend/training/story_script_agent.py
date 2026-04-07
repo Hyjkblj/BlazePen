@@ -57,6 +57,133 @@ class TrainingStoryScriptPayload(BaseModel):
     scenes: List[StoryScriptScene] = Field(default_factory=list)
 
 
+# ---------------------------------------------------------------------------
+# v2 Pydantic 模型（Requirements 3.1, 3.2, 3.3）
+# ---------------------------------------------------------------------------
+
+class ScriptNarrativeLine(BaseModel):
+    speaker: str
+    content: str
+
+
+class ScriptNarrativeOptionItem(BaseModel):
+    option_id: str
+    narrative_label: str
+    impact_hint: str = ""
+
+
+class ScriptNarrative(BaseModel):
+    monologue: str
+    dialogue: List[ScriptNarrativeLine]
+    bridge_summary: str
+    options_narrative: Dict[str, ScriptNarrativeOptionItem]
+
+
+class TrainingStoryScriptV2Payload(BaseModel):
+    version: str = "training_story_script_v2"
+    cast: List[Dict[str, str]] = Field(default_factory=list)
+    narratives: Dict[str, ScriptNarrative] = Field(default_factory=dict)
+    fallback_used: bool = False
+    generated_at: str = ""
+
+
+def _legacy_match_scene(payload: Dict[str, Any], scenario_id: str) -> Dict[str, Any]:
+    """v1 兼容：按 major_scene_order + micro_scene_order 字段做前缀匹配。
+
+    v1 scenes 数组中每个 scene 含 scene_id（如 major-1 / micro-1-1）。
+    训练层 scenario_id 格式：
+      - 大场景：任意字符串，但 scene 的 major_scene_order 可用于匹配
+      - 小场景：`{major_id}_micro_{major_index}_{micro_index}_{suffix}`
+
+    匹配策略：
+    1. 先尝试直接用 scenario_id 匹配 scene_id（精确匹配）
+    2. 若失败，解析 scenario_id 中的 major_scene_order / micro_scene_order 数字做前缀匹配
+    """
+    scenes = payload.get("scenes") or []
+    sid = str(scenario_id or "").strip()
+    if not sid or not scenes:
+        return {}
+
+    # 1. 精确匹配 scene_id
+    for scene in scenes:
+        if not isinstance(scene, dict):
+            continue
+        if str(scene.get("scene_id") or "").strip() == sid:
+            return dict(scene)
+
+    # 2. 前缀匹配：从 scenario_id 中提取 major_index / micro_index
+    # 小场景格式：{major_id}_micro_{major_index}_{micro_index}_{suffix}
+    # 大场景格式：{major_id}（不含 _micro_）
+    major_index: int | None = None
+    micro_index: int | None = None
+
+    lower_sid = sid.lower()
+    if "_micro_" in lower_sid:
+        # 小场景：提取 major_index 和 micro_index
+        try:
+            after_micro = lower_sid.split("_micro_", 1)[1]
+            parts = after_micro.split("_")
+            major_index = int(parts[0])
+            micro_index = int(parts[1])
+        except (IndexError, ValueError):
+            pass
+    else:
+        # 大场景：尝试从 scenario_id 末尾提取数字（如 major-1 → 1）
+        # 或者直接按 major_scene_order 顺序匹配（取第一个 major scene）
+        # 先尝试解析末尾数字
+        import re as _re
+        m = _re.search(r"(\d+)$", sid)
+        if m:
+            major_index = int(m.group(1))
+
+    if major_index is not None:
+        for scene in scenes:
+            if not isinstance(scene, dict):
+                continue
+            scene_major = scene.get("major_scene_order")
+            scene_micro = scene.get("micro_scene_order")
+            try:
+                scene_major_int = int(scene_major) if scene_major is not None else None
+            except (TypeError, ValueError):
+                scene_major_int = None
+            try:
+                scene_micro_int = int(scene_micro) if scene_micro is not None else None
+            except (TypeError, ValueError):
+                scene_micro_int = None
+
+            if micro_index is not None:
+                # 小场景：major_scene_order 和 micro_scene_order 都要匹配
+                if scene_major_int == major_index and scene_micro_int == micro_index:
+                    return dict(scene)
+            else:
+                # 大场景：只匹配 major_scene_order，且 micro_scene_order 为空
+                if scene_major_int == major_index and scene_micro_int is None:
+                    return dict(scene)
+
+    return {}
+
+
+def resolve_narrative_for_scenario(payload: Dict[str, Any], scenario_id: str) -> Dict[str, Any]:
+    """根据 payload version 自动选择读取路径，返回对应场景的叙事内容字典。
+
+    - v2 (training_story_script_v2)：从 payload["narratives"][scenario_id] 读取
+    - v1 (training_story_script_v1) 或无 version：使用 _legacy_match_scene 前缀匹配
+    - 找不到时返回空字典，不抛出异常
+
+    Requirements: 5.1, 5.2, 5.3, 5.4
+    """
+    try:
+        if not isinstance(payload, dict):
+            return {}
+        version = payload.get("version") or "training_story_script_v1"
+        if version == "training_story_script_v2":
+            return dict(payload.get("narratives", {}).get(scenario_id) or {})
+        # v1 或无 version
+        return _legacy_match_scene(payload, scenario_id)
+    except Exception:
+        return {}
+
+
 def build_training_scenario_payload_sequence_from_story_script(
     payload: Dict[str, Any],
     *,
@@ -152,9 +279,10 @@ def build_training_scenario_payload_sequence_from_story_script(
 @dataclass(frozen=True)
 class StoryScriptAgentConfig:
     major_scene_count: int = 6
-    micro_scenes_per_gap: int = 2
+    micro_scenes_per_gap: int = 3
     temperature: float = 0.65
     max_tokens: int = 2600
+    llm_batch_size: int = 6  # max scenarios per LLM call to avoid token overflow
 
 
 class StoryScriptAgent:
@@ -169,6 +297,264 @@ class StoryScriptAgent:
         self.text_model_service = text_model_service or TextModelService()
         self.config = config or StoryScriptAgentConfig()
 
+    def fill_scenario_narratives(
+        self,
+        *,
+        session_id: str,
+        scenario_payload_sequence: List[Dict[str, Any]],
+        player_profile: Optional[Dict[str, Any]] = None,
+        allow_llm: bool = True,
+    ) -> Dict[str, Any]:
+        """Fill narrative content for each scenario in the given sequence.
+
+        Requirements: 1.1, 1.7, 8.1
+        """
+        scenario_count = len(scenario_payload_sequence) if scenario_payload_sequence else 0
+        logger.info(
+            "fill_scenario_narratives: session_id=%s scenario_count=%d",
+            session_id,
+            scenario_count,
+        )
+
+        if not scenario_payload_sequence:
+            logger.error(
+                "fill_scenario_narratives: empty scenario_payload_sequence: session_id=%s",
+                session_id,
+            )
+            return TrainingStoryScriptV2Payload().model_dump()
+
+        result: Dict[str, Any]
+        if allow_llm:
+            try:
+                result = self._fill_by_llm(session_id, scenario_payload_sequence, player_profile)
+            except Exception as exc:
+                logger.warning(
+                    "fill_scenario_narratives: LLM failed, falling back: session_id=%s error=%s",
+                    session_id,
+                    str(exc),
+                )
+                result = self._fill_by_fallback(session_id, scenario_payload_sequence)
+        else:
+            result = self._fill_by_fallback(session_id, scenario_payload_sequence)
+
+        self._store_v2_payload(session_id, result)
+        return result
+
+    def _fill_by_llm(
+        self,
+        session_id: str,
+        scenario_payload_sequence: List[Dict[str, Any]],
+        player_profile: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Fill narrative content via LLM, processing scenarios in batches.
+
+        Splits scenario_payload_sequence into batches of config.llm_batch_size (default 6)
+        to avoid token overflow. Each batch is called independently with retry + JSON repair.
+        Missing scenario_ids within a batch fall back to deterministic content per-scenario.
+        If all attempts for any batch fail, the exception propagates to fill_scenario_narratives
+        which degrades the entire result to _fill_by_fallback.
+
+        Requirements: 1.5, 1.6, 2.1, 2.2, 2.3, 2.4, 8.2
+        """
+        cast = [
+            {"name": "陈编辑", "role": "总编把关"},
+            {"name": "赵川", "role": "前线通讯员"},
+            {"name": "林岚", "role": "摄影记者"},
+            {"name": "老何", "role": "印刷与发布"},
+            {"name": "周联络", "role": "群众反馈联络"},
+        ]
+        player_name = str((player_profile or {}).get("name") or "玩家").strip() or "玩家"
+        player_identity = str((player_profile or {}).get("identity") or "战地新闻工作者").strip() or "战地新闻工作者"
+        cast_names = "/".join(c["name"] for c in cast)
+
+        all_summaries: List[Dict[str, str]] = []
+        for item in scenario_payload_sequence:
+            if not isinstance(item, dict):
+                continue
+            all_summaries.append(
+                {
+                    "id": str(item.get("id") or "").strip(),
+                    "title": str(item.get("title") or "").strip(),
+                    "brief": str(item.get("brief") or "").strip(),
+                    "mission": str(item.get("mission") or "").strip(),
+                }
+            )
+
+        system_message = (
+            "你是一个严谨的叙事内容填充器。只输出严格 JSON，不要输出任何解释、Markdown、代码块标记。"
+            "你的任务是为已有场景结构填充叙事内容，不得修改场景 ID 或标题。"
+        )
+
+        def _build_prompt(batch: List[Dict[str, str]]) -> str:
+            count = len(batch)
+            return (
+                f"为训练系统的场景序列填充叙事内容（独白、对话、承接摘要、选项台词）。\n\n"
+                f"【玩家信息】\n- 玩家名：{player_name}\n- 玩家身份：{player_identity}\n\n"
+                f"【固定角色（对话 speaker 只能来自这些名字或 旁白/玩家）】\n"
+                f"{json.dumps(cast, ensure_ascii=False)}\n\n"
+                f"【输入：场景序列（共 {count} 个场景）】\n"
+                f"{json.dumps(batch, ensure_ascii=False)}\n\n"
+                f"【填充要求】\n"
+                f"- 为每个场景填充：monologue（玩家内心独白）、dialogue（至少 6 句，speaker 只能是 旁白/玩家/{cast_names}）、"
+                f"bridge_summary（一句话承接）、options_narrative（3 个选项，key 为 opt-1/opt-2/opt-3）\n"
+                f"- 严禁修改 scenario_id（即输入中的 id 字段）和 title\n"
+                f"- 对话要包含事实核验、分层发布、来源保护、行动指引、编辑协同等训练主题\n\n"
+                f"【输出 JSON Schema】\n"
+                f'{{"narratives": {{"<scenario_id>": {{"monologue": "...", "dialogue": [{{"speaker": "...", "content": "..."}}], '
+                f'"bridge_summary": "...", "options_narrative": {{"opt-1": {{"option_id": "opt-1", "narrative_label": "...", "impact_hint": "..."}}, '
+                f'"opt-2": {{"option_id": "opt-2", "narrative_label": "...", "impact_hint": "..."}}, '
+                f'"opt-3": {{"option_id": "opt-3", "narrative_label": "...", "impact_hint": "..."}}}}}}}}}}\n\n'
+                f"【重要】必须是合法 JSON，narratives key 必须与输入 id 完全一致，必须覆盖全部 {count} 个场景。"
+            )
+
+        def _try_parse_narratives(raw_text: str) -> Dict[str, Any]:
+            parsed = json.loads(raw_text)
+            if not isinstance(parsed, dict) or "narratives" not in parsed:
+                raise ValueError("LLM output missing 'narratives' key")
+            narratives_raw = parsed["narratives"]
+            if not isinstance(narratives_raw, dict):
+                raise ValueError("'narratives' must be a dict")
+            validated: Dict[str, Any] = {}
+            for sid, nd in narratives_raw.items():
+                validated[sid] = ScriptNarrative.model_validate(nd).model_dump()
+            return validated
+
+        def _repair_batch_json(
+            raw_text: str, batch: List[Dict[str, str]], *, error: Exception
+        ) -> Optional[str]:
+            system_fix = "你是一个严格的 JSON 修复器。只输出合法 JSON，不要输出 Markdown 或解释。"
+            sid_list = json.dumps([s["id"] for s in batch], ensure_ascii=False)
+            fix_prompt = (
+                f"修复以下叙事填充输出，使其成为合法 JSON 并符合 schema。\n\n"
+                f"【场景 ID 列表（narratives key 必须与这些完全一致）】\n{sid_list}\n\n"
+                f"【失败原因】\n{str(error)}\n\n"
+                f"【需要修复的原始输出】\n{raw_text}"
+            )
+            return self.text_model_service.generate_text(
+                prompt=fix_prompt,
+                system_message=system_fix,
+                max_tokens=self.config.max_tokens,
+                temperature=0.0,
+                use_retry=True,
+            )
+
+        def _fallback_narrative(scenario: Dict[str, Any]) -> Dict[str, Any]:
+            title = str(scenario.get("title") or scenario.get("id") or "场景")
+            return ScriptNarrative(
+                monologue=f"我（{player_name}，{player_identity}）知道每一句话都可能改变局势：既要快，也要真，还要护住人。",
+                dialogue=[
+                    ScriptNarrativeLine(speaker="旁白", content=f"{title}的消息像风一样传开，你感到时间被挤压。"),
+                    ScriptNarrativeLine(speaker="玩家", content="先把可核实的最小事实集钉住，再谈扩写。"),
+                    ScriptNarrativeLine(speaker="陈编辑", content="标题边界要守住，证据链写清楚，更新机制要可执行。"),
+                    ScriptNarrativeLine(speaker="赵川", content="前线口径不一，我能再去补一条核验线索，但窗口很短。"),
+                    ScriptNarrativeLine(speaker="林岚", content="画面能证明一部分，但最敏感的细节要匿名化处理。"),
+                    ScriptNarrativeLine(speaker="周联络", content="群众反应在升温，需要风险提示和行动指引一起给到。"),
+                ],
+                bridge_summary="你把已核实与待核验分层归档，准备进入下一步。",
+                options_narrative={
+                    "opt-1": ScriptNarrativeOptionItem(
+                        option_id="opt-1",
+                        narrative_label="先发布已核实事实并标注待核验项",
+                        impact_hint="降低失真，保留更新空间",
+                    ),
+                    "opt-2": ScriptNarrativeOptionItem(
+                        option_id="opt-2",
+                        narrative_label="补强证据链后再发布，延迟但更稳",
+                        impact_hint="可信度更高，但可能错过窗口",
+                    ),
+                    "opt-3": ScriptNarrativeOptionItem(
+                        option_id="opt-3",
+                        narrative_label="先内部汇总并设定更新触发条件再对外",
+                        impact_hint="协同更顺，但传播更克制",
+                    ),
+                },
+            ).model_dump()
+
+        def _call_batch(batch: List[Dict[str, str]], batch_idx: int) -> Dict[str, Any]:
+            """Call LLM for one batch with up to 3 attempts (including repair). Raises on total failure."""
+            prompt = _build_prompt(batch)
+            last_error: Exception | None = None
+            for attempt in range(1, 4):
+                raw = self.text_model_service.generate_text(
+                    prompt=prompt,
+                    system_message=system_message,
+                    max_tokens=self.config.max_tokens,
+                    temperature=self.config.temperature if attempt == 1 else 0.35,
+                    use_retry=True,
+                )
+                if not raw:
+                    last_error = RuntimeError("LLM returned empty response")
+                    logger.warning(
+                        "_fill_by_llm: empty response: session_id=%s batch=%d attempt=%d",
+                        session_id, batch_idx, attempt,
+                    )
+                    continue
+                try:
+                    return _try_parse_narratives(raw)
+                except Exception as exc:
+                    last_error = exc
+                    logger.warning(
+                        "_fill_by_llm: parse failed: session_id=%s batch=%d attempt=%d error=%s",
+                        session_id, batch_idx, attempt, str(exc),
+                    )
+                    repaired = _repair_batch_json(raw, batch, error=exc)
+                    if repaired:
+                        try:
+                            result = _try_parse_narratives(repaired)
+                            logger.info(
+                                "_fill_by_llm: repaired: session_id=%s batch=%d attempt=%d",
+                                session_id, batch_idx, attempt,
+                            )
+                            return result
+                        except Exception as repair_exc:
+                            last_error = repair_exc
+                            logger.warning(
+                                "_fill_by_llm: repair failed: session_id=%s batch=%d attempt=%d error=%s",
+                                session_id, batch_idx, attempt, str(repair_exc),
+                            )
+            raise RuntimeError(
+                f"_fill_by_llm: batch {batch_idx} all attempts failed for session_id={session_id}"
+            ) from last_error
+
+        # Split into batches and collect results
+        batch_size = max(1, self.config.llm_batch_size)
+        batches = [all_summaries[i: i + batch_size] for i in range(0, len(all_summaries), batch_size)]
+        logger.info(
+            "_fill_by_llm: %d scenarios → %d batches (batch_size=%d): session_id=%s",
+            len(all_summaries), len(batches), batch_size, session_id,
+        )
+
+        validated_narratives: Dict[str, Any] = {}
+        for batch_idx, batch in enumerate(batches):
+            validated_narratives.update(_call_batch(batch, batch_idx))
+
+        # Merge: per-scenario fallback for any missing ids (Req 2.4, 8.4)
+        merged_narratives: Dict[str, Any] = {}
+        fallback_used = False
+        for scenario in scenario_payload_sequence:
+            if not isinstance(scenario, dict):
+                continue
+            sid = str(scenario.get("id") or "").strip()
+            if not sid:
+                continue
+            if sid in validated_narratives:
+                merged_narratives[sid] = validated_narratives[sid]
+            else:
+                logger.warning(
+                    "_fill_by_llm: scenario_id missing from LLM output, using fallback: "
+                    "session_id=%s scenario_id=%s",
+                    session_id, sid,
+                )
+                fallback_used = True
+                merged_narratives[sid] = _fallback_narrative(scenario)
+
+        return TrainingStoryScriptV2Payload(
+            cast=cast,
+            narratives={sid: ScriptNarrative.model_validate(v) for sid, v in merged_narratives.items()},
+            fallback_used=fallback_used,
+            generated_at=datetime.utcnow().isoformat(),
+        ).model_dump()
+
     def ensure_script_for_session(
         self,
         *,
@@ -177,7 +563,10 @@ class StoryScriptAgent:
         player_profile: Dict[str, Any] | None = None,
         allow_llm: bool = True,
     ) -> Dict[str, Any]:
-        """Return payload for this session, creating/cloning if needed."""
+        """Return payload for this session, creating/cloning if needed.
+
+        [DEPRECATED] 使用 fill_scenario_narratives 替代。兼容期内保留，不立即删除。
+        """
 
         existing = self.training_store.get_story_script_by_session_id(session_id)
         if existing is not None:
@@ -332,11 +721,12 @@ class StoryScriptAgent:
             for idx in range(required_major)
         ]
 
-        total_micro = max(0, (required_major - 1) * self.config.micro_scenes_per_gap)
+        total_micro = required_major * self.config.micro_scenes_per_gap
         total_scenes = required_major + total_micro
 
         system_message = (
             "你是一个严谨的剧本生成器。只输出严格 JSON，不要输出任何解释、Markdown、代码块标记。"
+            "小场景是大场景的情境延伸，不是大场景之间的过渡桥接。"
         )
         prompt = f"""
 为一个训练系统生成连续剧本（要求剧情严格连续、人物关系一致、事件因果连贯）。
@@ -354,7 +744,8 @@ class StoryScriptAgent:
 【结构要求】
 - 总场景数 = {total_scenes}
 - 大场景数 = {required_major}（scene_type=major，scene_id=major-1..major-{required_major}）
-- 每两个相邻大场景之间插入 {self.config.micro_scenes_per_gap} 个小场景（scene_type=micro，scene_id=micro-<majorIndex>-<k>）
+- 每个大场景之后紧跟 {self.config.micro_scenes_per_gap} 个小场景（scene_type=micro，scene_id=micro-<majorIndex>-<k>）
+- 小场景是大场景情境的延伸（extension），不是大场景之间的过渡（transition）
 - 每个 scene 必须包含：
   - title（标题）
   - monologue（独白，第一人称，体现玩家心理与伦理压力）
@@ -558,26 +949,142 @@ class StoryScriptAgent:
                 }
             )
 
-            if major_index < required_major:
-                for micro_k in range(1, micro_per_gap + 1):
-                    micro_title = f"{title}后的快讯窗口 {micro_k}"
-                    scenes.append(
-                        {
-                            "scene_id": f"micro-{major_index}-{micro_k}",
-                            "scene_type": "micro",
-                            "title": micro_title,
-                            "time_hint": "",
-                            "location_hint": location,
-                            "monologue": "我在心里反复确认：哪些能说，哪些必须留在内部核验链条里。",
-                            "dialogue": mk_dialogue(micro_title),
-                            "bridge_summary": "信息流被重新校准，你带着更清晰的边界回到主线。",
-                            "options": mk_options(),
-                        }
-                    )
+            for micro_k in range(1, micro_per_gap + 1):
+                micro_title = f"{title}后的快讯窗口 {micro_k}"
+                scenes.append(
+                    {
+                        "scene_id": f"micro-{major_index}-{micro_k}",
+                        "scene_type": "micro",
+                        "title": micro_title,
+                        "time_hint": "",
+                        "location_hint": location,
+                        "monologue": "我在心里反复确认：哪些能说，哪些必须留在内部核验链条里。",
+                        "dialogue": mk_dialogue(micro_title),
+                        "bridge_summary": "信息流被重新校准，你带着更清晰的边界回到主线。",
+                        "options": mk_options(),
+                    }
+                )
 
         return TrainingStoryScriptPayload(
             cast=cast,
             major_scenes=major_summaries,
             scenes=[StoryScriptScene.model_validate(item) for item in scenes],
         ).model_dump()
+
+    # ---------------------------------------------------------------------------
+    # v2 新方法：_fill_by_fallback（Requirements 1.7, 8.3）
+    # ---------------------------------------------------------------------------
+
+    def _fill_by_fallback(
+        self,
+        session_id: str,
+        scenario_payload_sequence: List[Dict[str, Any]],
+        player_profile: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Generate deterministic fallback narrative content for each scenario.
+
+        Requirements: 1.7, 8.3
+        """
+        logger.warning(
+            "_fill_by_fallback: using local fallback for all scenarios: session_id=%s scenario_count=%d",
+            session_id,
+            len(scenario_payload_sequence),
+        )
+
+        cast = [
+            {"name": "陈编辑", "role": "总编把关"},
+            {"name": "赵川", "role": "前线通讯员"},
+            {"name": "林岚", "role": "摄影记者"},
+            {"name": "老何", "role": "印刷与发布"},
+            {"name": "周联络", "role": "群众反馈联络"},
+        ]
+        player_name = str((player_profile or {}).get("name") or "玩家").strip() or "玩家"
+        player_identity = str((player_profile or {}).get("identity") or "战地新闻工作者").strip() or "战地新闻工作者"
+
+        def mk_dialogue(seed_title: str) -> List[ScriptNarrativeLine]:
+            return [
+                ScriptNarrativeLine(speaker="旁白", content=f"{seed_title}的消息像风一样传开，你感到时间被挤压。"),
+                ScriptNarrativeLine(speaker="玩家", content="先把可核实的最小事实集钉住，再谈扩写。"),
+                ScriptNarrativeLine(speaker="陈编辑", content="标题边界要守住，证据链写清楚，更新机制要可执行。"),
+                ScriptNarrativeLine(speaker="赵川", content="前线口径不一，我能再去补一条核验线索，但窗口很短。"),
+                ScriptNarrativeLine(speaker="林岚", content="画面能证明一部分，但最敏感的细节要匿名化处理。"),
+                ScriptNarrativeLine(speaker="周联络", content="群众反应在升温，需要风险提示和行动指引一起给到。"),
+            ]
+
+        def mk_options() -> Dict[str, ScriptNarrativeOptionItem]:
+            return {
+                "opt-1": ScriptNarrativeOptionItem(
+                    option_id="opt-1",
+                    narrative_label="先发布已核实事实并标注待核验项",
+                    impact_hint="降低失真，保留更新空间",
+                ),
+                "opt-2": ScriptNarrativeOptionItem(
+                    option_id="opt-2",
+                    narrative_label="补强证据链后再发布，延迟但更稳",
+                    impact_hint="可信度更高，但可能错过窗口",
+                ),
+                "opt-3": ScriptNarrativeOptionItem(
+                    option_id="opt-3",
+                    narrative_label="先内部汇总并设定更新触发条件再对外",
+                    impact_hint="协同更顺，但传播更克制",
+                ),
+            }
+
+        narratives: Dict[str, ScriptNarrative] = {}
+        for scenario in scenario_payload_sequence:
+            if not isinstance(scenario, dict):
+                continue
+            sid = str(scenario.get("id") or "").strip()
+            if not sid:
+                continue
+            title = str(scenario.get("title") or sid)
+            narratives[sid] = ScriptNarrative(
+                monologue=f"我（{player_name}，{player_identity}）知道每一句话都可能改变局势：既要快，也要真，还要护住人。",
+                dialogue=mk_dialogue(title),
+                bridge_summary="你把已核实与待核验分层归档，准备进入下一步。",
+                options_narrative=mk_options(),
+            )
+
+        return TrainingStoryScriptV2Payload(
+            cast=cast,
+            narratives=narratives,
+            fallback_used=True,
+            generated_at=datetime.utcnow().isoformat(),
+        ).model_dump()
+
+    # ---------------------------------------------------------------------------
+    # v2 新方法：_store_v2_payload（Requirements 3.4）
+    # ---------------------------------------------------------------------------
+
+    def _store_v2_payload(self, session_id: str, payload: Dict[str, Any]) -> None:
+        """Persist v2 payload to TrainingStoryScript table.
+
+        Requirements: 3.4
+        """
+        existing = self.training_store.get_story_script_by_session_id(session_id)
+        fallback_used = bool(payload.get("fallback_used", False))
+        if existing is not None:
+            self.training_store.update_story_script_by_session_id(
+                session_id,
+                {
+                    "payload": payload,
+                    "version": "training_story_script_v2",
+                    "status": "ready",
+                    "fallback_used": fallback_used,
+                },
+            )
+        else:
+            self.training_store.create_story_script(
+                session_id=session_id,
+                payload=payload,
+                provider=self.text_model_service.get_provider(),
+                model=self.text_model_service.get_model(),
+                major_scene_count=self.config.major_scene_count,
+                micro_scenes_per_gap=self.config.micro_scenes_per_gap,
+                source_script_id=None,
+                status="ready",
+                error_code=None,
+                error_message=None,
+                fallback_used=fallback_used,
+            )
 

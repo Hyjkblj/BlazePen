@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\output_assembler_policy.py
+# hypothesis_version: 6.151.11
+
+['candidate_pool', 'created_at', 'decision_context', 'event_type', 'evidence', 'focus_tags', 'guided', 'is_high_risk', 'observation_summary', 'payload', 'primary_risk_flag', 'primary_skill_code', 'risk_flags', 'round_no', 'scenario_id', 'scenario_title', 'selected_scenario_id', 'selection_source', 'skill_observations', 'state_observations', 'target_skills', 'timestamp', 'training_mode', 'weak_skills_before']

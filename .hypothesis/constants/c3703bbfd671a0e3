@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\models\story.py
+# hypothesis_version: 6.151.11
+
+[128, 'characters.id', 'free_text', 'in_progress', 'initialized', 'round_no', 'solo', 'story_rounds', 'story_sessions', 'story_snapshots', 'thread_id']

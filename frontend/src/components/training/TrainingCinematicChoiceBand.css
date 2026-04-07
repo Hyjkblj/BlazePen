@@ -393,3 +393,28 @@
     height: 144px;
   }
 }
+
+.training-cinematic-choice-band__option-narrative {
+  display: block;
+  max-width: 100%;
+  margin-top: 8px;
+  color: rgba(0, 0, 0, 0.56);
+  font-family: 'STSong', 'SimSun', 'Songti SC', serif;
+  font-size: 13px;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
+}
+
+.training-cinematic-choice-band__option:hover .training-cinematic-choice-band__option-narrative,
+.training-cinematic-choice-band__option:focus-visible .training-cinematic-choice-band__option-narrative,
+.training-cinematic-choice-band__option.is-active .training-cinematic-choice-band__option-narrative,
+.training-cinematic-choice-band__option.is-selected .training-cinematic-choice-band__option-narrative {
+  opacity: 1;
+  transform: translateY(0);
+}

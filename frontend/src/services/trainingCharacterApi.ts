@@ -25,8 +25,6 @@ export interface TrainingIdentityPresetOption {
   title: string;
   description: string;
   identity: string;
-  defaultName: string;
-  defaultGender: string;
 }
 
 export interface TrainingCharacterPreviewJobResult {
@@ -202,8 +200,6 @@ const normalizeTrainingIdentityPreset = (
     title: normalizeOptionalString(payload?.title) ?? code,
     description: normalizeOptionalString(payload?.description) ?? '',
     identity: normalizeOptionalString(payload?.identity) ?? '',
-    defaultName: normalizeOptionalString(payload?.default_name) ?? '',
-    defaultGender: normalizeOptionalString(payload?.default_gender) ?? '',
   };
 };
 

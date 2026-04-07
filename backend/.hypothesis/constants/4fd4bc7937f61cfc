@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\training\telemetry_policy.py
+# hypothesis_version: 6.151.11
+
+[0.0, 0.5, '+', 'branch_hints', 'candidate_pool', 'confidence', 'decision_context', 'ending_score', 'ending_type', 'evidence', 'focus_tags', 'from_phase', 'id', 'is_completed', 'is_high_risk', 'observation_summary', 'phase', 'phase_transition', 'primary_risk_flag', 'primary_skill_code', 'risk_flags', 'risk_tags', 'round_submitted', 'runtime_flags', 's_delta', 'scenario_count', 'scenario_id', 'scenario_title', 'score', 'selected_option', 'selected_scenario_id', 'selection_source', 'session_completed', 'session_initialized', 'skill_delta', 'skill_observations', 'state_observations', 'target_skills', 'title', 'to_phase', 'training_mode', 'type', 'weak_skills_before', '；']

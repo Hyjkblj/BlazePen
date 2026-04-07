@@ -19,12 +19,42 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+DEFAULT_MAJOR_SCENE_COUNT = 6
+DEFAULT_MICRO_SCENES_PER_GAP = 3
+
 
 class TrainingStoryScriptService:
     def __init__(self, *, training_store: Any, training_service: Any, story_script_executor: Any = None):
         self.training_store = training_store
         self.training_service = training_service
         self.story_script_executor = story_script_executor
+
+    def _resolve_story_script_scene_shape(self) -> tuple[int, int]:
+        """Resolve script metadata defaults from runtime policies with safe fallbacks."""
+        major_scene_count = DEFAULT_MAJOR_SCENE_COUNT
+        micro_scenes_per_gap = DEFAULT_MICRO_SCENES_PER_GAP
+
+        try:
+            runtime_config = getattr(self.training_service, "runtime_config", None)
+            scenario_config = getattr(runtime_config, "scenario", None)
+            default_sequence = getattr(scenario_config, "default_sequence", None)
+            if default_sequence is not None:
+                major_scene_count = max(1, int(len(default_sequence)))
+        except Exception:
+            major_scene_count = DEFAULT_MAJOR_SCENE_COUNT
+
+        try:
+            storyline_policy = getattr(self.training_service, "session_storyline_policy", None)
+            resolved_micro = int(
+                getattr(storyline_policy, "micro_scene_max", DEFAULT_MICRO_SCENES_PER_GAP)
+                or DEFAULT_MICRO_SCENES_PER_GAP
+            )
+            if resolved_micro > 0:
+                micro_scenes_per_gap = resolved_micro
+        except Exception:
+            micro_scenes_per_gap = DEFAULT_MICRO_SCENES_PER_GAP
+
+        return major_scene_count, micro_scenes_per_gap
 
     def get_story_script(self, session_id: str) -> Dict[str, Any]:
         session = self.training_store.get_training_session(session_id)
@@ -79,13 +109,14 @@ class TrainingStoryScriptService:
 
         # Phase: mark pending (observable state), then schedule background generation.
         # Store layer provides idempotency by unique(session_id).
+        major_scene_count, micro_scenes_per_gap = self._resolve_story_script_scene_shape()
         pending_row = self.training_store.create_story_script(
             session_id=session_id,
             payload={},
             provider="auto",
             model="auto",
-            major_scene_count=6,
-            micro_scenes_per_gap=2,
+            major_scene_count=major_scene_count,
+            micro_scenes_per_gap=micro_scenes_per_gap,
             source_script_id=None,
             status="pending",
             error_code=None,
@@ -122,8 +153,12 @@ class TrainingStoryScriptService:
             "source_script_id": getattr(row, "source_script_id", None),
             "provider": str(getattr(row, "provider", "") or "auto"),
             "model": str(getattr(row, "model", "") or "auto"),
-            "major_scene_count": int(getattr(row, "major_scene_count", 6) or 6),
-            "micro_scenes_per_gap": int(getattr(row, "micro_scenes_per_gap", 2) or 2),
+            "major_scene_count": int(
+                getattr(row, "major_scene_count", DEFAULT_MAJOR_SCENE_COUNT) or DEFAULT_MAJOR_SCENE_COUNT
+            ),
+            "micro_scenes_per_gap": int(
+                getattr(row, "micro_scenes_per_gap", DEFAULT_MICRO_SCENES_PER_GAP) or DEFAULT_MICRO_SCENES_PER_GAP
+            ),
             "status": normalized_status,
             "error_code": getattr(row, "error_code", None),
             "error_message": getattr(row, "error_message", None),

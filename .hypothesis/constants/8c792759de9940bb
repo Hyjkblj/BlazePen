@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\database\db_manager.py
+# hypothesis_version: 6.151.11
+
+[100, 'SELECT 1', 'duplicate key', 'round_no', 'school', 'session_id', 'training_rounds']

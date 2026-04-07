@@ -1,0 +1,4 @@
+# file: D:\Develop\Project\BlazePen\backend\api\services\training_story_script_service.py
+# hypothesis_version: 6.151.11
+
+['auto', 'created_at', 'default_sequence', 'ensure_story_script', 'error', 'error_code', 'error_message', 'failed', 'fallback_used', 'major_scene_count', 'micro_scene_max', 'micro_scenes_per_gap', 'model', 'operation', 'payload', 'pending', 'provider', 'ready', 'running', 'runtime_config', 'scenario', 'script_id', 'session_id', 'source_script_id', 'status', 'succeeded', 'success', 'updated_at']

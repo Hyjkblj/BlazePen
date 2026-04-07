@@ -67,6 +67,7 @@ class TrainingRoundTransitionPolicy:
         s_before: Dict[str, float],
         recent_risk_rounds: List[List[str]] | None,
         scenario_payload: Dict[str, Any] | None,
+        recent_history: List[Dict[str, Any]] | None = None,
     ) -> TrainingRoundTransitionArtifacts:
         """构建单回合推进后需要落库和回包的核心工件。"""
         user_action = self.runtime_artifact_policy.build_round_user_action(
@@ -82,6 +83,7 @@ class TrainingRoundTransitionPolicy:
                 round_no=round_no,
                 k_before=k_before,
                 s_before=s_before,
+                recent_history=recent_history,
             )
         ).to_dict()
 

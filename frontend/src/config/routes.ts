@@ -10,6 +10,7 @@ export const ROUTES = {
   TRAINING_MAINHOME: '/training/mainhome',
   TRAINING_LANDING: '/training/landing',
   TRAINING_CINEMATIC_DEMO: '/training/cinematic-demo',
+  TRAINING_COMPLETION: '/training/completion',
   TRAINING_PROGRESS: '/training/progress',
   TRAINING_REPORT: '/training/report',
   TRAINING_DIAGNOSTICS: '/training/diagnostics',
@@ -40,6 +41,9 @@ const buildTrainingReadRoute = (basePath: string, sessionId?: string | null): st
 
 export const buildTrainingProgressRoute = (sessionId?: string | null): string =>
   buildTrainingReadRoute(ROUTES.TRAINING_PROGRESS, sessionId);
+
+export const buildTrainingCompletionRoute = (sessionId?: string | null): string =>
+  buildTrainingReadRoute(ROUTES.TRAINING_COMPLETION, sessionId);
 
 export const buildTrainingReportRoute = (sessionId?: string | null): string =>
   buildTrainingReadRoute(ROUTES.TRAINING_REPORT, sessionId);

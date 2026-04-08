@@ -8,6 +8,7 @@ const Training = lazy(() => import('@/pages/Training'));
 const TrainingMainHomePage = lazy(() => import('@/pages/TrainingMainHomePage'));
 const TrainingLandingPage = lazy(() => import('@/pages/TrainingLandingPage'));
 const TrainingCinematicDemoPage = lazy(() => import('@/pages/TrainingCinematicDemoPage'));
+const TrainingCompletion = lazy(() => import('@/pages/TrainingCompletion'));
 const TrainingProgress = lazy(() => import('@/pages/TrainingProgress'));
 const TrainingReport = lazy(() => import('@/pages/TrainingReport'));
 const TrainingDiagnostics = lazy(() => import('@/pages/TrainingDiagnostics'));
@@ -31,6 +32,10 @@ const routes = [
       {
         path: 'training/cinematic-demo',
         element: renderLazyPage(TrainingCinematicDemoPage, 'training-cinematic-demo'),
+      },
+      {
+        path: 'training/completion',
+        element: renderLazyPage(TrainingCompletion, 'training-completion'),
       },
       {
         path: 'training/progress',

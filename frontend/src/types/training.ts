@@ -478,6 +478,8 @@ export interface ScriptNarrative {
   dialogue: ScriptNarrativeLine[];
   bridge_summary: string;
   options_narrative: Record<string, ScriptNarrativeOptionItem>;
+  visual_prompt: string;
+  visual_elements: string[];
 }
 
 // ---------------------------------------------------------------------------

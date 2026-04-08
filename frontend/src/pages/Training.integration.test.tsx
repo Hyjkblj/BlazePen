@@ -14,6 +14,7 @@ import {
 import { ServiceError } from '@/services/serviceError';
 import TrainingDiagnostics from '@/pages/TrainingDiagnostics';
 import Training from '@/pages/Training';
+import TrainingCompletion from '@/pages/TrainingCompletion';
 import TrainingMainHomePage from '@/pages/TrainingMainHomePage';
 import TrainingLandingPage from '@/pages/TrainingLandingPage';
 import TrainingProgress from '@/pages/TrainingProgress';
@@ -152,6 +153,7 @@ const renderRouterApp = (
         <MemoryRouter initialEntries={[pathname]}>
           <Routes>
             <Route path={ROUTES.TRAINING} element={<Training />} />
+            <Route path={ROUTES.TRAINING_COMPLETION} element={<TrainingCompletion />} />
             <Route path={ROUTES.TRAINING_MAINHOME} element={<TrainingMainHomePage />} />
             <Route path={ROUTES.TRAINING_LANDING} element={<TrainingLandingPage />} />
             <Route path={ROUTES.TRAINING_PROGRESS} element={<TrainingProgress />} />
@@ -1109,4 +1111,3 @@ describe('Training route integration', () => {
     });
   });
 });
-

@@ -77,6 +77,8 @@ class ScriptNarrative(BaseModel):
     dialogue: List[ScriptNarrativeLine]
     bridge_summary: str
     options_narrative: Dict[str, ScriptNarrativeOptionItem]
+    visual_prompt: str = ""
+    visual_elements: List[str] = Field(default_factory=list)
 
 
 class TrainingStoryScriptV2Payload(BaseModel):
@@ -85,6 +87,35 @@ class TrainingStoryScriptV2Payload(BaseModel):
     narratives: Dict[str, ScriptNarrative] = Field(default_factory=dict)
     fallback_used: bool = False
     generated_at: str = ""
+
+
+def _normalize_visual_elements(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    normalized: List[str] = []
+    for item in value:
+        text = str(item or "").strip()
+        if text:
+            normalized.append(text)
+    return normalized
+
+
+def _build_fallback_visual_prompt(scenario: Dict[str, Any]) -> str:
+    """Build deterministic visual prompt from scenario metadata.
+
+    Requirement references:
+    - 2.3, 2.4: missing visual_prompt should have deterministic fallback
+    - P4: same payload should produce stable fallback output
+    """
+    title = str(scenario.get("title") or scenario.get("id") or "").strip()
+    era_date = str(scenario.get("era_date") or scenario.get("eraDate") or "").strip()
+    location = str(scenario.get("location") or "").strip()
+    brief = str(scenario.get("brief") or "").strip()
+
+    parts = [p for p in [era_date, location, title] if p]
+    base = "、".join(parts) if parts else (title or "训练场景")
+    visual_description = f"{base}。{brief[:60]}" if brief else base
+    return f"{visual_description}。视觉风格：纪实新闻叙事，环境细节真实，无人物特写。"
 
 
 def _legacy_match_scene(payload: Dict[str, Any], scenario_id: str) -> Dict[str, Any]:
@@ -177,9 +208,19 @@ def resolve_narrative_for_scenario(payload: Dict[str, Any], scenario_id: str) ->
             return {}
         version = payload.get("version") or "training_story_script_v1"
         if version == "training_story_script_v2":
-            return dict(payload.get("narratives", {}).get(scenario_id) or {})
+            narrative = dict(payload.get("narratives", {}).get(scenario_id) or {})
+            if not narrative:
+                return {}
+            narrative["visual_prompt"] = str(narrative.get("visual_prompt") or "").strip()
+            narrative["visual_elements"] = _normalize_visual_elements(narrative.get("visual_elements"))
+            return narrative
         # v1 或无 version
-        return _legacy_match_scene(payload, scenario_id)
+        narrative = _legacy_match_scene(payload, scenario_id)
+        if not narrative:
+            return {}
+        narrative["visual_prompt"] = str(narrative.get("visual_prompt") or "").strip()
+        narrative["visual_elements"] = _normalize_visual_elements(narrative.get("visual_elements"))
+        return narrative
     except Exception:
         return {}
 
@@ -396,14 +437,17 @@ class StoryScriptAgent:
                 f"{json.dumps(batch, ensure_ascii=False)}\n\n"
                 f"【填充要求】\n"
                 f"- 为每个场景填充：monologue（玩家内心独白）、dialogue（至少 6 句，speaker 只能是 旁白/玩家/{cast_names}）、"
-                f"bridge_summary（一句话承接）、options_narrative（3 个选项，key 为 opt-1/opt-2/opt-3）\n"
+                f"bridge_summary（一句话承接）、options_narrative（3 个选项，key 为 opt-1/opt-2/opt-3）、"
+                f"visual_prompt（视觉描述，20-60 字，描述环境/氛围/构图，不包含心理活动）、"
+                f"visual_elements（3-5 个关键视觉元素，字符串列表）\n"
                 f"- 严禁修改 scenario_id（即输入中的 id 字段）和 title\n"
                 f"- 对话要包含事实核验、分层发布、来源保护、行动指引、编辑协同等训练主题\n\n"
                 f"【输出 JSON Schema】\n"
                 f'{{"narratives": {{"<scenario_id>": {{"monologue": "...", "dialogue": [{{"speaker": "...", "content": "..."}}], '
                 f'"bridge_summary": "...", "options_narrative": {{"opt-1": {{"option_id": "opt-1", "narrative_label": "...", "impact_hint": "..."}}, '
                 f'"opt-2": {{"option_id": "opt-2", "narrative_label": "...", "impact_hint": "..."}}, '
-                f'"opt-3": {{"option_id": "opt-3", "narrative_label": "...", "impact_hint": "..."}}}}}}}}}}\n\n'
+                f'"opt-3": {{"option_id": "opt-3", "narrative_label": "...", "impact_hint": "..."}}}}, '
+                f'"visual_prompt": "...", "visual_elements": ["元素1", "元素2", "元素3"]}}}}\n\n'
                 f"【重要】必须是合法 JSON，narratives key 必须与输入 id 完全一致，必须覆盖全部 {count} 个场景。"
             )
 
@@ -468,6 +512,8 @@ class StoryScriptAgent:
                         impact_hint="协同更顺，但传播更克制",
                     ),
                 },
+                visual_prompt=_build_fallback_visual_prompt(scenario),
+                visual_elements=[],
             ).model_dump()
 
         def _call_batch(batch: List[Dict[str, str]], batch_idx: int) -> Dict[str, Any]:
@@ -537,8 +583,9 @@ class StoryScriptAgent:
             sid = str(scenario.get("id") or "").strip()
             if not sid:
                 continue
+            narrative: Dict[str, Any]
             if sid in validated_narratives:
-                merged_narratives[sid] = validated_narratives[sid]
+                narrative = dict(validated_narratives[sid] or {})
             else:
                 logger.warning(
                     "_fill_by_llm: scenario_id missing from LLM output, using fallback: "
@@ -546,7 +593,12 @@ class StoryScriptAgent:
                     session_id, sid,
                 )
                 fallback_used = True
-                merged_narratives[sid] = _fallback_narrative(scenario)
+                narrative = _fallback_narrative(scenario)
+
+            if not str(narrative.get("visual_prompt") or "").strip():
+                narrative["visual_prompt"] = _build_fallback_visual_prompt(scenario)
+            narrative["visual_elements"] = _normalize_visual_elements(narrative.get("visual_elements"))
+            merged_narratives[sid] = narrative
 
         return TrainingStoryScriptV2Payload(
             cast=cast,
@@ -1043,6 +1095,8 @@ class StoryScriptAgent:
                 dialogue=mk_dialogue(title),
                 bridge_summary="你把已核实与待核验分层归档，准备进入下一步。",
                 options_narrative=mk_options(),
+                visual_prompt=_build_fallback_visual_prompt(scenario),
+                visual_elements=[],
             )
 
         return TrainingStoryScriptV2Payload(
@@ -1087,4 +1141,3 @@ class StoryScriptAgent:
                 error_message=None,
                 fallback_used=fallback_used,
             )
-

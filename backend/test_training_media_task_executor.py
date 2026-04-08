@@ -59,6 +59,7 @@ class _FakeImageService:
     def __init__(self):
         self.character_calls = 0
         self.scene_calls = 0
+        self.last_character_prompt = None
 
     def generate_character_image(
         self,
@@ -71,6 +72,7 @@ class _FakeImageService:
         group_count=3,
     ):
         self.character_calls += 1
+        self.last_character_prompt = prompt
         return [f"/static/images/characters/test_{self.character_calls}.png"]
 
     def generate_scene_image(self, *, scene_data, scene_id=None, user_id=None):
@@ -296,6 +298,42 @@ class TrainingMediaTaskExecutorTestCase(unittest.TestCase):
         self.assertNotIn("small_scene_urls", result)
         self.assertEqual(image_service.character_calls, 1)
         self.assertEqual(image_service.scene_calls, 0)
+
+    def test_image_task_should_prefer_visual_prompt_when_both_prompts_exist(self):
+        image_service = _FakeImageService()
+        dispatcher = TrainingMediaTaskProviderDispatcher(image_service=image_service)
+
+        result = dispatcher.execute_task(
+            task_type="image",
+            payload={
+                "prompt": "legacy fallback prompt",
+                "visual_prompt": "battlefield ruins, dim sky, distant firelight",
+                "image_type": "scene",
+            },
+        )
+
+        self.assertIn("image_urls", result)
+        self.assertEqual(image_service.last_character_prompt, "battlefield ruins, dim sky, distant firelight")
+
+    def test_image_task_should_fallback_to_default_scene_prompt_when_prompt_missing(self):
+        image_service = _FakeImageService()
+        dispatcher = TrainingMediaTaskProviderDispatcher(image_service=image_service)
+
+        result = dispatcher.execute_task(
+            task_type="image",
+            payload={
+                "image_type": "scene",
+                "scenario_title": "前线街头采访",
+                "brief": "局势紧张，街区内存在不明交火声。",
+                "mission": "在保护线人的前提下完成事实核验。",
+                "decision_focus": "核实目击者口径并控制传播风险",
+            },
+        )
+
+        self.assertIn("image_urls", result)
+        self.assertTrue(image_service.last_character_prompt)
+        self.assertIn("前线街头采访", image_service.last_character_prompt)
+        self.assertIn("任务：在保护线人的前提下完成事实核验。", image_service.last_character_prompt)
 
     def test_scene_series_should_require_explicit_flag_and_scene_image_type(self):
         image_service = _FakeImageService()

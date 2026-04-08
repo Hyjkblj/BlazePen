@@ -3,7 +3,11 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServiceError } from '@/services/serviceError';
-import { createTrainingMediaTask, getTrainingMediaTask } from '@/services/trainingApi';
+import {
+  buildTrainingSceneImageMediaTaskCreateParams,
+  createTrainingMediaTask,
+  getTrainingMediaTask,
+} from '@/services/trainingApi';
 import { useTrainingSceneImageFlow } from './useTrainingSceneImageFlow';
 
 vi.mock('@/services/trainingApi', () => ({
@@ -114,5 +118,50 @@ describe('useTrainingSceneImageFlow', () => {
     // Ensure we did not spin a second create attempt after adopting.
     expect(createTrainingMediaTask).toHaveBeenCalledTimes(1);
   });
-});
 
+  it('passes narrative visual_prompt into scene image task params when available', async () => {
+    vi.mocked(createTrainingMediaTask).mockResolvedValueOnce({
+      taskId: 'task-visual-1',
+      sessionId: 'session-2',
+      roundNo: 1,
+      taskType: 'image',
+      status: 'succeeded',
+      idempotencyKey: 'training-scene-image:session-2:scenario-2:attempt:0',
+      request: {},
+      result: { preview_url: '/static/images/training/scenes/visual.png' },
+      error: null,
+      createdAt: '2026-03-25T12:00:00Z',
+      updatedAt: '2026-03-25T12:00:01Z',
+      startedAt: null,
+      finishedAt: null,
+    } as any);
+
+    const sessionView = createSessionView('session-2', 'scenario-2');
+    const storyScriptPayload = {
+      version: 'training_story_script_v2',
+      narratives: {
+        'scenario-2': {
+          monologue: '独白',
+          dialogue: [],
+          bridge_summary: '',
+          options_narrative: {},
+          visual_prompt: '战地街道，烟雾弥漫，远处火光，记者隐蔽观察',
+          visual_elements: ['战地街道', '烟雾', '远处火光'],
+        },
+      },
+    };
+
+    renderHook(() => useTrainingSceneImageFlow(sessionView, storyScriptPayload));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(buildTrainingSceneImageMediaTaskCreateParams).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'session-2',
+        visualPrompt: '战地街道，烟雾弥漫，远处火光，记者隐蔽观察',
+      })
+    );
+  });
+});

@@ -321,10 +321,13 @@ export const buildTrainingSceneImageMediaTaskCreateParams = (options: {
   attemptNo?: number;
   generateStorylineSeries?: boolean;
   characterId?: number;
+  visualPrompt?: string | null;
 }): TrainingMediaTaskCreateParams => {
   const attemptNo = Math.max(0, Math.floor(options.attemptNo ?? 0));
   const idempotencyKey = `training-scene-image:${options.sessionId}:${options.scenario.id}:attempt:${attemptNo}`;
-  const prompt = buildTrainingSceneImagePrompt(options.scenario);
+  const fallbackPrompt = buildTrainingSceneImagePrompt(options.scenario);
+  const visualPrompt = options.visualPrompt?.trim() ?? '';
+  const prompt = visualPrompt || fallbackPrompt;
 
   const payload: Record<string, unknown> = {
     session_id: options.sessionId,
@@ -333,7 +336,8 @@ export const buildTrainingSceneImageMediaTaskCreateParams = (options: {
     scenario_title: options.scenario.title,
     major_scene_title: options.scenario.title,
     prompt,
-    scenario_prompt: prompt,
+    scenario_prompt: fallbackPrompt,
+    visual_prompt: visualPrompt,
     brief: options.scenario.brief,
     mission: options.scenario.mission,
     decision_focus: options.scenario.decisionFocus,

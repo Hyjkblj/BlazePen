@@ -3,6 +3,7 @@ import { useTrainingCompletionReportFlow } from '@/hooks/useTrainingCompletionRe
 import { useTrainingRoundRunner } from '@/hooks/useTrainingRoundRunner';
 import { useTrainingSceneImageFlow } from '@/hooks/useTrainingSceneImageFlow';
 import { useTrainingSessionBootstrap } from '@/hooks/useTrainingSessionBootstrap';
+import { useStoryScriptPayload } from '@/hooks/useStoryScriptPayload';
 import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
 import {
   buildTrainingSceneImageMediaTaskCreateParams,
@@ -142,13 +143,14 @@ export function useTrainingMvpFlow(
     activeSession: bootstrap.activeSession,
     resumeTarget: bootstrap.resumeTarget,
   });
+  const { payload: storyScriptPayload } = useStoryScriptPayload(sessionView?.sessionId);
   const {
     sceneImageStatus,
     sceneImageUrl,
     sceneImageErrorMessage,
     retrySceneImage,
     resetSceneImageFlow,
-  } = useTrainingSceneImageFlow(sessionView);
+  } = useTrainingSceneImageFlow(sessionView, storyScriptPayload);
   const {
     completionReportStatus,
     completionReport,
@@ -604,6 +606,34 @@ export function useTrainingMvpFlow(
 
     if (transition.nextScenarioResult) {
       setPendingNextScenario(transition.nextScenarioResult);
+
+      // Prefetch the next scene image immediately while the consequence/bridge
+      // narrative animation plays (~3-5s). The idempotency key guarantees the
+      // same task is reused when useTrainingSceneImageFlow later creates it.
+      const nextScenario = transition.nextScenarioResult.scenario;
+      const prefetchSessionId = sessionView.sessionId;
+      const prefetchCharacterId = sessionView.characterId
+        ? Number.parseInt(sessionView.characterId, 10)
+        : undefined;
+      const prefetchRoundNo = Math.max((transition.nextScenarioResult.roundNo ?? 0) + 1, 1);
+      if (nextScenario && prefetchSessionId) {
+        void createTrainingMediaTask(
+          buildTrainingSceneImageMediaTaskCreateParams({
+            sessionId: prefetchSessionId,
+            roundNo: prefetchRoundNo,
+            scenario: nextScenario,
+            attemptNo: 0,
+            generateStorylineSeries: false,
+            ...(prefetchCharacterId && Number.isInteger(prefetchCharacterId) && prefetchCharacterId > 0
+              ? { characterId: prefetchCharacterId }
+              : {}),
+          })
+        ).catch(() => {
+          // Prefetch is best-effort; errors are silently ignored.
+          // useTrainingSceneImageFlow will retry when the scene becomes active.
+        });
+      }
+
       return;
     }
 
@@ -675,6 +705,7 @@ export function useTrainingMvpFlow(
     retrySceneImage,
     clearWorkspace,
     sessionView,
+    storyScriptPayload,
     insightSessionId: sessionViewModel.currentSessionId,
     latestOutcome,
     pendingNextScenario,

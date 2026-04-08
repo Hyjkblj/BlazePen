@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import SceneTransition from '@/components/SceneTransition';
 import StaticAssetImage from '@/components/StaticAssetImage';
 import NarrativeConsequenceView from '@/components/training/NarrativeConsequenceView';
 import ProgressBadge from '@/components/training/ProgressBadge';
 import TrainingCinematicChoiceBand from '@/components/training/TrainingCinematicChoiceBand';
-import { buildTrainingReportRoute, ROUTES } from '@/config/routes';
+import { buildTrainingCompletionRoute, ROUTES } from '@/config/routes';
 import { useTrainingMvpFlow } from '@/flows/useTrainingMvpFlow';
 import { useNarrativePhaseEngine } from '@/hooks/useNarrativePhaseEngine';
 import { useTrainingMajorSceneTransition } from '@/hooks/useTrainingMajorSceneTransition';
 import { normalizeTrainingSessionId } from '@/hooks/useTrainingSessionReadTarget';
 import { useSceneFadeTransition } from '@/hooks/useSceneFadeTransition';
-import { useStoryScriptPayload } from '@/hooks/useStoryScriptPayload';
 import { useTypewriter } from '@/hooks/useTypewriter';
 import { getStaticAssetContractWarning } from '@/services/assetUrl';
 import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
@@ -21,72 +20,6 @@ import './Training.css';
 /** 场景图 URL 就绪后延迟再展示独白/选项，给大图解码与绘制留出时间 */
 const POST_SCENE_IMAGE_UI_DELAY_MS = 0;
 const AUTO_REVEAL_CHOICES_IDLE_MS = 20000;
-
-const readEndingNarrativeText = (ending: Record<string, unknown> | null | undefined): string | null => {
-  if (!ending || typeof ending !== 'object') return null;
-
-  const directCandidates = ['ending_text', 'endingText', 'description', 'explanation', 'title'] as const;
-  for (const key of directCandidates) {
-    const value = ending[key];
-    if (typeof value === 'string' && value.trim() !== '') {
-      return value.trim();
-    }
-  }
-
-  const nestedCandidates = ['article', 'story', 'narrative'] as const;
-  for (const key of nestedCandidates) {
-    const value = ending[key];
-    if (!value || typeof value !== 'object') continue;
-    const record = value as Record<string, unknown>;
-    for (const subKey of ['text', 'content', 'summary', 'description'] as const) {
-      const subValue = record[subKey];
-      if (typeof subValue === 'string' && subValue.trim() !== '') {
-        return subValue.trim();
-      }
-    }
-  }
-
-  return null;
-};
-
-const resolveEndingTypeLabel = (ending: Record<string, unknown> | null | undefined): string | null => {
-  if (!ending || typeof ending !== 'object') return null;
-  const raw = ending.type ?? ending.ending_type;
-  if (typeof raw === 'string' && raw.trim() !== '') return raw.trim();
-  if (typeof raw === 'number' && Number.isFinite(raw)) return String(raw);
-  return null;
-};
-
-const sanitizeCompletionNarrativeText = (text: string): string => {
-  return text
-    .split('\n')
-    .filter((line) => {
-      const trimmed = line.trim();
-      if (!trimmed) return true;
-      return !/^综合能力评分/.test(trimmed) && !/^综合加权分/.test(trimmed);
-    })
-    .join('\n')
-    .trim();
-};
-
-const buildEndingFallbackNarrative = (endingType: string | null): string => {
-  const normalizedType = (endingType ?? '').toLowerCase();
-  let lead = '任务暂告一段落。你在高压信息环境下完成了取舍与发布，后续影响仍在持续扩散。';
-
-  if (normalizedType.includes('excellent') || normalizedType.includes('卓越')) {
-    lead = '你在保护线索人物与公共利益之间取得了稳健平衡，报道克制且可信。';
-  } else if (normalizedType.includes('recovery') || normalizedType.includes('修复')) {
-    lead = '你在不利局面下及时修正策略，降低了扩散风险并守住了关键底线。';
-  } else if (normalizedType.includes('steady') || normalizedType.includes('稳健')) {
-    lead = '你维持了稳定推进，信息发布节奏与风险控制保持在可接受区间。';
-  } else if (normalizedType.includes('costly') || normalizedType.includes('代价')) {
-    lead = '你完成了核心目标，但关键节点的代价偏高，后续影响仍需持续跟进。';
-  } else if (normalizedType.includes('fail') || normalizedType.includes('失败')) {
-    lead = '关键节点处理出现失衡，线索保护与信息发布目标都受到明显冲击。';
-  }
-
-  return `${lead}\n\n点击下方“查看可视化评估报告”，查看完整能力雷达与回合轨迹。`;
-};
 
 const buildScenePlaceholderText = ({
   hasSession,
@@ -129,7 +62,6 @@ function Training() {
     sceneImageStatus,
     sceneImageUrl,
     sceneImageErrorMessage,
-    completionReport,
     selectedOptionId,
     submitOption,
     pendingNextScenario,
@@ -194,7 +126,7 @@ function Training() {
   // ---------------------------------------------------------------------------
   // Task 7.1: Story script payload + narrative phase engine
   // ---------------------------------------------------------------------------
-  const { payload: storyScriptPayload } = useStoryScriptPayload(sessionView?.sessionId);
+  const storyScriptPayload = flow.storyScriptPayload;
 
   // Fallback narration text (brief + mission) used when ScriptNarrative is unavailable
   const fallbackNarrationText = useMemo(() => {
@@ -331,49 +263,19 @@ function Training() {
     return () => window.clearTimeout(timer);
   }, [legacyTypewriterDone, choiceStage]);
 
-  const completionEndingPayload = useMemo<Record<string, unknown> | null>(() => {
-    if (completionReport?.ending && typeof completionReport.ending === 'object') {
-      return completionReport.ending;
-    }
-    if (flow.latestOutcome?.ending && typeof flow.latestOutcome.ending === 'object') {
-      return flow.latestOutcome.ending;
-    }
-    return null;
-  }, [completionReport?.ending, flow.latestOutcome?.ending]);
-
-  const completionStoryText = useMemo(() => {
-    if (!showCompletionNotice) return '';
-
-    const endingText = readEndingNarrativeText(completionEndingPayload);
-    const endingType = resolveEndingTypeLabel(completionEndingPayload);
-
-    if (endingText) {
-      const sanitizedEndingText = sanitizeCompletionNarrativeText(endingText);
-      if (sanitizedEndingText) {
-        if (endingType && !sanitizedEndingText.includes(endingType)) {
-          return `[${endingType}]\n${sanitizedEndingText}`;
-        }
-        return sanitizedEndingText;
-      }
-    }
-
-    return buildEndingFallbackNarrative(endingType);
-  }, [completionEndingPayload, showCompletionNotice]);
-
-  const {
-    displayedText: completionStoryDisplayedText,
-    isDone: completionStoryDone,
-  } = useTypewriter(showCompletionNotice ? completionStoryText : '', {
-    charIntervalMs: 28,
-    autoStart: showCompletionNotice,
-  });
-
   // Progress info for ProgressBadge (Task 7.6)
   const roundNo = sessionView?.roundNo ?? null;
   const totalRounds = sessionView?.totalRounds ?? null;
 
   if (!sessionView && !hasInsightEntry) {
     return <Navigate to={hasResumeTarget ? ROUTES.TRAINING_LANDING : ROUTES.TRAINING_MAINHOME} replace />;
+  }
+
+  if (showCompletionNotice) {
+    if (sessionView?.sessionId) {
+      return <Navigate to={buildTrainingCompletionRoute(sessionView.sessionId)} replace />;
+    }
+    return <Navigate to={ROUTES.TRAINING_MAINHOME} replace />;
   }
 
   return (
@@ -541,16 +443,6 @@ function Training() {
               ) : null}
             </div>
           ) : null}
-          {showCompletionNotice && completionStoryText ? (
-            <div className="training-simplified__completion-story" aria-live="polite">
-              <p className="training-simplified__completion-story-text">
-                {completionStoryDisplayedText}
-                {!completionStoryDone ? (
-                  <span className="training-simplified__narration-cursor" aria-hidden="true" />
-                ) : null}
-              </p>
-            </div>
-          ) : null}
         </div>
 
         <div className="training-simplified__feedback-stack">
@@ -606,22 +498,11 @@ function Training() {
           ) : null}
         </div>
 
-        {showCompletionNotice ? (
-          sessionView?.sessionId ? (
-            <Link
-              className="training-simplified__report-link"
-              to={buildTrainingReportRoute(sessionView.sessionId)}
-            >
-              查看可视化评估报告
-            </Link>
-          ) : null
-        ) : (
-          <div className="training-simplified__options">
-            {options.length > 0 ? null : (
-              <div className="training-simplified__empty-options">当前场景暂无可选项</div>
-            )}
-          </div>
-        )}
+        <div className="training-simplified__options">
+          {options.length > 0 ? null : (
+            <div className="training-simplified__empty-options">当前场景暂无可选项</div>
+          )}
+        </div>
       </section>
     </div>
   );

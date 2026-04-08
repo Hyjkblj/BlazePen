@@ -7,8 +7,8 @@ import {
   createTrainingMediaTask,
   getTrainingMediaTask,
 } from '@/services/trainingApi';
-import type { TrainingMediaTaskStatus, TrainingScenario } from '@/types/training';
-import { normalizeTrainingMediaTaskView } from '@/utils/trainingSession';
+import type { TrainingMediaTaskStatus } from '@/types/training';
+import { normalizeTrainingMediaTaskView, resolveNarrativeForScenario } from '@/utils/trainingSession';
 
 type SceneImageStatus = TrainingMediaTaskStatus | 'idle';
 type SceneImageAttemptState = {
@@ -76,7 +76,8 @@ export interface UseTrainingSceneImageFlowResult {
 }
 
 export function useTrainingSceneImageFlow(
-  sessionView: TrainingSessionViewState | null
+  sessionView: TrainingSessionViewState | null,
+  storyScriptPayload?: unknown
 ): UseTrainingSceneImageFlowResult {
   const [sceneImageTaskId, setSceneImageTaskId] = useState<string | null>(null);
   const [sceneImageStatus, setSceneImageStatus] = useState<SceneImageStatus>('idle');
@@ -119,6 +120,19 @@ export function useTrainingSceneImageFlow(
     }
     return `${sceneImageContext.sessionId}:${sceneImageContext.scenarioId}`;
   }, [sceneImageContext]);
+
+  const visualPrompt = useMemo(() => {
+    if (!storyScriptPayload || !sceneImageContext?.scenarioId) {
+      return null;
+    }
+    try {
+      const narrative = resolveNarrativeForScenario(storyScriptPayload, sceneImageContext.scenarioId);
+      const prompt = String(narrative?.visual_prompt ?? '').trim();
+      return prompt || null;
+    } catch {
+      return null;
+    }
+  }, [sceneImageContext?.scenarioId, storyScriptPayload]);
 
   const sceneImageAttemptNo = useMemo(() => {
     if (!sceneLifecycleKey) {
@@ -207,6 +221,7 @@ export function useTrainingSceneImageFlow(
             attemptNo: sceneImageAttemptNo,
             // Default: do not force storyline-series generation from the hook.
             generateStorylineSeries: false,
+            visualPrompt,
           })
         );
 
@@ -314,7 +329,7 @@ export function useTrainingSceneImageFlow(
         lastSceneImageRequestKeyRef.current = null;
       }
     };
-  }, [sceneImageAttemptNo, sceneImageContext, sceneLifecycleKey]);
+  }, [sceneImageAttemptNo, sceneImageContext, sceneLifecycleKey, visualPrompt]);
 
   useEffect(() => {
     if (

@@ -14,6 +14,8 @@
 
 .training-mainhome__title {
   position: relative;
+  top: 0;
+  left: 0;
   isolation: isolate;
   display: inline-block;
   margin: 0;
@@ -72,8 +74,10 @@
 }
 
 .training-mainhome__entry-lines {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  top: 0;
+  left: 0;
+  display: block;
   width: 115%;
   height: 100%;
   transform: translateX(-5%);

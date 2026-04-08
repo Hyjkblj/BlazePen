@@ -1347,6 +1347,11 @@ const normalizeScriptNarrative = (record: Record<string, unknown>): ScriptNarrat
         .map(normalizeScriptNarrativeLine)
         .filter((item): item is NonNullable<typeof item> => item !== null)
     : [];
+  const visual_elements = Array.isArray(record.visual_elements)
+    ? record.visual_elements
+        .map((item) => normalizeOptionalString(item))
+        .filter((item): item is string => Boolean(item))
+    : [];
 
   const rawOptionsNarrative = asRecord(record.options_narrative) ?? {};
   const options_narrative: ScriptNarrative['options_narrative'] = {};
@@ -1362,5 +1367,7 @@ const normalizeScriptNarrative = (record: Record<string, unknown>): ScriptNarrat
     dialogue,
     bridge_summary: normalizeOptionalString(record.bridge_summary) ?? '',
     options_narrative,
+    visual_prompt: normalizeOptionalString(record.visual_prompt) ?? '',
+    visual_elements,
   };
 };

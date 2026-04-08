@@ -72,6 +72,10 @@ vi.mock('@/hooks/useTrainingRoundRunner', () => ({
   useTrainingRoundRunner: () => hookMocks.roundRunner,
 }));
 
+vi.mock('@/hooks/useStoryScriptPayload', () => ({
+  useStoryScriptPayload: () => ({ payload: null, status: 'idle' }),
+}));
+
 vi.mock('@/hooks/useTrainingSessionViewModel', () => ({
   useTrainingSessionViewModel: () => hookMocks.sessionViewModel,
   ...sessionViewBuilders,

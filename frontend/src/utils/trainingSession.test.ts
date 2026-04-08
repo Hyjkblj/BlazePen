@@ -681,6 +681,8 @@ describe('resolveNarrativeForScenario', () => {
         options_narrative: {
           'opt-1': { option_id: 'opt-1', narrative_label: '选项一', impact_hint: '影响提示' },
         },
+        visual_prompt: '战争废墟中的街道，昏暗天空，远处火光',
+        visual_elements: ['废墟街道', '昏暗天空', '远处火光'],
       },
     },
   };
@@ -704,18 +706,42 @@ describe('resolveNarrativeForScenario', () => {
     expect(result?.dialogue).toEqual([{ speaker: '记者', content: '你好' }]);
     expect(result?.bridge_summary).toBe('承接摘要');
     expect(result?.options_narrative['opt-1']).toMatchObject({ narrative_label: '选项一' });
+    expect(result?.visual_prompt).toBe('战争废墟中的街道，昏暗天空，远处火光');
+    expect(result?.visual_elements).toEqual(['废墟街道', '昏暗天空', '远处火光']);
   });
 
   it('falls back to scenes[].scene_id lookup for v1 payload (Requirements 6.2)', () => {
     const result = resolveNarrativeForScenario(v1Payload, 'major-1');
     expect(result).not.toBeNull();
     expect(result?.monologue).toBe('v1 独白');
+    expect(result?.visual_prompt).toBe('');
+    expect(result?.visual_elements).toEqual([]);
   });
 
   it('matches v1 scene by prefix for micro scenarios (Requirements 6.2)', () => {
     const result = resolveNarrativeForScenario(v1Payload, 'major-1_micro_1_1_suffix');
     expect(result).not.toBeNull();
     expect(result?.monologue).toBe('v1 独白');
+    expect(result?.visual_prompt).toBe('');
+    expect(result?.visual_elements).toEqual([]);
+  });
+
+  it('returns empty visual_prompt when v2 narrative field is missing (Requirements 4.2)', () => {
+    const payload = {
+      version: 'training_story_script_v2',
+      narratives: {
+        'major-2': {
+          monologue: '独白内容',
+          dialogue: [],
+          bridge_summary: '',
+          options_narrative: {},
+        },
+      },
+    };
+    const result = resolveNarrativeForScenario(payload, 'major-2');
+    expect(result).not.toBeNull();
+    expect(result?.visual_prompt).toBe('');
+    expect(result?.visual_elements).toEqual([]);
   });
 
   it('returns null when scenarioId is not found in v2 payload (Requirements 6.4)', () => {

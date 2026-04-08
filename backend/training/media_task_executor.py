@@ -137,7 +137,18 @@ class TrainingMediaTaskProviderDispatcher:
         if self._should_generate_scene_series(payload):
             return self._execute_scene_series_task(payload)
 
-        prompt = str(payload.get("prompt") or "").strip()
+        major_scene_title = (
+            self._optional_str(payload.get("major_scene_title"))
+            or self._optional_str(payload.get("scenario_title"))
+            or "场景"
+        )
+        prompt = (
+            self._optional_str(payload.get("visual_prompt"))
+            or self._optional_str(payload.get("prompt"))
+            or self._optional_str(payload.get("scenario_prompt"))
+            or self._build_default_scene_prompt(payload, major_scene_title=major_scene_title)
+            or ""
+        )
         if not prompt:
             raise TrainingMediaTaskExecutionFailedError(
                 task_type="image",

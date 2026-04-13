@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import SceneTransition from '@/components/SceneTransition';
 import StaticAssetImage from '@/components/StaticAssetImage';
 import NarrativeConsequenceView from '@/components/training/NarrativeConsequenceView';
-import ProgressBadge from '@/components/training/ProgressBadge';
 import TrainingCinematicChoiceBand from '@/components/training/TrainingCinematicChoiceBand';
 import { buildTrainingCompletionRoute, ROUTES } from '@/config/routes';
 import { useTrainingMvpFlow } from '@/flows/useTrainingMvpFlow';
@@ -14,12 +13,70 @@ import { useSceneFadeTransition } from '@/hooks/useSceneFadeTransition';
 import { useTypewriter } from '@/hooks/useTypewriter';
 import { getStaticAssetContractWarning } from '@/services/assetUrl';
 import { trackFrontendTelemetry } from '@/services/frontendTelemetry';
+import { filterTrainingNarrationText } from '@/utils/trainingNarrationFilter';
 import { resolveNarrativeForScenario } from '@/utils/trainingSession';
 import './Training.css';
 
 /** 场景图 URL 就绪后延迟再展示独白/选项，给大图解码与绘制留出时间 */
 const POST_SCENE_IMAGE_UI_DELAY_MS = 0;
 const AUTO_REVEAL_CHOICES_IDLE_MS = 20000;
+const IMPACT_POPUP_DURATION_MS = 5000;
+const IMPACT_DELTA_EPSILON = 0.0001;
+
+const TRAINING_K_SKILL_LABELS: Record<string, string> = {
+  K1: '事实核验',
+  K2: '来源可信评估',
+  K3: '时效-准确平衡',
+  K4: '风险沟通表达',
+  K5: '伦理与安全边界',
+  K6: '反谣与纠偏',
+  K7: '公共行动指引',
+  K8: '沟通闭环管理',
+};
+
+const TRAINING_S_STATE_LABELS: Record<string, string> = {
+  credibility: '公信力',
+  accuracy: '报道准确性',
+  public_panic: '公众恐慌度',
+  source_safety: '线人与来源安全',
+  editor_trust: '编辑部信任',
+  actionability: '行动指引有效性',
+};
+
+const resolveTrainingMetricLabel = (code: string): string => {
+  const normalizedCode = String(code ?? '').trim();
+  if (!normalizedCode) return '指标';
+  return TRAINING_K_SKILL_LABELS[normalizedCode] ?? TRAINING_S_STATE_LABELS[normalizedCode] ?? normalizedCode;
+};
+
+const formatSignedDelta = (value: number): string => {
+  const normalized = Number.isFinite(value) ? value : 0;
+  const fixed = Math.abs(normalized).toFixed(2);
+  return `${normalized >= 0 ? '+' : '-'}${fixed}`;
+};
+
+const buildRoundImpactText = (
+  evaluation: { skillDelta: Record<string, number>; stateDelta: Record<string, number> } | null | undefined
+): string | null => {
+  if (!evaluation) return null;
+
+  const metricChanges = [
+    ...Object.entries(evaluation.skillDelta ?? {}).map(([code, delta]) => ({ code, delta: Number(delta) })),
+    ...Object.entries(evaluation.stateDelta ?? {}).map(([code, delta]) => ({ code, delta: Number(delta) })),
+  ]
+    .filter((item) => Number.isFinite(item.delta))
+    .filter((item) => Math.abs(item.delta) > IMPACT_DELTA_EPSILON)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, 3);
+
+  if (metricChanges.length === 0) {
+    return '本轮评估：暂无显著 K/S 波动，总部正在持续监测态势。';
+  }
+
+  return `本轮评估：${metricChanges
+    .map((item) => `${resolveTrainingMetricLabel(item.code)}${item.delta > 0 ? '增加' : '减少'}（${formatSignedDelta(item.delta)}）`)
+    .join('，')}`;
+};
 
 const buildScenePlaceholderText = ({
   hasSession,
@@ -37,7 +94,7 @@ const buildScenePlaceholderText = ({
     return '会话未就绪...';
   }
   if (sceneImageStatus === 'pending' || sceneImageStatus === 'running') {
-    return '加载中..';
+    return '';
   }
   return '';
 };
@@ -71,6 +128,7 @@ function Training() {
   const hasInsightEntry = flow.insightSessionId !== null;
   const hasSession = Boolean(sessionView);
   const currentScenario = sessionView?.currentScenario ?? null;
+  const latestOutcome = flow.latestOutcome;
   const { isFadingOut, isFadingIn } = useSceneFadeTransition(currentScenario?.id ?? null);
   const {
     showMajorTransition,
@@ -86,9 +144,13 @@ function Training() {
   const isSubmitting = roundStatus === 'submitting';
   const optionDisabled = !hasSession || isSubmitting || Boolean(sessionView?.isCompleted);
   const showCompletionNotice = Boolean(sessionView?.isCompleted);
-  const showLoadingMask = isSubmitting || bootstrapStatus === 'restoring';
+  const waitingInProgress =
+    isSubmitting ||
+    bootstrapStatus === 'restoring' ||
+    pendingNextScenario !== null ||
+    sceneImageStatus === 'pending' ||
+    sceneImageStatus === 'running';
   const placeholderText = buildScenePlaceholderText({ hasSession, bootstrapStatus, sceneImageStatus });
-  const isSceneImageLoading = sceneImageStatus === 'pending' || sceneImageStatus === 'running';
   const hasSceneImageWarning = !sceneImageUrl && sceneImageStatus === 'failed';
   const [sceneAssetFailed, setSceneAssetFailed] = useState(false);
   const [sceneAssetLoaded, setSceneAssetLoaded] = useState(false);
@@ -100,6 +162,11 @@ function Training() {
     [normalizedSceneImageUrl]
   );
   const showChoiceBand = !showCompletionNotice && options.length > 0;
+  const [topImpactMessage, setTopImpactMessage] = useState<string | null>(null);
+  const lastImpactRoundKeyRef = useRef<string | null>(null);
+  const showTopStatusPopup = hasSession && !showCompletionNotice && (Boolean(topImpactMessage) || waitingInProgress);
+  const topStatusLabel = topImpactMessage ? '本轮影响' : '报社信息栏';
+  const topStatusMainText = topImpactMessage ?? '正在将情报送回总部，等待总部发布新任务';
   // 独白/选项只在场景图真正渲染完成后出现，避免文字先于画面闪出。
   const canRevealNarrationAndChoices = showChoiceBand && sceneAssetLoaded;
   const [postImageUiReady, setPostImageUiReady] = useState(false);
@@ -133,8 +200,25 @@ function Training() {
     if (!currentScenario) return '';
     const brief = String(currentScenario.brief ?? '').trim();
     const mission = String(currentScenario.mission ?? '').trim();
-    if (brief && mission) return `${brief}\n\n任务：${mission}`;
-    return brief || mission || '';
+    const rawNarrationText = brief && mission ? `${brief}\n\n任务：${mission}` : brief || mission || '';
+    return filterTrainingNarrationText(rawNarrationText);
+  }, [currentScenario]);
+
+  const choiceTaskPreviewText = useMemo(() => {
+    if (!currentScenario) return '';
+    const brief = filterTrainingNarrationText(String(currentScenario.brief ?? '').trim());
+    const missionRaw = String(currentScenario.mission ?? '')
+      .trim()
+      .replace(/^任务[:：]\s*/, '');
+    const mission = filterTrainingNarrationText(missionRaw);
+    const segments: string[] = [];
+    if (brief) {
+      segments.push(brief);
+    }
+    if (mission) {
+      segments.push(`任务：${mission}`);
+    }
+    return segments.join('\n\n').trim();
   }, [currentScenario]);
 
   const handlePhaseComplete = useCallback(() => {
@@ -146,7 +230,7 @@ function Training() {
   const phaseEngine = useNarrativePhaseEngine({
     scenario: currentScenario,
     storyScriptPayload,
-    latestOutcome: flow.latestOutcome,
+    latestOutcome,
     onPhaseComplete: handlePhaseComplete,
   });
 
@@ -159,14 +243,37 @@ function Training() {
     commitPendingNextScenario();
   }, [commitPendingNextScenario, currentPhase, pendingNextScenario]);
 
+  useEffect(() => {
+    if (!latestOutcome || !sessionView?.sessionId || showCompletionNotice) return;
+    const roundNo = Number(latestOutcome.roundNo);
+    if (!Number.isFinite(roundNo)) return;
+
+    const roundKey = `${sessionView.sessionId}:${roundNo}`;
+    if (lastImpactRoundKeyRef.current === roundKey) return;
+    lastImpactRoundKeyRef.current = roundKey;
+
+    const impactMessage = buildRoundImpactText(latestOutcome.evaluation);
+    if (!impactMessage) return;
+
+    setTopImpactMessage(impactMessage);
+    const timer = window.setTimeout(() => {
+      setTopImpactMessage((current) => (current === impactMessage ? null : current));
+    }, IMPACT_POPUP_DURATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [latestOutcome, sessionView?.sessionId, showCompletionNotice]);
+
   // ---------------------------------------------------------------------------
   // Task 7.2: Phase 1 (monologue) typewriter
   // ---------------------------------------------------------------------------
   const isMonologuePhase = currentPhase === 'monologue';
-  const currentMonologueSegment =
+  const currentMonologueRawSegment =
     isMonologuePhase && phaseState.monologueSegments.length > 0
       ? (phaseState.monologueSegments[phaseState.currentSegmentIndex] ?? '')
       : '';
+  const currentMonologueSegment = useMemo(
+    () => filterTrainingNarrationText(currentMonologueRawSegment),
+    [currentMonologueRawSegment]
+  );
 
   const typewriterActive = isMonologuePhase && showChoiceOverlay && currentMonologueSegment !== '';
   const {
@@ -178,7 +285,7 @@ function Training() {
     autoStart: typewriterActive,
   });
 
-  // Click on monologue: if typewriter in progress → complete segment; if done → advance to next segment/phase
+  // Click on monologue: if typewriter in progress 鈫?complete segment; if done 鈫?advance to next segment/phase
   const handleMonologueClick = () => {
     if (!typewriterDone) {
       skipTypewriter();
@@ -186,6 +293,33 @@ function Training() {
       phaseAdvance();
     }
   };
+
+  useEffect(() => {
+    if (!showChoiceOverlay || currentPhase !== 'monologue') return;
+    if (!currentMonologueRawSegment) return;
+    if (currentMonologueSegment !== '') return;
+    phaseAdvance();
+  }, [showChoiceOverlay, currentPhase, currentMonologueRawSegment, currentMonologueSegment, phaseAdvance]);
+
+  const currentDialogueLine =
+    currentPhase === 'dialogue' ? (phaseState.dialogueLines[phaseState.currentDialogueIndex] ?? null) : null;
+  const currentDialogueSpeaker = currentDialogueLine?.speaker ?? '';
+  const currentDialogueContent = useMemo(
+    () => filterTrainingNarrationText(currentDialogueLine?.content ?? ''),
+    [currentDialogueLine?.content]
+  );
+
+  useEffect(() => {
+    if (!showChoiceOverlay || currentPhase !== 'dialogue') return;
+    if (!currentDialogueLine) return;
+    if (currentDialogueContent !== '') return;
+    phaseAdvance();
+  }, [showChoiceOverlay, currentPhase, currentDialogueLine, currentDialogueContent, phaseAdvance]);
+
+  const filteredDecisionPrompt = useMemo(
+    () => filterTrainingNarrationText(phaseState.decisionPrompt),
+    [phaseState.decisionPrompt]
+  );
 
   // ---------------------------------------------------------------------------
   // Task 7.3: Phase 4 narrative labels from options_narrative
@@ -226,6 +360,7 @@ function Training() {
   const [choiceStage, setChoiceStage] = useState<'narration' | 'choices'>(() =>
     narrationText ? 'narration' : 'choices'
   );
+  const [showChoiceTaskPreview, setShowChoiceTaskPreview] = useState(false);
 
   // Legacy typewriter for fallback narration path
   const legacyTypewriterActive = engineStartedAtChoice && choiceStage === 'narration' && showChoiceOverlay;
@@ -263,9 +398,16 @@ function Training() {
     return () => window.clearTimeout(timer);
   }, [legacyTypewriterDone, choiceStage]);
 
-  // Progress info for ProgressBadge (Task 7.6)
-  const roundNo = sessionView?.roundNo ?? null;
-  const totalRounds = sessionView?.totalRounds ?? null;
+  useEffect(() => {
+    setShowChoiceTaskPreview(false);
+  }, [currentScenario?.id, currentPhase]);
+
+  const handleSelectOption = useCallback(
+    (optionId: string) => {
+      void submitOption(optionId);
+    },
+    [submitOption]
+  );
 
   if (!sessionView && !hasInsightEntry) {
     return <Navigate to={hasResumeTarget ? ROUTES.TRAINING_LANDING : ROUTES.TRAINING_MAINHOME} replace />;
@@ -280,6 +422,17 @@ function Training() {
 
   return (
     <div className="training-page training-page--simplified">
+      {showTopStatusPopup ? (
+        <div className="training-simplified__top-status" role="status" aria-live="polite">
+          <span className="training-simplified__top-status-label">{topStatusLabel}</span>
+          <span className="training-simplified__top-status-body">
+            <span className="training-simplified__top-status-dot" aria-hidden="true" />
+            <span className="training-simplified__top-status-texts">
+              <span className="training-simplified__top-status-main">{topStatusMainText}</span>
+            </span>
+          </span>
+        </div>
+      ) : null}
       {showMajorTransition && !showCompletionNotice ? (
         <SceneTransition
           sceneName={majorTransitionTitle}
@@ -288,12 +441,6 @@ function Training() {
           bridgeSummary={phaseState.bridgeSummary || null}
           onComplete={dismissMajorTransition}
         />
-      ) : null}
-      {/* Task 7.6: ProgressBadge */}
-      {roundNo != null && !showCompletionNotice ? (
-        <div className="training-simplified__progress-badge-wrapper">
-          <ProgressBadge roundNo={roundNo} totalRounds={totalRounds} />
-        </div>
       ) : null}
       <section className="training-simplified" aria-live="polite">
         <div className={[
@@ -305,12 +452,9 @@ function Training() {
             imageUrl={sceneImageUrl}
             alt={currentScenario?.title ? `${currentScenario.title} 场景图` : '训练场景图'}
             imageClassName="training-simplified__scene-image"
-            placeholderClassName={
-              isSceneImageLoading
-                ? 'training-simplified__scene-placeholder training-simplified__scene-placeholder--loading'
-                : 'training-simplified__scene-placeholder'
-            }
+            placeholderClassName="training-simplified__scene-placeholder"
             placeholder={placeholderText}
+            preservePreviousImageWhileLoading
             onLoad={() => {
               setSceneAssetLoaded(true);
             }}
@@ -329,7 +473,6 @@ function Training() {
               });
             }}
           />
-          {showLoadingMask ? <div className="training-simplified__scene-mask">训练流程处理中...</div> : null}
           {showChoiceOverlay ? (
             <div className="training-simplified__choice-overlay">
               {/* Task 7.2: Phase 1 — monologue typewriter */}
@@ -354,7 +497,7 @@ function Training() {
               ) : null}
 
               {/* Task 7.2: Phase 2 — dialogue line-by-line */}
-              {currentPhase === 'dialogue' && phaseState.dialogueLines.length > 0 ? (
+              {currentPhase === 'dialogue' && currentDialogueLine && currentDialogueContent ? (
                 <button
                   type="button"
                   className="training-simplified__narration training-narrative-phase"
@@ -362,10 +505,10 @@ function Training() {
                   disabled={optionDisabled}
                 >
                   <span className="training-simplified__narration-label training-narrative-phase__label">
-                    {phaseState.dialogueLines[phaseState.currentDialogueIndex]?.speaker ?? ''}
+                    {currentDialogueSpeaker}
                   </span>
                   <span className="training-simplified__narration-text training-narrative-phase__dialogue-line">
-                    {phaseState.dialogueLines[phaseState.currentDialogueIndex]?.content ?? ''}
+                    {currentDialogueContent}
                   </span>
                   <span className="training-simplified__narration-hint">点击继续</span>
                 </button>
@@ -380,22 +523,41 @@ function Training() {
                   disabled={optionDisabled}
                 >
                   <span className="training-simplified__narration-text training-narrative-phase__decision-prompt">
-                    {phaseState.decisionPrompt}
+                    {filteredDecisionPrompt || '点击继续'}
                   </span>
                 </button>
               ) : null}
 
               {/* Phase 4 — choices (with narrative labels from Task 7.3) */}
               {currentPhase === 'choice' && !engineStartedAtChoice ? (
-                <TrainingCinematicChoiceBand
-                  options={options}
-                  selectedOptionId={selectedOptionId}
-                  disabled={optionDisabled}
-                  narrativeLabels={narrativeLabels}
-                  onSelectOption={(optionId) => {
-                    void submitOption(optionId);
-                  }}
-                />
+                showChoiceTaskPreview && choiceTaskPreviewText ? (
+                  <button
+                    type="button"
+                    className="training-simplified__narration training-narrative-phase"
+                    onClick={() => setShowChoiceTaskPreview(false)}
+                    disabled={optionDisabled}
+                  >
+                    <span className="training-simplified__narration-label training-narrative-phase__label">
+                      任务说明
+                    </span>
+                    <span className="training-simplified__narration-text training-narrative-phase__segment">
+                      {choiceTaskPreviewText}
+                    </span>
+                    <span className="training-simplified__narration-hint">点击返回选项</span>
+                  </button>
+                ) : (
+                  <TrainingCinematicChoiceBand
+                    options={options}
+                    selectedOptionId={selectedOptionId}
+                    disabled={optionDisabled}
+                    narrativeLabels={narrativeLabels}
+                    onViewTask={
+                      choiceTaskPreviewText ? () => setShowChoiceTaskPreview(true) : undefined
+                    }
+                    viewTaskLabel="查看任务"
+                    onSelectOption={handleSelectOption}
+                  />
+                )
               ) : null}
 
               {/* Task 7.4: Phase 5 — consequence narrative */}
@@ -429,15 +591,34 @@ function Training() {
                     </button>
                   ) : null}
                   {choiceStage === 'choices' ? (
-                    <TrainingCinematicChoiceBand
-                      options={options}
-                      selectedOptionId={selectedOptionId}
-                      disabled={optionDisabled}
-                      narrativeLabels={narrativeLabels}
-                      onSelectOption={(optionId) => {
-                        void submitOption(optionId);
-                      }}
-                    />
+                    showChoiceTaskPreview && choiceTaskPreviewText ? (
+                      <button
+                        type="button"
+                        className="training-simplified__narration training-narrative-phase"
+                        onClick={() => setShowChoiceTaskPreview(false)}
+                        disabled={optionDisabled}
+                      >
+                        <span className="training-simplified__narration-label training-narrative-phase__label">
+                          任务说明
+                        </span>
+                        <span className="training-simplified__narration-text training-narrative-phase__segment">
+                          {choiceTaskPreviewText}
+                        </span>
+                        <span className="training-simplified__narration-hint">点击返回选项</span>
+                      </button>
+                    ) : (
+                      <TrainingCinematicChoiceBand
+                        options={options}
+                        selectedOptionId={selectedOptionId}
+                        disabled={optionDisabled}
+                        narrativeLabels={narrativeLabels}
+                        onViewTask={
+                          choiceTaskPreviewText ? () => setShowChoiceTaskPreview(true) : undefined
+                        }
+                        viewTaskLabel="查看任务"
+                        onSelectOption={handleSelectOption}
+                      />
+                    )
                   ) : null}
                 </>
               ) : null}
@@ -509,3 +690,5 @@ function Training() {
 }
 
 export default Training;
+
+

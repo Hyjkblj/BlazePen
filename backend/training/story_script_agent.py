@@ -115,7 +115,7 @@ def _build_fallback_visual_prompt(scenario: Dict[str, Any]) -> str:
     parts = [p for p in [era_date, location, title] if p]
     base = "、".join(parts) if parts else (title or "训练场景")
     visual_description = f"{base}。{brief[:60]}" if brief else base
-    return f"{visual_description}。视觉风格：纪实新闻叙事，环境细节真实，无人物特写。"
+    return f"{visual_description}。视觉风格：纪实新闻叙事，环境细节真实，无人物特写，画面中不得出现任何文字、标题或字幕。"
 
 
 def _legacy_match_scene(payload: Dict[str, Any], scenario_id: str) -> Dict[str, Any]:
@@ -438,7 +438,7 @@ class StoryScriptAgent:
                 f"【填充要求】\n"
                 f"- 为每个场景填充：monologue（玩家内心独白）、dialogue（至少 6 句，speaker 只能是 旁白/玩家/{cast_names}）、"
                 f"bridge_summary（一句话承接）、options_narrative（3 个选项，key 为 opt-1/opt-2/opt-3）、"
-                f"visual_prompt（视觉描述，20-60 字，描述环境/氛围/构图，不包含心理活动）、"
+                f"visual_prompt（视觉描述，20-60 字，描述环境/氛围/构图，不包含心理活动，画面中不得出现任何文字/标题/字幕）、"
                 f"visual_elements（3-5 个关键视觉元素，字符串列表）\n"
                 f"- 严禁修改 scenario_id（即输入中的 id 字段）和 title\n"
                 f"- 对话要包含事实核验、分层发布、来源保护、行动指引、编辑协同等训练主题\n\n"

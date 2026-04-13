@@ -1,0 +1,6 @@
+.training-codename-reveal-page {
+  position: relative;
+  min-height: 100vh;
+  background: #000;
+  overflow: hidden;
+}

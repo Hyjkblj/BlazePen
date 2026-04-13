@@ -6,6 +6,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ROUTES } from '@/config/routes';
 import { FeedbackProvider, TrainingFlowProvider } from '@/contexts';
 import Training from './Training';
+import TrainingCinematicDemoPage from './TrainingCinematicDemoPage';
+import TrainingCodenameRevealPage from './TrainingCodenameRevealPage';
+import TrainingNewsroomIntroPage from './TrainingNewsroomIntroPage';
 import TrainingMainHomePage from './TrainingMainHomePage';
 import TrainingLandingPage from './TrainingLandingPage';
 
@@ -132,6 +135,18 @@ const renderTrainingSmokePage = () =>
             <Route path={ROUTES.TRAINING} element={<Training />} />
             <Route path={ROUTES.TRAINING_MAINHOME} element={<TrainingMainHomePage />} />
             <Route path={ROUTES.TRAINING_LANDING} element={<TrainingLandingPage />} />
+            <Route
+              path={ROUTES.TRAINING_CODENAME_REVEAL}
+              element={<TrainingCodenameRevealPage />}
+            />
+            <Route
+              path={ROUTES.TRAINING_NEWSROOM_INTRO}
+              element={<TrainingNewsroomIntroPage />}
+            />
+            <Route
+              path={ROUTES.TRAINING_CINEMATIC_DEMO}
+              element={<TrainingCinematicDemoPage />}
+            />
           </Routes>
         </TrainingFlowProvider>
       </FeedbackProvider>
@@ -327,6 +342,35 @@ describe('training main path smoke baseline', () => {
     const confirmButton = document.querySelector<HTMLButtonElement>('.training-landing__confirm');
     expect(confirmButton).toBeTruthy();
     fireEvent.click(confirmButton!);
+
+    await waitFor(() => {
+      const codenameReveal = document.querySelector<HTMLElement>('.training-codename-reveal');
+      expect(codenameReveal).toBeTruthy();
+    });
+    const codenameReveal = document.querySelector<HTMLElement>('.training-codename-reveal');
+    expect(codenameReveal).toBeTruthy();
+    fireEvent.click(codenameReveal!);
+
+    await waitFor(() => {
+      const newsroomIntro = document.querySelector<HTMLElement>('.training-newsroom-intro');
+      expect(newsroomIntro).toBeTruthy();
+    });
+    const newsroomIntro = document.querySelector<HTMLElement>('.training-newsroom-intro');
+    expect(newsroomIntro).toBeTruthy();
+    fireEvent.click(newsroomIntro!);
+
+    await waitFor(() => {
+      expect(screen.getByText('点击任意位置播放开场视频')).toBeTruthy();
+    });
+    fireEvent.click(newsroomIntro!);
+
+    await waitFor(() => {
+      const introVideo = document.querySelector<HTMLVideoElement>('.training-cinematic-video__video');
+      expect(introVideo).toBeTruthy();
+    });
+    const introVideo = document.querySelector<HTMLVideoElement>('.training-cinematic-video__video');
+    expect(introVideo).toBeTruthy();
+    fireEvent.ended(introVideo!);
 
     const initialSceneImage = await screen.findByRole('img', {
       name: /Initial Briefing/,

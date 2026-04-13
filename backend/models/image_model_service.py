@@ -60,7 +60,11 @@ class ImageModelService:
     def _auto_detect_provider(self) -> str:
         """自动检测可用的提供商"""
         # 优先检查火山引擎
-        if REQUESTS_AVAILABLE and config.VOLCENGINE_ARK_API_KEY and config.VOLCENGINE_ARK_API_KEY.strip():
+        if (
+            REQUESTS_AVAILABLE
+            and config.VOLCENGINE_IMAGE_ARK_API_KEY
+            and config.VOLCENGINE_IMAGE_ARK_API_KEY.strip()
+        ):
             return 'volcengine'
         # 其次检查DashScope
         if DASHSCOPE_AVAILABLE and config.DASHSCOPE_API_KEY:
@@ -73,9 +77,13 @@ class ImageModelService:
             logger.warning("requests未安装，火山引擎生图功能不可用")
             return
         
-        volcengine_key = config.VOLCENGINE_ARK_API_KEY.strip() if config.VOLCENGINE_ARK_API_KEY else ''
+        volcengine_key = (
+            config.VOLCENGINE_IMAGE_ARK_API_KEY.strip()
+            if config.VOLCENGINE_IMAGE_ARK_API_KEY
+            else ''
+        )
         if not volcengine_key:
-            logger.warning("未配置VOLCENGINE_ARK_API_KEY，火山引擎生图功能不可用")
+            logger.warning("未配置VOLCENGINE_IMAGE_ARK_API_KEY，火山引擎生图功能不可用")
             return
         
         # 构建API端点
@@ -158,7 +166,7 @@ class ImageModelService:
     ) -> Optional[str]:
         """使用火山引擎生成图片"""
         headers = {
-            "Authorization": f"Bearer {config.VOLCENGINE_ARK_API_KEY}",
+            "Authorization": f"Bearer {config.VOLCENGINE_IMAGE_ARK_API_KEY}",
             "Content-Type": "application/json"
         }
         

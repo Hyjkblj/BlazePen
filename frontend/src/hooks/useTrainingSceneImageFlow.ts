@@ -19,7 +19,7 @@ type SceneImageAttemptState = {
 // Treat `unknown` as active so new backend statuses still get polled.
 const ACTIVE_SCENE_IMAGE_STATUSES = new Set<TrainingMediaTaskStatus>(['pending', 'running', 'unknown']);
 const FINAL_SCENE_IMAGE_STATUSES = new Set<TrainingMediaTaskStatus>(['succeeded', 'failed', 'timeout']);
-const SCENE_IMAGE_POLL_INTERVAL_MS = 3000;
+const SCENE_IMAGE_POLL_INTERVAL_MS = 800;
 
 const buildSceneImageIdempotencyKey = (sessionId: string, scenarioId: string): string =>
   `training-scene-image:${sessionId}:${scenarioId}`;

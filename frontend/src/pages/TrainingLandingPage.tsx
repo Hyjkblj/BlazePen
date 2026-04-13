@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import TrainingLanding from '@/components/training/TrainingLanding';
 import { ROUTES } from '@/config/routes';
@@ -8,6 +9,7 @@ import { normalizeTrainingSessionId } from '@/hooks/useTrainingSessionReadTarget
 function TrainingLandingPage() {
   useTrainingLobbyBgm();
   const navigate = useNavigate();
+  const startTrainingFromLandingRef = useRef(false);
   const [searchParams] = useSearchParams();
   const explicitSessionId = normalizeTrainingSessionId(searchParams.get('sessionId'));
   const flow = useTrainingMvpFlow(explicitSessionId, { suppressAutoRestoreSessionView: true });
@@ -24,7 +26,7 @@ function TrainingLandingPage() {
     canStartTraining,
   } = flow;
 
-  if (sessionView) {
+  if (sessionView && !startTrainingFromLandingRef.current) {
     return <Navigate to={ROUTES.TRAINING} replace />;
   }
 
@@ -45,11 +47,22 @@ function TrainingLandingPage() {
       onRetryRestore={() => {
         void retryRestore();
       }}
-      onStartTraining={async () => {
-        const started = await startTraining();
-        if (started) {
-          navigate(ROUTES.TRAINING);
+      onStartTraining={async ({ codename }) => {
+        startTrainingFromLandingRef.current = true;
+        try {
+          const started = await startTraining();
+          if (!started) {
+            startTrainingFromLandingRef.current = false;
+            return;
+          }
+        } catch (error) {
+          startTrainingFromLandingRef.current = false;
+          throw error;
         }
+        navigate(ROUTES.TRAINING_CODENAME_REVEAL, {
+          replace: true,
+          state: { codename },
+        });
       }}
       onPrewarmAllSceneImages={(characterId) => {
         void flow.prewarmAllSceneImages(characterId);

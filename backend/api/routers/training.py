@@ -217,6 +217,7 @@ def _build_training_domain_error_response(
 async def init_training(
     request: TrainingInitRequest,
     training_service: TrainingService = Depends(get_training_service),
+    story_script_service=Depends(get_training_story_script_service),
 ):
     """Initialize a training session."""
 
@@ -227,6 +228,25 @@ async def init_training(
             training_mode=request.training_mode,
             player_profile=_serialize_player_profile_request(request),
         )
+        # Trigger story script generation asynchronously after session is created.
+        # story_script_status is included in the response so the client can
+        # observe the initial state and decide whether to poll or retry.
+        session_id = result.get("session_id") if isinstance(result, dict) else None
+        story_script_status = "skipped"
+        if session_id:
+            try:
+                script_result = story_script_service.ensure_story_script(session_id)
+                story_script_status = str(script_result.get("status") or "pending")
+            except Exception as exc:
+                story_script_status = "error"
+                logger.warning(
+                    "story script ensure failed after init (non-fatal): session_id=%s error=%s",
+                    session_id,
+                    str(exc),
+                )
+        if isinstance(result, dict):
+            result = dict(result)
+            result["story_script_status"] = story_script_status
         return build_success_payload(data=result)
     except TrainingModeUnsupportedError as exc:
         return _build_training_domain_error_response(

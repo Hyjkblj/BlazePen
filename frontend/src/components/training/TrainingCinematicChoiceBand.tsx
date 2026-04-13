@@ -8,6 +8,8 @@ interface TrainingCinematicChoiceBandProps {
   options: TrainingScenarioOption[];
   selectedOptionId: string | null;
   onSelectOption: (optionId: string) => void;
+  onViewTask?: () => void;
+  viewTaskLabel?: string;
   disabled?: boolean;
   ariaLabel?: string;
   narrativeLabels?: Record<string, string>;
@@ -57,6 +59,8 @@ function TrainingCinematicChoiceBand({
   options,
   selectedOptionId,
   onSelectOption,
+  onViewTask,
+  viewTaskLabel = '查看任务',
   disabled = false,
   ariaLabel = 'Training cinematic choices',
   narrativeLabels,
@@ -186,9 +190,6 @@ function TrainingCinematicChoiceBand({
             disabled={disabled}
             aria-pressed={isSelected}
           >
-            <span className="training-cinematic-choice-band__option-mark">
-              OPTION {String(index + 1).padStart(2, '0')}
-            </span>
             <strong className="training-cinematic-choice-band__option-label">{option.label}</strong>
             {option.impactHint ? (
               <span className="training-cinematic-choice-band__option-hint">
@@ -203,6 +204,17 @@ function TrainingCinematicChoiceBand({
           </button>
         );
       })}
+
+      {onViewTask ? (
+        <button
+          type="button"
+          className="training-cinematic-choice-band__view-task"
+          onClick={onViewTask}
+          disabled={disabled}
+        >
+          {viewTaskLabel}
+        </button>
+      ) : null}
     </section>
   );
 }

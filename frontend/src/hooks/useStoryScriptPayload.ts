@@ -15,13 +15,24 @@ interface CacheEntry {
 
 const RETRY_DELAY_MS = 3000;
 const MAX_RETRIES = 2;
+// How many times to retry a 404 (script not yet created by backend after init).
+const NOT_FOUND_MAX_RETRIES = 5;
 const POLL_STATUS = new Set(['pending', 'running']);
+
+const readResponseStatus = (error: unknown): number | null => {
+  if (error != null && typeof error === 'object' && 'response' in error) {
+    const resp = (error as { response?: { status?: unknown } }).response;
+    if (typeof resp?.status === 'number') return resp.status;
+  }
+  return null;
+};
 
 /**
  * Fetches and caches the StoryScriptPayload for a given sessionId.
  * - Same sessionId is only fetched once (cached in useRef).
  * - When the API response status is `pending` or `running`, retries after 3s, up to 2 times.
- * - On failure, status is set to `unavailable` and payload is null.
+ * - On 404 (script not yet created by backend), retries up to NOT_FOUND_MAX_RETRIES times.
+ * - On other failures, status is set to `unavailable` and payload is null.
  * - Does not block the main flow (async fetch).
  *
  * Requirements: 9.1, 9.2, 9.3, 9.4, 9.5
@@ -50,7 +61,7 @@ export function useStoryScriptPayload(
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const fetchPayload = async (retriesLeft: number): Promise<void> => {
+    const fetchPayload = async (retriesLeft: number, notFoundRetriesLeft: number): Promise<void> => {
       if (cancelled) return;
 
       setResult({ payload: null, status: 'loading' });
@@ -68,7 +79,7 @@ export function useStoryScriptPayload(
           // cache them as `ready`, otherwise the same session would be stuck.
           const nextRetriesLeft = retriesLeft > 0 ? retriesLeft - 1 : MAX_RETRIES;
           retryTimer = setTimeout(() => {
-            void fetchPayload(nextRetriesLeft);
+            void fetchPayload(nextRetriesLeft, notFoundRetriesLeft);
           }, RETRY_DELAY_MS);
           return;
         }
@@ -83,15 +94,25 @@ export function useStoryScriptPayload(
         const entry: CacheEntry = { payload: data, status: 'ready' };
         cacheRef.current.set(sessionId, entry);
         setResult({ payload: data, status: 'ready' });
-      } catch {
+      } catch (error: unknown) {
         if (cancelled) return;
+
+        // 404 = script not yet created (init_training just triggered ensure asynchronously).
+        // Retry a few times before giving up.
+        if (readResponseStatus(error) === 404 && notFoundRetriesLeft > 0) {
+          retryTimer = setTimeout(() => {
+            void fetchPayload(retriesLeft, notFoundRetriesLeft - 1);
+          }, RETRY_DELAY_MS);
+          return;
+        }
+
         const entry: CacheEntry = { payload: null, status: 'unavailable' };
         cacheRef.current.set(sessionId, entry);
         setResult({ payload: null, status: 'unavailable' });
       }
     };
 
-    void fetchPayload(MAX_RETRIES);
+    void fetchPayload(MAX_RETRIES, NOT_FOUND_MAX_RETRIES);
 
     return () => {
       cancelled = true;

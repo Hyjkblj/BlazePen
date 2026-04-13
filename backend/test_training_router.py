@@ -8,7 +8,7 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.dependencies import get_training_query_service, get_training_service
+from api.dependencies import get_training_query_service, get_training_service, get_training_story_script_service
 from api.middleware.error_handler import install_common_exception_handlers
 from api.routers import training
 from training.exceptions import (
@@ -17,6 +17,16 @@ from training.exceptions import (
     TrainingSessionNotFoundError,
     TrainingSessionRecoveryStateError,
 )
+
+
+class _FakeStoryScriptService:
+    """最小剧本服务桩：ensure 调用静默成功，不触发真实 LLM 或数据库。"""
+
+    def ensure_story_script(self, session_id: str):
+        return {"session_id": session_id, "status": "pending"}
+
+    def get_story_script(self, session_id: str):
+        return {"session_id": session_id, "status": "pending", "payload": {}}
 
 
 class _FakeTrainingService:
@@ -545,6 +555,7 @@ class TrainingRouterTestCase(unittest.TestCase):
         fake_service = _FakeTrainingService()
         self.app.dependency_overrides[get_training_service] = lambda: fake_service
         self.app.dependency_overrides[get_training_query_service] = lambda: fake_service
+        self.app.dependency_overrides[get_training_story_script_service] = lambda: _FakeStoryScriptService()
         self.client = TestClient(self.app)
 
     def tearDown(self):

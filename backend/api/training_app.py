@@ -309,10 +309,12 @@ if __name__ == "__main__":
     backend_dir = os.path.dirname(api_dir)
     os.chdir(backend_dir)
     logger.info("training engine service working directory: %s", os.getcwd())
+    reload_enabled = os.getenv("TRAINING_API_RELOAD", "false").lower() == "true"
+    logger.info("training engine reload mode: %s", "enabled" if reload_enabled else "disabled")
 
     uvicorn.run(
         "api.training_app:app",
         host=os.getenv("TRAINING_API_HOST", "0.0.0.0"),
         port=int(os.getenv("TRAINING_API_PORT", "8010")),
-        reload=os.getenv("TRAINING_API_RELOAD", "true").lower() == "true",
+        reload=reload_enabled,
     )

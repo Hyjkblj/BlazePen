@@ -66,4 +66,21 @@ describe('TrainingCinematicChoiceBand', () => {
 
     expect(onSelectOption).toHaveBeenCalledWith('opt-top');
   });
+
+  it('renders a view-task button at the lower corner and triggers callback', () => {
+    const onSelectOption = vi.fn();
+    const onViewTask = vi.fn();
+
+    render(
+      <TrainingCinematicChoiceBand
+        options={createOptions()}
+        selectedOptionId={null}
+        onSelectOption={onSelectOption}
+        onViewTask={onViewTask}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '查看任务' }));
+    expect(onViewTask).toHaveBeenCalledTimes(1);
+  });
 });

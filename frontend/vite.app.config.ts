@@ -55,6 +55,7 @@ export const createAppViteConfig = ({
       root: path.resolve(__dirname, rootDir),
       publicDir: path.resolve(__dirname, 'public'),
       plugins: [react()],
+      envDir: __dirname,
       resolve: {
         alias: {
           '@': path.resolve(__dirname, 'src'),

@@ -23,7 +23,7 @@ class ConfigValidator:
 
     # Optional but strongly recommended.
     RECOMMENDED_CONFIGS = {
-        "VOLCENGINE_ARK_API_KEY": "Volcengine ARK API key (text/image generation)",
+        "VOLCENGINE_ARK_API_KEY": "Volcengine ARK API key (text/general)",
         "DASHSCOPE_API_KEY": "DashScope API key (optional provider)",
     }
 
@@ -102,11 +102,22 @@ class ConfigValidator:
         for key, description in cls.RECOMMENDED_CONFIGS.items():
             if not os.getenv(key, "").strip():
                 warnings.append(f"{key} ({description}) is not set")
+        if not (
+            os.getenv("VOLCENGINE_IMAGE_ARK_API_KEY", "").strip()
+            or os.getenv("ARK_API_KEY", "").strip()
+            or os.getenv("VOLCENGINE_ARK_API_KEY", "").strip()
+        ):
+            warnings.append(
+                "VOLCENGINE_IMAGE_ARK_API_KEY/ARK_API_KEY/VOLCENGINE_ARK_API_KEY "
+                "(Volcengine ARK API key for image generation) is not set"
+            )
 
     @staticmethod
     def _validate_ai_provider_presence(warnings: list[str]) -> None:
         ai_provider_keys = [
             "VOLCENGINE_ARK_API_KEY",
+            "VOLCENGINE_IMAGE_ARK_API_KEY",
+            "ARK_API_KEY",
             "DASHSCOPE_API_KEY",
             "OPENAI_API_KEY",
             "ZHIPU_API_KEY",

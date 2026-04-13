@@ -155,9 +155,39 @@ class TrainingMediaTaskProviderDispatcher:
                 reason="payload.prompt is required",
             )
 
+        image_type = self._optional_str(payload.get("image_type")) or "portrait"
         character_id = self._optional_int(payload.get("character_id"))
         user_id = self._optional_str(payload.get("user_id"))
-        image_type = self._optional_str(payload.get("image_type")) or "portrait"
+
+        # Scene-type images use generate_scene_image for proper scene rendering.
+        if image_type in {"scene", "smallscene", "small_scene", "storyline_scene"}:
+            scene_id = self._optional_str(payload.get("scenario_id")) or major_scene_title
+            scene_data = {
+                "scene_id": scene_id,
+                "scene_name": major_scene_title,
+                "scene_description": prompt,
+                "prompt": prompt,
+                "negative_prompt": "text, title, subtitle, watermark, caption, words, letters, writing, typography",
+                "atmosphere": self._optional_str(payload.get("atmosphere")),
+                "time_of_day": self._optional_str(payload.get("time_of_day")),
+                "weather": self._optional_str(payload.get("weather")),
+                "session_id": self._optional_str(payload.get("session_id")),
+                "round_no": self._optional_int(payload.get("round_no")),
+                "scene_level": "major",
+            }
+            scene_url = self.image_service.generate_scene_image(
+                scene_data=scene_data,
+                scene_id=scene_id,
+                user_id=user_id or self._optional_str(payload.get("session_id")),
+            )
+            if not scene_url:
+                raise TrainingMediaTaskExecutionFailedError(
+                    task_type="image",
+                    reason="scene image provider returned empty result",
+                )
+            return {"preview_url": scene_url, "image_url": scene_url}
+
+        # Non-scene images (portrait, etc.) use generate_character_image.
         generate_group = bool(payload.get("generate_group", True))
         group_count = max(1, int(payload.get("group_count", 3) or 3))
 
@@ -404,7 +434,7 @@ class TrainingMediaTaskProviderDispatcher:
         return (
             f"{major_scene_title}。{scenario_brief}。"
             f"任务：{mission}。决策焦点：{decision_focus}。"
-            "视觉风格：纪实新闻叙事，环境细节真实，无人物特写。"
+            "视觉风格：纪实新闻叙事，环境细节真实，无人物特写，画面中不得出现任何文字、标题或字幕。"
         )
 
     def _build_scene_call_key(self, *, session_id: str, round_no: int, call_sequence: int) -> str:
@@ -680,8 +710,10 @@ class TrainingMediaTaskExecutor:
         payload = dict(task.request_payload or {})
         image_type = str(payload.get("image_type") or "").strip().lower()
         generate_series = bool(payload.get("generate_storyline_series"))
-        is_scene_series = generate_series and image_type in {"scene", "smallscene", "small_scene", "storyline_scene"}
-        if is_scene_series:
+        is_scene_image = image_type in {"scene", "smallscene", "small_scene", "storyline_scene"}
+        is_scene_series = generate_series and is_scene_image
+        # 场景图（含普通场景图与场景序列）通常耗时显著高于人物图，统一使用场景超时窗口。
+        if is_scene_image or is_scene_series:
             return float(self.config.scene_task_timeout_seconds)
 
         return float(self.config.task_timeout_seconds)

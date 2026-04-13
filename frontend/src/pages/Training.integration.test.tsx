@@ -14,8 +14,11 @@ import {
 import { ServiceError } from '@/services/serviceError';
 import TrainingDiagnostics from '@/pages/TrainingDiagnostics';
 import Training from '@/pages/Training';
+import TrainingCinematicDemoPage from '@/pages/TrainingCinematicDemoPage';
 import TrainingCompletion from '@/pages/TrainingCompletion';
 import TrainingMainHomePage from '@/pages/TrainingMainHomePage';
+import TrainingCodenameRevealPage from '@/pages/TrainingCodenameRevealPage';
+import TrainingNewsroomIntroPage from '@/pages/TrainingNewsroomIntroPage';
 import TrainingLandingPage from '@/pages/TrainingLandingPage';
 import TrainingProgress from '@/pages/TrainingProgress';
 import TrainingReport from '@/pages/TrainingReport';
@@ -156,6 +159,18 @@ const renderRouterApp = (
             <Route path={ROUTES.TRAINING_COMPLETION} element={<TrainingCompletion />} />
             <Route path={ROUTES.TRAINING_MAINHOME} element={<TrainingMainHomePage />} />
             <Route path={ROUTES.TRAINING_LANDING} element={<TrainingLandingPage />} />
+            <Route
+              path={ROUTES.TRAINING_CODENAME_REVEAL}
+              element={<TrainingCodenameRevealPage />}
+            />
+            <Route
+              path={ROUTES.TRAINING_NEWSROOM_INTRO}
+              element={<TrainingNewsroomIntroPage />}
+            />
+            <Route
+              path={ROUTES.TRAINING_CINEMATIC_DEMO}
+              element={<TrainingCinematicDemoPage />}
+            />
             <Route path={ROUTES.TRAINING_PROGRESS} element={<TrainingProgress />} />
             <Route path={ROUTES.TRAINING_REPORT} element={<TrainingReport />} />
             <Route path={ROUTES.TRAINING_DIAGNOSTICS} element={<TrainingDiagnostics />} />
@@ -205,6 +220,35 @@ const clickLandingStartButton = async () => {
   const confirmButton = document.querySelector<HTMLButtonElement>('.training-landing__confirm');
   expect(confirmButton).toBeTruthy();
   fireEvent.click(confirmButton!);
+
+  await waitFor(() => {
+    const codenameReveal = document.querySelector<HTMLElement>('.training-codename-reveal');
+    expect(codenameReveal).toBeTruthy();
+  });
+  const codenameReveal = document.querySelector<HTMLElement>('.training-codename-reveal');
+  expect(codenameReveal).toBeTruthy();
+  fireEvent.click(codenameReveal!);
+
+  await waitFor(() => {
+    const newsroomIntro = document.querySelector<HTMLElement>('.training-newsroom-intro');
+    expect(newsroomIntro).toBeTruthy();
+  });
+  const newsroomIntro = document.querySelector<HTMLElement>('.training-newsroom-intro');
+  expect(newsroomIntro).toBeTruthy();
+  fireEvent.click(newsroomIntro!);
+
+  await waitFor(() => {
+    expect(screen.getByText('点击任意位置播放开场视频')).toBeTruthy();
+  });
+  fireEvent.click(newsroomIntro!);
+
+  await waitFor(() => {
+    const introVideo = document.querySelector<HTMLVideoElement>('.training-cinematic-video__video');
+    expect(introVideo).toBeTruthy();
+  });
+  const introVideo = document.querySelector<HTMLVideoElement>('.training-cinematic-video__video');
+  expect(introVideo).toBeTruthy();
+  fireEvent.ended(introVideo!);
 };
 
 const submitFirstScenarioOption = async () => {

@@ -59,10 +59,14 @@ class Config:
         
         # 火山引擎配置
         self.volcengine_ark_api_key = os.getenv('VOLCENGINE_ARK_API_KEY', '').strip()
+        self.volcengine_image_ark_api_key = os.getenv(
+            'VOLCENGINE_IMAGE_ARK_API_KEY',
+            os.getenv('ARK_API_KEY', self.volcengine_ark_api_key),
+        ).strip()
         self.volcengine_region = os.getenv('VOLCENGINE_REGION', 'cn-beijing')
         self.volcengine_text_model = get_text_llm_model()
         self.volcengine_text_api_url = os.getenv('VOLCENGINE_TEXT_API_URL', '')
-        self.volcengine_image_model = os.getenv('VOLCENGINE_IMAGE_MODEL', 'doubao-seedream-3-0-t2i-250415')
+        self.volcengine_image_model = os.getenv('VOLCENGINE_IMAGE_MODEL', 'doubao-seedream-5-0-260128')
         self.volcengine_image_size = os.getenv('VOLCENGINE_IMAGE_SIZE', '2K')
         
         # 火山引擎TTS配置（敏感信息，必须从环境变量读取）
@@ -140,6 +144,7 @@ DASHSCOPE_API_KEY = _default_config.dashscope_api_key
 DASHSCOPE_MODEL = _default_config.dashscope_model
 DASHSCOPE_TTS_MODEL = _default_config.dashscope_tts_model
 VOLCENGINE_ARK_API_KEY = _default_config.volcengine_ark_api_key
+VOLCENGINE_IMAGE_ARK_API_KEY = _default_config.volcengine_image_ark_api_key
 VOLCENGINE_REGION = _default_config.volcengine_region
 VOLCENGINE_TEXT_MODEL = _default_config.volcengine_text_model
 VOLCENGINE_TEXT_API_URL = _default_config.volcengine_text_api_url

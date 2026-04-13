@@ -46,7 +46,11 @@ class ImageGenerationService:
         self.storage_service = storage_service
         
         # 优先检查火山引擎Seedream API
-        volcengine_key = config.VOLCENGINE_ARK_API_KEY.strip() if config.VOLCENGINE_ARK_API_KEY else ''
+        volcengine_key = (
+            config.VOLCENGINE_IMAGE_ARK_API_KEY.strip()
+            if config.VOLCENGINE_IMAGE_ARK_API_KEY
+            else ''
+        )
         
         if REQUESTS_AVAILABLE and volcengine_key:
             # 根据region构建API端点
@@ -64,7 +68,7 @@ class ImageGenerationService:
         elif not REQUESTS_AVAILABLE:
             logger.warning("requests未安装，火山引擎图片生成功能不可用")
         elif not volcengine_key:
-            logger.warning("未配置VOLCENGINE_ARK_API_KEY或值为空，火山引擎图片生成功能不可用")
+            logger.warning("未配置VOLCENGINE_IMAGE_ARK_API_KEY（或回退的VOLCENGINE_ARK_API_KEY），火山引擎图片生成功能不可用")
         
         # 如果火山引擎不可用，检查通义万相
         if not self.enabled:
@@ -557,7 +561,7 @@ class ImageGenerationService:
             
             # 构建请求头
             headers = {
-                "Authorization": f"Bearer {config.VOLCENGINE_ARK_API_KEY}",
+                "Authorization": f"Bearer {config.VOLCENGINE_IMAGE_ARK_API_KEY}",
                 "Content-Type": "application/json"
             }
             
@@ -855,7 +859,7 @@ class ImageGenerationService:
             
             # 构建请求头
             headers = {
-                "Authorization": f"Bearer {config.VOLCENGINE_ARK_API_KEY}",
+                "Authorization": f"Bearer {config.VOLCENGINE_IMAGE_ARK_API_KEY}",
                 "Content-Type": "application/json"
             }
             

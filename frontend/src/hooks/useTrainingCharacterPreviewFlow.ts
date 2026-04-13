@@ -47,6 +47,12 @@ type UseTrainingCharacterPreviewFlowOptions = {
   formDraft: TrainingFormDraftValue;
   onStartTraining: () => void | Promise<void>;
   onPrewarmAllSceneImages: (characterId: string) => void | Promise<void>;
+  onBeforeStartTraining?: (context: {
+    portraitPresetId: string;
+    playerGender: string;
+    playerIdentity: string;
+    playerName: string;
+  }) => void | Promise<void>;
   updateFormDraft: (field: keyof TrainingFormDraftValue, value: string) => void;
 };
 
@@ -249,6 +255,7 @@ export const useTrainingCharacterPreviewFlow = ({
   formDraft,
   onStartTraining,
   onPrewarmAllSceneImages,
+  onBeforeStartTraining,
   updateFormDraft,
 }: UseTrainingCharacterPreviewFlowOptions): UseTrainingCharacterPreviewFlowResult => {
   const [previewStatus, setPreviewStatus] = useState<TrainingPortraitPreviewStatus>('idle');
@@ -266,6 +273,7 @@ export const useTrainingCharacterPreviewFlow = ({
   const shouldStartNewAttemptOnRetryRef = useRef(false);
   const lastGeneratedKeyRef = useRef<string | null>(null);
   const resumedJobIdRef = useRef<string | null>(null);
+  const confirmTrainingInFlightRef = useRef(false);
   const currentPreviewGenerationKey = useMemo(
     () => buildPreviewGenerationKey(formDraft),
     [formDraft]
@@ -641,67 +649,88 @@ export const useTrainingCharacterPreviewFlow = ({
   ]);
 
   const handleConfirmTraining = useCallback(async () => {
-    if (identityPresetStatus !== 'ready') {
-      setPreviewStatus('error');
-      setPreviewError(identityPresetError ?? '身份预设尚未加载完成，请稍后重试。');
+    if (confirmTrainingInFlightRef.current) {
       return;
     }
-
-    if (!hasRequiredPortraitFields) {
-      setPreviewStatus('error');
-      setPreviewError('请先选择身份预设，再进入训练。');
-      return;
-    }
-
-    const resolvedCharacterId = formDraft.characterId.trim();
-    if (!resolvedCharacterId || !parsePositiveInt(resolvedCharacterId)) {
-      setPreviewStatus('error');
-      setPreviewError('请先生成形象图，再进入训练。');
-      return;
-    }
-
-    if (
-      previewStatus !== 'ready' ||
-      previewImageUrls.length === 0 ||
-      selectedPreviewIndex === null ||
-      !previewImageUrls[selectedPreviewIndex]
-    ) {
-      setPreviewStatus('error');
-      setPreviewError('请选择一张形象图后再进入训练。');
-      return;
-    }
-
-    setIsPersistingPortraitSelection(true);
+    confirmTrainingInFlightRef.current = true;
     try {
-      await removeTrainingCharacterBackground(resolvedCharacterId, {
-        imageUrl: previewImageUrls[selectedPreviewIndex],
-        imageUrls: previewImageUrls,
-        selectedIndex: selectedPreviewIndex,
-      });
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : '保存形象图选择失败，请稍后重试后再进入训练。';
-      setPreviewStatus('error');
-      setPreviewError(message);
-      setIsPersistingPortraitSelection(false);
-      return;
-    }
+      if (identityPresetStatus !== 'ready') {
+        setPreviewStatus('error');
+        setPreviewError(identityPresetError ?? '身份预设尚未加载完成，请稍后重试。');
+        return;
+      }
 
-    try {
-      await onStartTraining();
-      activePreviewJobRef.current = null;
-      resumedJobIdRef.current = null;
-      clearPersistedPreviewSnapshot();
+      if (!hasRequiredPortraitFields) {
+        setPreviewStatus('error');
+        setPreviewError('请先选择身份预设，再进入训练。');
+        return;
+      }
+
+      const resolvedCharacterId = formDraft.characterId.trim();
+      if (!resolvedCharacterId || !parsePositiveInt(resolvedCharacterId)) {
+        setPreviewStatus('error');
+        setPreviewError('请先生成形象图，再进入训练。');
+        return;
+      }
+
+      if (
+        previewStatus !== 'ready' ||
+        previewImageUrls.length === 0 ||
+        selectedPreviewIndex === null ||
+        !previewImageUrls[selectedPreviewIndex]
+      ) {
+        setPreviewStatus('error');
+        setPreviewError('请选择一张形象图后再进入训练。');
+        return;
+      }
+
+      setIsPersistingPortraitSelection(true);
+      try {
+        await removeTrainingCharacterBackground(resolvedCharacterId, {
+          imageUrl: previewImageUrls[selectedPreviewIndex],
+          imageUrls: previewImageUrls,
+          selectedIndex: selectedPreviewIndex,
+        });
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : '保存形象图选择失败，请稍后重试后再进入训练。';
+        setPreviewStatus('error');
+        setPreviewError(message);
+        setIsPersistingPortraitSelection(false);
+        return;
+      }
+
+      try {
+        if (onBeforeStartTraining) {
+          await onBeforeStartTraining({
+            portraitPresetId: formDraft.portraitPresetId,
+            playerGender: formDraft.playerGender,
+            playerIdentity: formDraft.playerIdentity,
+            playerName: formDraft.playerName,
+          });
+        }
+        await onStartTraining();
+        activePreviewJobRef.current = null;
+        resumedJobIdRef.current = null;
+        clearPersistedPreviewSnapshot();
+      } finally {
+        setIsPersistingPortraitSelection(false);
+      }
     } finally {
-      setIsPersistingPortraitSelection(false);
+      confirmTrainingInFlightRef.current = false;
     }
   }, [
     formDraft.characterId,
+    formDraft.playerGender,
+    formDraft.playerIdentity,
+    formDraft.playerName,
+    formDraft.portraitPresetId,
     hasRequiredPortraitFields,
     identityPresetError,
     identityPresetStatus,
+    onBeforeStartTraining,
     onStartTraining,
     previewImageUrls,
     previewStatus,
@@ -722,4 +751,3 @@ export const useTrainingCharacterPreviewFlow = ({
     setSelectedPreviewIndex,
   };
 };
-

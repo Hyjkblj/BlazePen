@@ -1,53 +1,82 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ROUTES } from '@/config/routes';
+import warIntroVideo from '@/assets/video/war-intro-seedance-1-5-pro.mp4';
 import './TrainingCinematicDemoPage.css';
 
 function TrainingCinematicDemoPage() {
-  const [replayToken, setReplayToken] = useState(0);
+  const navigate = useNavigate();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [manualStartRequired, setManualStartRequired] = useState(false);
+
+  const handleEnded = useCallback(() => {
+    navigate(ROUTES.TRAINING, { replace: true });
+  }, [navigate]);
+
+  useEffect(() => {
+    if (import.meta.env.MODE === 'test') {
+      return;
+    }
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    void video
+      .play()
+      .then(() => {
+        setManualStartRequired(false);
+      })
+      .catch(() => {
+        setManualStartRequired(true);
+      });
+  }, []);
+
+  const handleManualStart = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    void video
+      .play()
+      .then(() => {
+        setManualStartRequired(false);
+      })
+      .catch(() => {
+        setManualStartRequired(true);
+      });
+  }, []);
 
   return (
-    <main className="training-ribbon-demo">
-      <div className="training-ribbon-demo__stage">
-        <div
-          key={replayToken}
-          className="training-ribbon-demo__strip"
-          role="img"
-          aria-label="训练章节流光样式演示"
-        >
-          <div className="training-ribbon-demo__ambient" aria-hidden="true" />
-          <svg
-            className="training-ribbon-demo__lines"
-            viewBox="0 0 1200 120"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            <path
-              className="training-ribbon-demo__line training-ribbon-demo__line--a training-ribbon-demo__line--silver"
-              d="M -120 42 C 80 92, 220 18, 430 62 C 620 92, 780 22, 960 58 C 1060 74, 1130 36, 1240 36"
-            />
-            <path
-              className="training-ribbon-demo__line training-ribbon-demo__line--b training-ribbon-demo__line--black"
-              d="M -120 70 C 70 16, 220 96, 390 56 C 560 18, 760 94, 940 54 C 1040 36, 1130 46, 1240 60"
-            />
-            <path
-              className="training-ribbon-demo__line training-ribbon-demo__line--c training-ribbon-demo__line--silver"
-              d="M -120 86 C 120 42, 300 90, 500 48 C 700 20, 900 82, 1080 48 C 1140 40, 1190 44, 1240 54"
-            />
-          </svg>
-          <div className="training-ribbon-demo__flare" aria-hidden="true" />
-          <p className="training-ribbon-demo__label" data-text="全部章节">
-            全部章节
-          </p>
-        </div>
-
-        <button
-          type="button"
-          className="training-ribbon-demo__replay"
-          onClick={() => setReplayToken((value) => value + 1)}
-        >
-          重播动画
-        </button>
-      </div>
-    </main>
+    <div
+      className="training-cinematic-video"
+      role={manualStartRequired ? 'button' : undefined}
+      tabIndex={manualStartRequired ? 0 : undefined}
+      aria-label={manualStartRequired ? '点击播放开场视频' : undefined}
+      onClick={manualStartRequired ? handleManualStart : undefined}
+      onKeyDown={
+        manualStartRequired
+          ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                handleManualStart();
+              }
+            }
+          : undefined
+      }
+    >
+      <video
+        ref={videoRef}
+        className="training-cinematic-video__video"
+        src={warIntroVideo}
+        preload="auto"
+        playsInline
+        autoPlay
+        onEnded={handleEnded}
+      />
+      {manualStartRequired ? (
+        <div className="training-cinematic-video__hint">点击任意位置播放开场视频</div>
+      ) : null}
+    </div>
   );
 }
 

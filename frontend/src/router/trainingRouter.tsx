@@ -7,6 +7,8 @@ import { createRuntimeRouter, renderLazyPage } from './routerUtils';
 const Training = lazy(() => import('@/pages/Training'));
 const TrainingMainHomePage = lazy(() => import('@/pages/TrainingMainHomePage'));
 const TrainingLandingPage = lazy(() => import('@/pages/TrainingLandingPage'));
+const TrainingCodenameRevealPage = lazy(() => import('@/pages/TrainingCodenameRevealPage'));
+const TrainingNewsroomIntroPage = lazy(() => import('@/pages/TrainingNewsroomIntroPage'));
 const TrainingCinematicDemoPage = lazy(() => import('@/pages/TrainingCinematicDemoPage'));
 const TrainingCompletion = lazy(() => import('@/pages/TrainingCompletion'));
 const TrainingProgress = lazy(() => import('@/pages/TrainingProgress'));
@@ -28,6 +30,14 @@ const routes = [
       {
         path: 'training/landing',
         element: renderLazyPage(TrainingLandingPage, 'training-landing'),
+      },
+      {
+        path: 'training/codename-reveal',
+        element: renderLazyPage(TrainingCodenameRevealPage, 'training-codename-reveal'),
+      },
+      {
+        path: 'training/newsroom-intro',
+        element: renderLazyPage(TrainingNewsroomIntroPage, 'training-newsroom-intro'),
       },
       {
         path: 'training/cinematic-demo',

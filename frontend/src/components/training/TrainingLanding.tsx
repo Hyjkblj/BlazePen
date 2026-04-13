@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { Alert, Button } from 'antd';
 import TrainingIdentitySetup from '@/components/training/TrainingIdentitySetup';
 import TrainingPortraitPreview from '@/components/training/TrainingPortraitPreview';
@@ -23,9 +24,42 @@ type TrainingLandingProps = {
   onBackToEntryRoute: () => void;
   onManualRestore: () => void;
   onRetryRestore: () => void;
-  onStartTraining: () => void | Promise<void>;
+  onStartTraining: (context: { codename: string }) => void | Promise<void>;
   onPrewarmAllSceneImages: (characterId: string) => void | Promise<void>;
   updateFormDraft: (field: keyof TrainingFormDraftValue, value: string) => void;
+};
+
+const TRAINING_CODENAME_MAP: Record<string, { male: string; female: string }> = {
+  'underground-reporter': { male: '墨刃', female: '笔心' },
+  'frontline-war-correspondent': { male: '锋录', female: '星笔' },
+  'photo-intelligence': { male: '镜影', female: '影棱' },
+  'newsboy-courier': { male: '风报', female: '铃童' },
+  'concession-correspondent': { male: '澜喉', female: '潮声' },
+};
+
+const resolveCodenameByIdentityText = (identityText: string): { male: string; female: string } | null => {
+  const text = String(identityText || '').trim();
+  if (!text) {
+    return null;
+  }
+  if (text.includes('地下') || text.includes('敌后')) return { male: '墨刃', female: '笔心' };
+  if (text.includes('火线') || text.includes('战地')) return { male: '锋录', female: '星笔' };
+  if (text.includes('摄影') || text.includes('镜头')) return { male: '镜影', female: '影棱' };
+  if (text.includes('报童') || text.includes('街头')) return { male: '风报', female: '铃童' };
+  if (text.includes('租界') || text.includes('涉外')) return { male: '澜喉', female: '潮声' };
+  return null;
+};
+
+const resolveCodename = (portraitPresetId: string, playerGender: string, playerIdentity: string): string => {
+  const mapping =
+    TRAINING_CODENAME_MAP[String(portraitPresetId || '').trim()] ??
+    resolveCodenameByIdentityText(playerIdentity);
+  if (!mapping) {
+    return '黄蜂';
+  }
+  const normalizedGender = String(playerGender || '').trim().toLowerCase();
+  const isMale = normalizedGender === '男' || normalizedGender === 'male' || normalizedGender === 'm';
+  return isMale ? mapping.male : mapping.female;
 };
 
 function TrainingLanding({
@@ -41,9 +75,23 @@ function TrainingLanding({
   onPrewarmAllSceneImages,
   updateFormDraft,
 }: TrainingLandingProps) {
+  const handleStartTraining = useCallback(async () => {
+    const codename = resolveCodename(
+      formDraft.portraitPresetId,
+      formDraft.playerGender,
+      formDraft.playerIdentity
+    );
+    await onStartTraining({ codename });
+  }, [
+    formDraft.playerGender,
+    formDraft.playerIdentity,
+    formDraft.portraitPresetId,
+    onStartTraining,
+  ]);
+
   const previewFlow = useTrainingCharacterPreviewFlow({
     formDraft,
-    onStartTraining,
+    onStartTraining: handleStartTraining,
     onPrewarmAllSceneImages,
     updateFormDraft,
   });
